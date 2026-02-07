@@ -1,0 +1,152 @@
+networks:
+  kafka-net:
+    driver: bridge
+
+volumes:
+  postgis-cre-data:
+  redis-cre-data:
+
+services:
+
+  # ============================================================
+  # 1. EVENT TRANSPORT LAYER (Kafka = streams model)
+  # ============================================================
+
+  kafka-1:
+    image: bitnami/kafka:3.8.0
+    container_name: kafka-1
+    ports:
+      - "19092:19092"
+      - "19093:19093"
+    environment:
+      - KAFKA_ENABLE_KRAFT=yes
+      - KAFKA_KRAFT_CLUSTER_ID=d8ce1515-401e-44d4-a444-1b6dba479047
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_HEAP_OPTS=-Xmx2G -Xms2G
+    volumes:
+      - ./kafka/server-1.properties:/opt/bitnami/kafka/config/server.properties:ro
+    networks: [kafka-net]
+    restart: always
+
+  kafka-2:
+    image: bitnami/kafka:3.8.0
+    container_name: kafka-2
+    ports:
+      - "19094:19094"
+      - "19095:19095"
+    environment:
+      - KAFKA_ENABLE_KRAFT=yes
+      - KAFKA_KRAFT_CLUSTER_ID=d8ce1515-401e-44d4-a444-1b6dba479047
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    volumes:
+      - ./kafka/server-2.properties:/opt/bitnami/kafka/config/server.properties:ro
+    networks: [kafka-net]
+    restart: always
+
+  kafka-producer:
+    image: alexflames77/kafka_producer:latest
+    container_name: kafka-producer
+    depends_on: [kafka-1, kafka-2]
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-1:19092,kafka-2:19094
+      - KAFKA_TOPIC=smart_meter_data
+    networks: [kafka-net]
+    restart: unless-stopped
+
+
+  # ============================================================
+  # 2. STREAM PROCESSING LAYER (Flink + GeoFlink)
+  # ============================================================
+
+  jobmanager:
+    image: flink:1.17.1
+    container_name: jobmanager
+    ports:
+      - "8081:8081"
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+    command: jobmanager
+    networks: [kafka-net]
+
+  taskmanager:
+    image: flink:1.17.1
+    container_name: taskmanager
+    depends_on: [jobmanager]
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
+    command: taskmanager
+    networks: [kafka-net]
+
+  flink-job:
+    image: alexflames77/geoflink_job:latest
+    container_name: geoflink-job
+    depends_on:
+      - jobmanager
+      - taskmanager
+      - kafka-1
+      - kafka-2
+    environment:
+      - FLINK_JOBMANAGER_HOST=jobmanager
+      - FLINK_JOBMANAGER_PORT=8081
+    networks: [kafka-net]
+    restart: on-failure
+
+
+  # ============================================================
+  # 3. STORAGE LAYER (Materialized State)
+  # ============================================================
+
+  postgis-cre:
+    image: postgis/postgis:18-3.6
+    container_name: postgis-cre
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_DB: cre_db
+      POSTGRES_USER: cre_user
+      POSTGRES_PASSWORD: cre_password
+    volumes:
+      - postgis-cre-data:/var/lib/postgresql
+      - ./postgis/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks: [kafka-net]
+    restart: always
+
+  redis-cre:
+    image: redis:7.2-alpine
+    container_name: redis-cre
+    volumes:
+      - redis-cre-data:/data
+    networks: [kafka-net]
+    restart: always
+
+
+  # ============================================================
+  # 4. VISUALIZATION & ACCESS
+  # ============================================================
+
+  tegola-cre:
+    image: gospatial/tegola:v0.21.2
+    container_name: tegola-cre
+    depends_on: [postgis-cre, redis-cre]
+    ports:
+      - "8085:8085"
+    volumes:
+      - ./tegola/config/config.toml:/config/config.toml:ro
+      - ./tegola/styles:/styles:ro
+    networks: [kafka-net]
+
+  pgadmin-cre:
+    image: dpage/pgadmin4
+    container_name: pgadmin-cre
+    ports:
+      - "5051:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@localhost.localdomain
+      PGADMIN_DEFAULT_PASSWORD: admin
+    depends_on: [postgis-cre]
+    networks: [kafka-net]
