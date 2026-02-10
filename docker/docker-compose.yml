@@ -43,16 +43,20 @@ services:
     networks: [kafka-net]
     restart: always
 
-  kafka-producer:
-    image: alexflames77/kafka_producer:latest
-    container_name: kafka-producer
-    depends_on: [kafka-1, kafka-2]
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka-1:19092,kafka-2:19094
-      - KAFKA_TOPIC=smart_meter_data
-    networks: [kafka-net]
-    restart: unless-stopped
-
+    geo-producer:
+      build:
+        context: ../
+        dockerfile: docker/producer/Dockerfile
+      container_name: geo-producer
+      depends_on:
+        - kafka-1
+        - kafka-2
+      environment:
+        KAFKA_BOOTSTRAP_SERVERS: "kafka-1:19092,kafka-2:19094"
+        KAFKA_TOPIC: "spatial-events"
+        EVENT_RATE: "2000"   # events per second
+      networks: [kafka-net]
+      restart: unless-stopped
 
   # ============================================================
   # 2. STREAM PROCESSING LAYER (Flink + GeoFlink)
