@@ -73,10 +73,8 @@ services:
     container_name: jobmanager
     ports:
       - "8081:8081"
-    environment:
-      - |
-        FLINK_PROPERTIES=
-        jobmanager.rpc.address: jobmanager
+    volumes:
+      - ./flink/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml
     command: jobmanager
     networks: [kafka-net]
 
@@ -84,11 +82,8 @@ services:
     image: flink:1.17.1
     container_name: taskmanager
     depends_on: [jobmanager]
-    environment:
-      - |
-        FLINK_PROPERTIES=
-        jobmanager.rpc.address: jobmanager
-        taskmanager.numberOfTaskSlots: 2
+    volumes:
+      - ./flink/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml
     command: taskmanager
     networks: [kafka-net]
 
@@ -104,8 +99,8 @@ services:
       - kafka-2
     environment:
       FLINK_MAIN_CLASS: "phd.architecture.Article01ArchitectureJob"
-      FLINK_PROPERTIES: |
-        jobmanager.rpc.address: jobmanager
+    volumes:
+      - ./flink/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml
     networks: [kafka-net]
     restart: on-failure
 
