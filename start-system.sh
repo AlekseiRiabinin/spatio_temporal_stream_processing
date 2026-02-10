@@ -48,7 +48,7 @@ create_topics() {
     docker exec kafka-1 bash -c '
         kafka-topics.sh --create \
             --topic spatial-events \
-            --partitions 8 \
+            --partitions 4 \
             --replication-factor 2 \
             --bootstrap-server kafka-1:19092 \
             --if-not-exists
@@ -58,18 +58,22 @@ create_topics() {
 }
 
 # ------------------------------------------------------------
-# 4. Start GeoEvent Producer
+# 4. Start selected Geo Producer
 # ------------------------------------------------------------
-log "Starting GeoEvent Producer..."
-docker compose -f "$COMPOSE_FILE" up -d geo-producer
+start_geo_producer() {
+    local producer_service=$1
 
-if is_up geo-producer; then
-    log "GeoEvent Producer is running."
-else
-    log "ERROR: GeoEvent Producer failed to start."
-    docker compose -f "$COMPOSE_FILE" logs geo-producer --tail=50
-    exit 1
-fi
+    log "Starting Geo Producer: $producer_service"
+    docker compose -f "$COMPOSE_FILE" up -d "$producer_service"
+
+    if is_up "$producer_service"; then
+        log "Geo Producer '$producer_service' is running."
+    else
+        log "ERROR: Geo Producer '$producer_service' failed to start."
+        docker compose -f "$COMPOSE_FILE" logs "$producer_service" --tail=50
+        exit 1
+    fi
+}
 
 # ------------------------------------------------------------
 # 5. Start PostGIS and Redis
@@ -110,7 +114,7 @@ start_flink() {
 # ------------------------------------------------------------
 start_flink_job() {
     log "Starting Flink job container..."
-    docker compose -f "$COMPOSE_FILE" up -d geoflink-arch-job
+    docker compose -f "$COMPOSE_FILE" up -d geoflink_architecture_job
     sleep 10
     log "Flink job container started."
 }
@@ -133,8 +137,9 @@ docker compose -f "$COMPOSE_FILE" up -d kafka-1 kafka-2
 check_kafka
 create_topics
 
-log "2. Starting GeoEvent Producer..."
-docker compose -f "$COMPOSE_FILE" up -d geo-producer
+log "2. Starting Geo Producer..."
+# Change this to any producer you want to run:
+start_geo_producer "geo_producer_architecture"
 
 log "3. Starting storage layer..."
 start_storage

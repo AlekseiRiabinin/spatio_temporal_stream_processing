@@ -43,10 +43,23 @@ spatio_temporal_stream_processing/
 ├── stream-processing/        # Потоковые вычисления (Scala)
 │   ├── flink-jobs/
 │   │   ├── core/
-│   │   ├── spatial/
-│   │   ├── trajectories/
-│   │   └── experiments/
-│   └── build.sbt
+│   │   ├── article-01-architecture/
+│   │   ├── article-02-stream-models/
+│   │   ├── article-03-spatio-temporal/
+│   │   └── article-05-experiments/
+│
+├── data-generators/                  ← каталог для всех будущих генераторов
+│   ├── geo_producer_architecture/    ← текущий генератор геоданных
+│   │   ├── src/
+│   │   └── Dockerfile
+│   ├── geo_producer_stream_models/
+│   ├── geo_producer_spatio_temporal/
+│   ├── geo_producer_experiments/
+│   ├── mobility-producer/            ← будущий генератор траекторий
+│   ├── traffic-producer/             ← будущий генератор дорожных событий
+│   └── ...
+│
+├── scripts/
 │
 ├── analytics/                # Аналитика и алгоритмы (Python)
 │   ├── notebooks/
