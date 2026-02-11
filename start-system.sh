@@ -1,155 +1,211 @@
 #!/bin/bash
+set -e
 
-COMPOSE_FILE="docker/docker-compose.yml"
+COMPOSE="docker/docker-compose.yml"
 
-log() {
-    echo "[ $(date '+%Y-%m-%d %H:%M:%S') ] $1"
+echo "=== Starting Spatial Stream Processing System ==="
+
+# ------------------------------------------------------------
+# Utility: check if service exists in compose
+# ------------------------------------------------------------
+service_exists() {
+    docker compose -f "$COMPOSE" config --services | grep -q "^$1$"
 }
 
 # ------------------------------------------------------------
-# 1. Check if a service is running
+# Utility: check if service is running
 # ------------------------------------------------------------
-is_up() {
-    docker compose -f "$COMPOSE_FILE" ps "$1" | grep -q "Up"
+is_running() {
+    docker compose -f "$COMPOSE" ps "$1" | grep -q "Up"
 }
 
 # ------------------------------------------------------------
-# 2. Wait for Kafka cluster to form
+# Utility: wait for container health
 # ------------------------------------------------------------
-check_kafka() {
-    log "Waiting for Kafka brokers to respond..."
+wait_for_health() {
+    local service=$1
+    local attempts=20
 
-    for i in {1..15}; do
-        if docker exec kafka-1 kafka-broker-api-versions.sh --bootstrap-server kafka-1:19092 >/dev/null 2>&1 && \
-           docker exec kafka-2 kafka-broker-api-versions.sh --bootstrap-server kafka-2:19094 >/dev/null 2>&1; then
-            log "Kafka brokers are responding."
+    echo "Waiting for $service to become healthy..."
 
-            # Check KRaft quorum
-            if docker exec kafka-1 kafka-metadata-quorum.sh --bootstrap-server kafka-1:19092 describe --status 2>/dev/null | grep -q "LeaderId"; then
-                log "Kafka KRaft quorum is healthy."
-                return 0
-            fi
+    for i in $(seq 1 $attempts); do
+        status=$(docker inspect -f '{{.State.Health.Status}}' "$service" 2>/dev/null || echo "unknown")
+
+        if [ "$status" = "healthy" ]; then
+            echo "$service is healthy"
+            return 0
         fi
 
-        log "Kafka not ready yet... retrying ($i/15)"
-        sleep 5
+        echo "  → $service status: $status ($i/$attempts)"
+        sleep 3
     done
 
-    log "ERROR: Kafka cluster did not form."
+    echo "ERROR: $service failed to become healthy"
+    docker compose -f "$COMPOSE" logs "$service" --tail=50
     exit 1
 }
 
 # ------------------------------------------------------------
-# 3. Create required Kafka topics
+# 1. Start PostGIS (PostgreSQL 18+)
 # ------------------------------------------------------------
-create_topics() {
-    log "Creating Kafka topics..."
-
-    docker exec kafka-1 bash -c '
-        kafka-topics.sh --create \
-            --topic spatial-events \
-            --partitions 4 \
-            --replication-factor 2 \
-            --bootstrap-server kafka-1:19092 \
-            --if-not-exists
-    '
-
-    log "Kafka topics created."
+start_postgis() {
+    echo "=== Starting PostGIS (CRE) ==="
+    docker compose -f "$COMPOSE" up -d --no-deps postgis-cre
+    wait_for_health postgis-cre
 }
 
 # ------------------------------------------------------------
-# 4. Start selected Geo Producer
+# 2. Start Redis
 # ------------------------------------------------------------
-start_geo_producer() {
-    local producer_service=$1
-
-    log "Starting Geo Producer: $producer_service"
-    docker compose -f "$COMPOSE_FILE" up -d "$producer_service"
-
-    if is_up "$producer_service"; then
-        log "Geo Producer '$producer_service' is running."
-    else
-        log "ERROR: Geo Producer '$producer_service' failed to start."
-        docker compose -f "$COMPOSE_FILE" logs "$producer_service" --tail=50
-        exit 1
+start_redis() {
+    if ! service_exists redis-cre; then
+        echo "Redis service not defined — skipping"
+        return
     fi
-}
 
-# ------------------------------------------------------------
-# 5. Start PostGIS and Redis
-# ------------------------------------------------------------
-start_storage() {
-    log "Starting PostGIS and Redis..."
-    docker compose -f "$COMPOSE_FILE" up -d postgis-cre redis-cre
+    echo "=== Starting Redis (CRE) ==="
+    docker compose -f "$COMPOSE" up -d --no-deps redis-cre
 
-    log "Waiting for PostGIS..."
-    sleep 10
-
-    if docker exec postgis-cre pg_isready -U cre_user >/dev/null 2>&1; then
-        log "PostGIS is ready."
-    else
-        log "WARNING: PostGIS not responding yet."
-    fi
-}
-
-# ------------------------------------------------------------
-# 6. Start Flink cluster
-# ------------------------------------------------------------
-start_flink() {
-    log "Starting Flink JobManager and TaskManager..."
-    docker compose -f "$COMPOSE_FILE" up -d jobmanager taskmanager
-
-    log "Waiting for Flink JobManager..."
-    for i in {1..20}; do
-        if curl -s http://localhost:8081 | grep -q "Flink Web Dashboard"; then
-            log "Flink JobManager is ready."
-            break
+    for i in {1..10}; do
+        if docker exec redis-cre redis-cli ping >/dev/null 2>&1; then
+            echo "Redis is ready"
+            return
         fi
+        echo "Waiting for Redis... ($i/10)"
+        sleep 2
+    done
+
+    echo "ERROR: Redis failed to start"
+    docker compose -f "$COMPOSE" logs redis-cre --tail=20
+    exit 1
+}
+
+# ------------------------------------------------------------
+# 3. Start Tegola
+# ------------------------------------------------------------
+start_tegola() {
+    if ! service_exists tegola-cre; then
+        echo "Tegola service not defined — skipping"
+        return
+    fi
+
+    echo "=== Starting Tegola (CRE) ==="
+    docker compose -f "$COMPOSE" up -d --no-deps tegola-cre
+
+    for i in {1..10}; do
+        if curl -s http://localhost:8085 >/dev/null 2>&1; then
+            echo "Tegola is ready"
+            return
+        fi
+        echo "Waiting for Tegola... ($i/10)"
         sleep 3
     done
+
+    echo "ERROR: Tegola failed to start"
+    docker compose -f "$COMPOSE" logs tegola-cre --tail=20
+    exit 1
 }
 
 # ------------------------------------------------------------
-# 7. Start Flink job
+# 4. Start Kafka brokers
+# ------------------------------------------------------------
+start_kafka() {
+    echo "=== Starting Kafka brokers ==="
+    docker compose -f "$COMPOSE" up -d kafka-1 kafka-2
+}
+
+# ------------------------------------------------------------
+# 5. Start Flink cluster
+# ------------------------------------------------------------
+start_flink() {
+    echo "=== Starting Flink JobManager ==="
+    docker compose -f "$COMPOSE" up -d jobmanager
+
+    echo "=== Starting Flink TaskManager ==="
+    docker compose -f "$COMPOSE" up -d taskmanager
+
+    sleep 5
+}
+
+# ------------------------------------------------------------
+# 6. Start Flink job
 # ------------------------------------------------------------
 start_flink_job() {
-    log "Starting Flink job container..."
-    docker compose -f "$COMPOSE_FILE" up -d geoflink_architecture_job
-    sleep 10
-    log "Flink job container started."
+    echo "=== Starting GeoFlink Architecture Job ==="
+    docker compose -f "$COMPOSE" up -d geoflink_architecture_job
 }
 
 # ------------------------------------------------------------
-# 8. Start visualization layer
+# 7. Start Geo Producer
 # ------------------------------------------------------------
-start_visualization() {
-    log "Starting Tegola and pgAdmin..."
-    docker compose -f "$COMPOSE_FILE" up -d tegola-cre pgadmin-cre
+start_geo_producer() {
+    echo "=== Starting Geo Producer ==="
+    docker compose -f "$COMPOSE" up -d geo_producer_architecture
 }
 
 # ------------------------------------------------------------
-# MAIN EXECUTION
+# 8. Start pgAdmin
 # ------------------------------------------------------------
-log "=== Starting Spatio-Temporal Architecture ==="
+start_pgadmin() {
+    if ! service_exists pgadmin-cre; then
+        echo "pgAdmin service not defined — skipping"
+        return
+    fi
 
-log "1. Starting Kafka brokers..."
-docker compose -f "$COMPOSE_FILE" up -d kafka-1 kafka-2
-check_kafka
-create_topics
+    echo "=== Starting pgAdmin ==="
+    docker compose -f "$COMPOSE" up -d pgadmin-cre
+}
 
-log "2. Starting Geo Producer..."
-# Change this to any producer you want to run:
-start_geo_producer "geo_producer_architecture"
-
-log "3. Starting storage layer..."
-start_storage
-
-log "4. Starting Flink..."
+# ------------------------------------------------------------
+# MAIN EXECUTION ORDER
+# ------------------------------------------------------------
+start_postgis
+start_redis
+start_tegola
+start_kafka
 start_flink
 start_flink_job
+start_geo_producer
+start_pgadmin
 
-log "5. Starting visualization..."
-start_visualization
+echo "=== System startup complete ==="
 
-log "=== System started successfully ==="
-docker compose -f "$COMPOSE_FILE" ps
+echo ""
+echo "============================================================"
+echo "  ACCESS POINTS (Local Browser)"
+echo "============================================================"
+
+echo "PostGIS (no UI, use pgAdmin or psql):"
+echo "  Host: localhost"
+echo "  Port: 5435"
+echo "  Database: cre_db"
+echo "  User: cre_user"
+echo ""
+
+echo "pgAdmin:"
+echo "  URL: http://localhost:5051"
+echo "  Login email: admin@localhost.localdomain"
+echo "  Password: admin"
+echo ""
+
+echo "Tegola Vector Tile Server:"
+echo "  URL: http://localhost:8085"
+echo "  Tiles: http://localhost:8085/maps/{z}/{x}/{y}.pbf"
+echo ""
+
+echo "Kafka Brokers:"
+echo "  Broker 1: PLAINTEXT://localhost:19092"
+echo "  Broker 2: PLAINTEXT://localhost:19094"
+echo ""
+
+echo "Flink Dashboard:"
+echo "  URL: http://localhost:8081"
+echo ""
+
+echo "Geo Producer (no UI):"
+echo "  Streams events into Kafka topic 'spatial-events'"
+echo ""
+
+echo "============================================================"
+echo "  SYSTEM READY"
+echo "============================================================"

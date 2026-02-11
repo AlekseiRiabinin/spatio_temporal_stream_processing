@@ -1,0 +1,10 @@
+[webserver]
+port = ":8085"
+
+[cache]
+type = "redis"
+uri = "redis://redis-cre:6379"
+key_prefix = "tegola:"
+tile_expiry = 86400
+max_zoom = 20
+

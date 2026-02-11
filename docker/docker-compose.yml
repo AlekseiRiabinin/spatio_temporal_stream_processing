@@ -4,7 +4,9 @@ networks:
 
 volumes:
   postgis-cre-data:
+    name: postgis-cre-data
   redis-cre-data:
+    name: redis-cre-data
 
 services:
 
@@ -121,6 +123,11 @@ services:
     volumes:
       - postgis-cre-data:/var/lib/postgresql
       - ./postgis/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cre_user -d cre_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks: [kafka-net]
     restart: always
 
@@ -140,13 +147,25 @@ services:
   tegola-cre:
     image: gospatial/tegola:v0.21.2
     container_name: tegola-cre
-    depends_on: [postgis-cre, redis-cre]
-    ports:
-      - "8085:8085"
+    restart: unless-stopped
+    depends_on:
+      postgis-cre:
+        condition: service_healthy
+      redis-cre:
+        condition: service_healthy
     volumes:
       - ./tegola/config/config.toml:/config/config.toml:ro
       - ./tegola/styles:/styles:ro
-    networks: [kafka-net]
+    entrypoint: ["/opt/tegola", "serve", "--config", "/config/config.toml", "--port", ":8085"]
+    ports:
+      - "8085:8085"
+    environment:
+      TEGOLA_MAX_TILE_SIZE: "10MB"
+      TEGOLA_CACHE_TYPE: "redis"
+      TEGOLA_CACHE_REDIS_ENDPOINT: "redis-cre:6379"
+      TEGOLA_CACHE_REDIS_PREFIX: "tegola:"
+    networks:
+      - kafka-net
 
   pgadmin-cre:
     image: dpage/pgadmin4
