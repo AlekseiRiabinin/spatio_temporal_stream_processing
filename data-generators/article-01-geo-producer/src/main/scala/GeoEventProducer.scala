@@ -62,6 +62,10 @@ object GeoEventProducer {
 
     val intervalMs = 1000.0 / rate
 
+    // --- Throughput counters ---
+    var counter = 0L
+    var lastReport = System.currentTimeMillis()
+
     while (true) {
       val event = GeoEvent(
         id = UUID.randomUUID().toString,
@@ -72,6 +76,16 @@ object GeoEventProducer {
 
       val record = new ProducerRecord[String, String](topic, event.id, event.toJson)
       producer.send(record)
+
+      counter += 1
+      val now = System.currentTimeMillis()
+
+      // Print throughput every second
+      if (now - lastReport >= 1000) {
+        println(s"[producer-throughput] eps=$counter")
+        counter = 0
+        lastReport = now
+      }
 
       Thread.sleep(intervalMs.toLong)
     }

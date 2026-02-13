@@ -16,7 +16,20 @@ final class AttachProcessingLatencyFunction
     out: Collector[WindowResult]
   ): Unit = {
 
+    // current processing time (system time)
     val now = ctx.timerService().currentProcessingTime()
+
+    // compute latency using windowEnd as event-time boundary
+    val eventTs = value.windowEnd
+    val latency = now - eventTs
+
+    // print latency log for the experimental section
+    println(
+      s"[process-latency] partition=${value.partition.geohash} " +
+      s"windowEnd=$eventTs processingTs=$now latencyMs=$latency"
+    )
+
+    // attach processing time to the result
     val updated = value.copy(processingTime = Some(now))
     out.collect(updated)
   }
@@ -24,10 +37,10 @@ final class AttachProcessingLatencyFunction
 
 object LatencyMetrics {
 
-    /**
-   * Attaches processing-time to each WindowResult
-   * measuredResults = L(measuredResults)
-   */
+  /**
+    * Attaches processing-time to each WindowResult
+    * and prints latency logs.
+    */
   def attachProcessingLatency(
     stream: DataStream[WindowResult]
   ): DataStream[WindowResult] = {
@@ -36,3 +49,6 @@ object LatencyMetrics {
     stream.process(fn)
   }
 }
+
+
+// docker logs -f flink-taskmanager

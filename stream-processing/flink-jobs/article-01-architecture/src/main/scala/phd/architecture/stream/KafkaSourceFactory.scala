@@ -12,7 +12,6 @@ import phd.architecture.model.Event
 import phd.architecture.model.TypeInfos._
 import phd.architecture.util.{GeometryUtils, TimeUtils}
 
-
 object KafkaSourceFactory {
 
   /**
@@ -47,16 +46,29 @@ object KafkaSourceFactory {
       with Serializable {
 
     override def deserialize(message: Array[Byte]): Event = {
+
       val json = new String(message, "UTF-8")
 
       val id = extract(json, "id")
       val wkt = extract(json, "wkt")
-      val timestamp = extract(json, "timestamp").toLong
+      val producerTs = extract(json, "timestamp").toLong
+
+      // Kafka append timestamp is provided by Flink
+      // recordTimestamp is passed via deserialize(record, recordTimestamp)
+      // but Flink's simple schema does not expose it directly.
+      // Instead, we use System.currentTimeMillis() as an approximation.
+      val kafkaTs = System.currentTimeMillis()
+
+      val ingestLatency = kafkaTs - producerTs
+
+      println(
+        s"[ingest-latency] id=$id producerTs=$producerTs kafkaTs=$kafkaTs latencyMs=$ingestLatency"
+      )
 
       Event(
         id = id,
         geometry = GeometryUtils.fromWKT(wkt),
-        eventTime = TimeUtils.toMillis(timestamp),
+        eventTime = TimeUtils.toMillis(producerTs),
         attributes = Map.empty
       )
     }
@@ -72,3 +84,6 @@ object KafkaSourceFactory {
     }
   }
 }
+
+
+// docker logs -f flink-taskmanager

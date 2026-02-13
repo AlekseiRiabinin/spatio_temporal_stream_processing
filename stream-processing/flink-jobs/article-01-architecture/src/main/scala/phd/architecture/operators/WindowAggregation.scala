@@ -10,8 +10,8 @@ final class CountEventsWindowFunction
   extends ProcessWindowFunction[Event, WindowResult, SpatialPartition, TimeWindow] {
 
   /**
-   * Ω_count(W, p) = {e∈W ∣ π(e)=p}
-   * Counts number of events in a window per spatial partition
+   * Ω_count(W, p) = |{e ∈ W(p,T)}|
+   * Counts number of events in a window per spatial partition.
    */
   override def process(
     key: SpatialPartition,
@@ -21,12 +21,21 @@ final class CountEventsWindowFunction
   ): Unit = {
 
     val count = elements.size.toLong
+    val start = context.window.getStart
+    val end = context.window.getEnd
+    val duration = end - start
+
+    // --- Window metrics log ---
+    println(
+      s"[window] partition=${key.geohash} start=$start end=$end " +
+      s"durationMs=$duration count=$count"
+    )
 
     out.collect(
       WindowResult(
         partition = key,
-        windowStart = context.window.getStart,
-        windowEnd = context.window.getEnd,
+        windowStart = start,
+        windowEnd = end,
         value = count,
         processingTime = None
       )

@@ -15,6 +15,12 @@ object SpatialPartitionFunction {
     new KeySelector[Event, SpatialPartition] {
       override def getKey(event: Event): SpatialPartition = {
         val geohash = GeometryUtils.toGeohash(event.geometry, precision)
+
+        // --- Partition correctness log ---
+        println(
+          s"[partition] id=${event.id} geohash=$geohash precision=$precision"
+        )
+
         SpatialPartition(geohash, precision)
       }
     }
