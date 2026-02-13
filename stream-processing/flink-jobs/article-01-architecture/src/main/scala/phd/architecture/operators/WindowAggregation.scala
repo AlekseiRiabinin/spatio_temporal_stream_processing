@@ -4,6 +4,7 @@ import phd.architecture.model.{Event, SpatialPartition, WindowResult}
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow
 import org.apache.flink.streaming.api.scala.function.ProcessWindowFunction
 import org.apache.flink.util.Collector
+import phd.architecture.metrics.MetricsRegistry
 
 
 final class CountEventsWindowFunction
@@ -25,9 +26,8 @@ final class CountEventsWindowFunction
     val end = context.window.getEnd
     val duration = end - start
 
-    // --- Window metrics log ---
-    println(
-      s"[window] partition=${key.geohash} start=$start end=$end " +
+    MetricsRegistry.recordWindow(
+      s"window partition=${key.geohash} start=$start end=$end " +
       s"durationMs=$duration count=$count"
     )
 

@@ -20,7 +20,11 @@ lazy val root = (project in file("."))
       "org.apache.kafka" % "kafka-clients" % "3.7.0",
 
       // Logging binding (job-level decision)
-      "org.slf4j" % "slf4j-simple" % "1.7.36"
+      "org.slf4j" % "slf4j-simple" % "1.7.36",
+
+      // HTTP server for metrics
+      "org.nanohttpd" % "nanohttpd" % "2.3.1"
+
     ),
 
     // Fat-jar for deployment

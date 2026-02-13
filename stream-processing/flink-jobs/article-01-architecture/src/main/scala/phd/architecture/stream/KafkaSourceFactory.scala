@@ -11,6 +11,8 @@ import java.util.Properties
 import phd.architecture.model.Event
 import phd.architecture.model.TypeInfos._
 import phd.architecture.util.{GeometryUtils, TimeUtils}
+import phd.architecture.metrics.MetricsRegistry
+
 
 object KafkaSourceFactory {
 
@@ -53,16 +55,12 @@ object KafkaSourceFactory {
       val wkt = extract(json, "wkt")
       val producerTs = extract(json, "timestamp").toLong
 
-      // Kafka append timestamp is provided by Flink
-      // recordTimestamp is passed via deserialize(record, recordTimestamp)
-      // but Flink's simple schema does not expose it directly.
-      // Instead, we use System.currentTimeMillis() as an approximation.
+      // Approximate Kafka ingestion timestamp
       val kafkaTs = System.currentTimeMillis()
-
       val ingestLatency = kafkaTs - producerTs
 
-      println(
-        s"[ingest-latency] id=$id producerTs=$producerTs kafkaTs=$kafkaTs latencyMs=$ingestLatency"
+      MetricsRegistry.recordLatency(
+        s"ingest-latency id=$id producerTs=$producerTs kafkaTs=$kafkaTs latencyMs=$ingestLatency"
       )
 
       Event(
@@ -84,6 +82,3 @@ object KafkaSourceFactory {
     }
   }
 }
-
-
-// docker logs -f flink-taskmanager

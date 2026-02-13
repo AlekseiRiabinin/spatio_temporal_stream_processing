@@ -5,6 +5,7 @@ import org.apache.flink.streaming.api.functions.ProcessFunction
 import org.apache.flink.util.Collector
 import phd.architecture.model.WindowResult
 import phd.architecture.model.TypeInfos._
+import phd.architecture.metrics.MetricsRegistry
 
 
 final class AttachProcessingLatencyFunction
@@ -23,9 +24,8 @@ final class AttachProcessingLatencyFunction
     val eventTs = value.windowEnd
     val latency = now - eventTs
 
-    // print latency log for the experimental section
-    println(
-      s"[process-latency] partition=${value.partition.geohash} " +
+    MetricsRegistry.recordLatency(
+      s"process-latency partition=${value.partition.geohash} " +
       s"windowEnd=$eventTs processingTs=$now latencyMs=$latency"
     )
 
@@ -39,7 +39,7 @@ object LatencyMetrics {
 
   /**
     * Attaches processing-time to each WindowResult
-    * and prints latency logs.
+    * and records latency metrics.
     */
   def attachProcessingLatency(
     stream: DataStream[WindowResult]
@@ -49,6 +49,3 @@ object LatencyMetrics {
     stream.process(fn)
   }
 }
-
-
-// docker logs -f flink-taskmanager

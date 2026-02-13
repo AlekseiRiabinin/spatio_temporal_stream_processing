@@ -3,6 +3,7 @@ package phd.architecture.operators
 import org.apache.flink.api.java.functions.KeySelector
 import phd.architecture.model.{Event, SpatialPartition}
 import phd.architecture.util.GeometryUtils
+import phd.architecture.metrics.MetricsRegistry
 
 
 object SpatialPartitionFunction {
@@ -13,12 +14,12 @@ object SpatialPartitionFunction {
    */
   def byGeohash(precision: Int): KeySelector[Event, SpatialPartition] =
     new KeySelector[Event, SpatialPartition] {
+
       override def getKey(event: Event): SpatialPartition = {
         val geohash = GeometryUtils.toGeohash(event.geometry, precision)
 
-        // --- Partition correctness log ---
-        println(
-          s"[partition] id=${event.id} geohash=$geohash precision=$precision"
+        MetricsRegistry.recordPartition(
+          s"partition geohash=$geohash precision=$precision eventId=${event.id}"
         )
 
         SpatialPartition(geohash, precision)

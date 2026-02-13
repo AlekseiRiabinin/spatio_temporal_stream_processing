@@ -10,6 +10,7 @@ import phd.architecture.model._
 import phd.architecture.stream._
 import phd.architecture.operators._
 import phd.architecture.util._
+import phd.architecture.metrics._
 
 
 object Article01ArchitectureJob {
@@ -17,61 +18,75 @@ object Article01ArchitectureJob {
   def main(args: Array[String]): Unit = {
 
     // ------------------------------------------------------------------
-    // 1. Execution environment
+    // 1. Load configuration from environment variables
     // ------------------------------------------------------------------
-    val env = StreamExecutionEnvironment.getExecutionEnvironment
-    env.setParallelism(2)
+    val parallelism = sys.env.getOrElse("FLINK_PARALLELISM", "1").toInt
+    val maxOutOfOrderness = sys.env.getOrElse("MAX_OUT_OF_ORDERNESS", "5").toInt
+    val geohashPrecision = sys.env.getOrElse("GEOHASH_PRECISION", "6").toInt
+    val windowSize = sys.env.getOrElse("WINDOW_SIZE", "30").toInt
+    val windowSlide = sys.env.getOrElse("WINDOW_SLIDE", "30").toInt
 
     // ------------------------------------------------------------------
-    // 2. Source: spatial-temporal events from Kafka
+    // 2. Start metrics HTTP server
+    // ------------------------------------------------------------------
+    MetricsHttpServer.start(9000)
+
+    // ------------------------------------------------------------------
+    // 3. Execution environment
+    // ------------------------------------------------------------------
+    val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.setParallelism(parallelism)
+
+    // ------------------------------------------------------------------
+    // 4. Source: spatial-temporal events from Kafka
     // ------------------------------------------------------------------
     val rawEvents: DataStream[Event] =
       KafkaSourceFactory.createSpatialEventSource(env)
 
     // ------------------------------------------------------------------
-    // 3. Event-time semantics and watermarks
+    // 5. Event-time semantics and watermarks
     // ------------------------------------------------------------------
     val eventTimeStream: DataStream[Event] =
       rawEvents.assignTimestampsAndWatermarks(
         WatermarkStrategyFactory.eventTimeWatermarks(
-          maxOutOfOrdernessSeconds = 10
+          maxOutOfOrdernessSeconds = maxOutOfOrderness
         )
       )
 
     // ------------------------------------------------------------------
-    // 4. Spatial partitioning
+    // 6. Spatial partitioning
     //    π(e) → p
     // ------------------------------------------------------------------
     val partitionedStream: KeyedStream[Event, SpatialPartition] =
       eventTimeStream.keyBy(
-        SpatialPartitionFunction.byGeohash(precision = 7)
+        SpatialPartitionFunction.byGeohash(precision = geohashPrecision)
       )
 
     // ------------------------------------------------------------------
-    // 5. Windowed aggregation
+    // 7. Windowed aggregation
     //    Ω(W, p)
     // ------------------------------------------------------------------
     val windowedResults: DataStream[WindowResult] =
       StreamTopology.applySlidingWindow(
         stream = partitionedStream,
-        windowSizeSeconds = 60,
-        slideSeconds = 10,
+        windowSizeSeconds = windowSize,
+        slideSeconds = windowSlide,
         aggregation = WindowAggregation.countEvents
       )
 
     // ------------------------------------------------------------------
-    // 6. Metrics collection
+    // 8. Metrics collection
     // ------------------------------------------------------------------
     val measuredResults: DataStream[WindowResult] =
       LatencyMetrics.attachProcessingLatency(windowedResults)
 
     // ------------------------------------------------------------------
-    // 7. Sink (e.g., PostGIS, logs, or Kafka for experiments)
+    // 9. Sink (e.g., PostGIS, logs, or Kafka for experiments)
     // ------------------------------------------------------------------
     StreamTopology.sinkResults(measuredResults)
 
     // ------------------------------------------------------------------
-    // 8. Execute
+    // 10. Execute
     // ------------------------------------------------------------------
     env.execute("Article 01 - Distributed Spatio-Temporal Architecture")
   }

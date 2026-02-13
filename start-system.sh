@@ -160,13 +160,13 @@ start_pgadmin() {
 # MAIN EXECUTION ORDER
 # ------------------------------------------------------------
 start_postgis
-start_redis
-start_tegola
+# start_redis
+# start_tegola
 start_kafka
 start_flink
 start_flink_job
 start_geo_producer
-start_pgadmin
+# start_pgadmin
 
 echo "=== System startup complete ==="
 

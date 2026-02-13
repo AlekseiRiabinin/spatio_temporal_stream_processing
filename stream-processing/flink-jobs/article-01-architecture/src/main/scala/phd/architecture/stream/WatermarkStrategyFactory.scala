@@ -1,8 +1,9 @@
 package phd.architecture.stream
 
 import org.apache.flink.api.common.eventtime._
-import phd.architecture.model.Event
 import java.time.Duration
+import phd.architecture.model.Event
+import phd.architecture.metrics.MetricsRegistry
 
 
 object WatermarkStrategyFactory {
@@ -15,9 +16,19 @@ object WatermarkStrategyFactory {
         context: TimestampAssignerSupplier.Context
       ): TimestampAssigner[Event] =
         new TimestampAssigner[Event] {
-          override def extractTimestamp(element: Event, recordTimestamp: Long): Long = {
+
+          override def extractTimestamp(
+            element: Event,
+            recordTimestamp: Long
+          ): Long = {
+
             val ts = element.eventTime
-            println(s"[event-time] id=${element.id} eventTs=$ts")
+
+            // record event-time extraction 
+            MetricsRegistry.recordWatermark(
+              s"event-time id=${element.id} eventTs=$ts"
+            )
+
             ts
           }
         }
@@ -38,9 +49,9 @@ object WatermarkStrategyFactory {
           maxTs = Math.max(maxTs, eventTimestamp)
           val watermark = maxTs - maxOutOfOrdernessMs
 
-          // --- Watermark progression log ---
-          println(
-            s"[watermark] eventTs=$eventTimestamp maxTs=$maxTs watermark=$watermark"
+          // record watermark progression
+          MetricsRegistry.recordWatermark(
+            s"watermark eventTs=$eventTimestamp maxTs=$maxTs wm=$watermark"
           )
         }
 
