@@ -73,32 +73,39 @@ services:
   jobmanager:
     image: flink:1.17.1
     container_name: jobmanager
+    hostname: jobmanager
     ports:
       - "8081:8081"
-    volumes:
-      - ./flink/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        rest.address: jobmanager
+        rest.port: 8081
     command: jobmanager
+    volumes:
+      - ../stream-processing/flink-jobs/article-01-architecture/target/scala-2.12/article-01-architecture.jar:/opt/flink/usrlib/article-01-architecture.jar
+      - ./flink/flink-connector-kafka-3.0.0-1.17.jar:/opt/flink/lib/flink-connector-kafka-3.0.0-1.17.jar
+      - ./flink/kafka-clients-3.7.0.jar:/opt/flink/lib/kafka-clients-3.7.0.jar
     networks: [kafka-net]
 
   taskmanager:
     image: flink:1.17.1
     container_name: taskmanager
+    hostname: taskmanager
     depends_on: [jobmanager]
-    volumes:
-      - ./flink/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
     command: taskmanager
+    volumes:
+      - ./flink/flink-connector-kafka-3.0.0-1.17.jar:/opt/flink/lib/flink-connector-kafka-3.0.0-1.17.jar
+      - ./flink/kafka-clients-3.7.0.jar:/opt/flink/lib/kafka-clients-3.7.0.jar
     networks: [kafka-net]
 
   geoflink_architecture_job:
-    build:
-      context: ../stream-processing/flink-jobs/article-01-architecture
-      dockerfile: Dockerfile
-    container_name: geoflink_architecture_job
-    depends_on:
-      - jobmanager
-      - taskmanager
-      - kafka-1
-      - kafka-2
+    image: flink:1.17.1
+    depends_on: [jobmanager]
     environment:
       FLINK_MAIN_CLASS: "phd.architecture.Article01ArchitectureJob"
       FLINK_PARALLELISM: "1"
@@ -107,9 +114,18 @@ services:
       WINDOW_SIZE: "30"
       WINDOW_SLIDE: "30"
     volumes:
-      - ./flink/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml
+      - ../stream-processing/flink-jobs/article-01-architecture/target/scala-2.12/article-01-architecture.jar:/opt/flink/usrlib/article-01-architecture.jar
+      - ./flink/flink-connector-kafka-3.0.0-1.17.jar:/opt/flink/lib/flink-connector-kafka-3.0.0-1.17.jar
+      - ./flink/kafka-clients-3.7.0.jar:/opt/flink/lib/kafka-clients-3.7.0.jar
+    ports:
+      - "9000:9000"
+    command: >
+      flink run
+      -c phd.architecture.Article01ArchitectureJob
+      -m jobmanager:8081
+      /opt/flink/usrlib/article-01-architecture.jar
     networks: [kafka-net]
-    restart: on-failure
+    restart: "no"
 
 
   # ============================================================
@@ -148,6 +164,30 @@ services:
   # ============================================================
   # 5. VISUALIZATION & ACCESS
   # ============================================================
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks: [kafka-net]
+    restart: always
+
+  kafdrop:
+    image: obsidiandynamics/kafdrop:3.30.0
+    container_name: kafdrop
+    ports:
+      - "9003:9000"
+    environment:
+      KAFKA_BROKERCONNECT: "kafka-1:19092,kafka-2:19094"
+    depends_on:
+      - kafka-1
+      - kafka-2
+    networks:
+      - kafka-net
+    restart: always
 
   tegola-cre:
     image: gospatial/tegola:v0.21.2

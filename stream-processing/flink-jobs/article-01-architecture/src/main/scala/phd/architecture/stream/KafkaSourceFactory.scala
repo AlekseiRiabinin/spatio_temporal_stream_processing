@@ -1,48 +1,46 @@
 package phd.architecture.stream
 
-import org.apache.flink.streaming.api.scala.DataStream
-import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
-import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer
+import org.apache.flink.api.common.eventtime.WatermarkStrategy
 import org.apache.flink.api.common.serialization.DeserializationSchema
 import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.connector.kafka.source.KafkaSource
+import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer
+import org.apache.flink.streaming.api.scala.{DataStream, StreamExecutionEnvironment}
 
 import java.util.Properties
 
 import phd.architecture.model.Event
 import phd.architecture.model.TypeInfos._
 import phd.architecture.util.{GeometryUtils, TimeUtils}
-import phd.architecture.metrics.MetricsRegistry
+import phd.architecture.metrics.Metrics
 
 
 object KafkaSourceFactory {
 
   /**
    * Creates a Kafka source producing spatial-temporal events.
-   *
-   * Expected message format (example JSON):
-   * {
-   *   "id": "obj-1",
-   *   "wkt": "POINT(30 10)",
-   *   "timestamp": 1699999999999,
-   *   "attributes": { "speed": "45" }
-   * }
    */
   def createSpatialEventSource(env: StreamExecutionEnvironment): DataStream[Event] = {
 
-    val props = new Properties()
-    props.setProperty("bootstrap.servers", "kafka-1:19092,kafka-2:19094")
-    props.setProperty("group.id", "article-01-architecture")
+    val source =
+      KafkaSource.builder[Event]()
+        .setBootstrapServers("kafka-1:19092,kafka-2:19094")
+        .setTopics("spatial-events")
+        .setGroupId("article-01-architecture")
+        .setStartingOffsets(OffsetsInitializer.earliest())
+        .setValueOnlyDeserializer(new EventDeserializationSchema)
+        .build()
 
-    val consumer =
-      new FlinkKafkaConsumer[Event](
-        "spatial-events",
-        new EventDeserializationSchema,
-        props
-      )
-
-    env.addSource(consumer)
+    env.fromSource(
+      source,
+      WatermarkStrategy.noWatermarks(),
+      "KafkaSource(spatial-events)"
+    )
   }
 
+  /**
+   * Custom JSON → Event deserializer with metrics.
+   */
   private class EventDeserializationSchema
       extends DeserializationSchema[Event]
       with Serializable {
@@ -55,13 +53,12 @@ object KafkaSourceFactory {
       val wkt = extract(json, "wkt")
       val producerTs = extract(json, "timestamp").toLong
 
-      // Approximate Kafka ingestion timestamp
-      val kafkaTs = System.currentTimeMillis()
-      val ingestLatency = kafkaTs - producerTs
+      // Metrics
+      Metrics.eventsConsumed.inc()
 
-      MetricsRegistry.recordLatency(
-        s"ingest-latency id=$id producerTs=$producerTs kafkaTs=$kafkaTs latencyMs=$ingestLatency"
-      )
+      val now = System.currentTimeMillis()
+      val latencySeconds = (now - producerTs) / 1000.0
+      Metrics.ingestionLatency.observe(latencySeconds)
 
       Event(
         id = id,

@@ -1,0 +1,4 @@
+scrape_configs:
+  - job_name: 'geoflink-architecture'
+    static_configs:
+      - targets: ['geoflink_architecture_job:9000']

@@ -46,7 +46,7 @@ wait_for_health() {
 }
 
 # ------------------------------------------------------------
-# 1. Start PostGIS (PostgreSQL 18+)
+# 1. Start PostGIS (CRE)
 # ------------------------------------------------------------
 start_postgis() {
     echo "=== Starting PostGIS (CRE) ==="
@@ -55,59 +55,24 @@ start_postgis() {
 }
 
 # ------------------------------------------------------------
-# 2. Start Redis
+# 2. Start Prometheus
 # ------------------------------------------------------------
-start_redis() {
-    if ! service_exists redis-cre; then
-        echo "Redis service not defined — skipping"
+start_prometheus() {
+    if ! service_exists prometheus; then
+        echo "Prometheus service not defined — skipping"
         return
     fi
 
-    echo "=== Starting Redis (CRE) ==="
-    docker compose -f "$COMPOSE" up -d --no-deps redis-cre
+    echo "=== Starting Prometheus ==="
+    docker compose -f "$COMPOSE" up -d --no-deps prometheus
 
-    for i in {1..10}; do
-        if docker exec redis-cre redis-cli ping >/dev/null 2>&1; then
-            echo "Redis is ready"
-            return
-        fi
-        echo "Waiting for Redis... ($i/10)"
-        sleep 2
-    done
-
-    echo "ERROR: Redis failed to start"
-    docker compose -f "$COMPOSE" logs redis-cre --tail=20
-    exit 1
+    # Prometheus has no healthcheck by default
+    sleep 3
+    echo "Prometheus started"
 }
 
 # ------------------------------------------------------------
-# 3. Start Tegola
-# ------------------------------------------------------------
-start_tegola() {
-    if ! service_exists tegola-cre; then
-        echo "Tegola service not defined — skipping"
-        return
-    fi
-
-    echo "=== Starting Tegola (CRE) ==="
-    docker compose -f "$COMPOSE" up -d --no-deps tegola-cre
-
-    for i in {1..10}; do
-        if curl -s http://localhost:8085 >/dev/null 2>&1; then
-            echo "Tegola is ready"
-            return
-        fi
-        echo "Waiting for Tegola... ($i/10)"
-        sleep 3
-    done
-
-    echo "ERROR: Tegola failed to start"
-    docker compose -f "$COMPOSE" logs tegola-cre --tail=20
-    exit 1
-}
-
-# ------------------------------------------------------------
-# 4. Start Kafka brokers
+# 3. Start Kafka brokers (Bitnami KRaft)
 # ------------------------------------------------------------
 start_kafka() {
     echo "=== Starting Kafka brokers ==="
@@ -115,7 +80,7 @@ start_kafka() {
 }
 
 # ------------------------------------------------------------
-# 5. Start Flink cluster
+# 4. Start Flink cluster
 # ------------------------------------------------------------
 start_flink() {
     echo "=== Starting Flink JobManager ==="
@@ -128,7 +93,7 @@ start_flink() {
 }
 
 # ------------------------------------------------------------
-# 6. Start Flink job
+# 5. Start Flink job (Article 01 Architecture)
 # ------------------------------------------------------------
 start_flink_job() {
     echo "=== Starting GeoFlink Architecture Job ==="
@@ -136,7 +101,7 @@ start_flink_job() {
 }
 
 # ------------------------------------------------------------
-# 7. Start Geo Producer
+# 6. Start Geo Producer
 # ------------------------------------------------------------
 start_geo_producer() {
     echo "=== Starting Geo Producer ==="
@@ -144,29 +109,27 @@ start_geo_producer() {
 }
 
 # ------------------------------------------------------------
-# 8. Start pgAdmin
+# 7. Start Kafdrop (Kafka UI)
 # ------------------------------------------------------------
-start_pgadmin() {
-    if ! service_exists pgadmin-cre; then
-        echo "pgAdmin service not defined — skipping"
-        return
+start_kafdrop() {
+    if service_exists kafdrop; then
+        echo "=== Starting Kafdrop (Kafka UI) ==="
+        docker compose -f "$COMPOSE" up -d kafdrop
+    else
+        echo "Kafdrop service not defined — skipping"
     fi
-
-    echo "=== Starting pgAdmin ==="
-    docker compose -f "$COMPOSE" up -d pgadmin-cre
 }
 
 # ------------------------------------------------------------
 # MAIN EXECUTION ORDER
 # ------------------------------------------------------------
 start_postgis
-# start_redis
-# start_tegola
+start_prometheus
 start_kafka
 start_flink
 start_flink_job
 start_geo_producer
-# start_pgadmin
+start_kafdrop
 
 echo "=== System startup complete ==="
 
@@ -175,35 +138,34 @@ echo "============================================================"
 echo "  ACCESS POINTS (Local Browser)"
 echo "============================================================"
 
-echo "PostGIS (no UI, use pgAdmin or psql):"
-echo "  Host: localhost"
-echo "  Port: 5435"
-echo "  Database: cre_db"
-echo "  User: cre_user"
-echo ""
-
-echo "pgAdmin:"
-echo "  URL: http://localhost:5051"
-echo "  Login email: admin@localhost.localdomain"
-echo "  Password: admin"
-echo ""
-
-echo "Tegola Vector Tile Server:"
-echo "  URL: http://localhost:8085"
-echo "  Tiles: http://localhost:8085/maps/{z}/{x}/{y}.pbf"
-echo ""
-
-echo "Kafka Brokers:"
-echo "  Broker 1: PLAINTEXT://localhost:19092"
-echo "  Broker 2: PLAINTEXT://localhost:19094"
+echo "Prometheus:"
+echo "  URL: http://localhost:9091"
 echo ""
 
 echo "Flink Dashboard:"
 echo "  URL: http://localhost:8081"
 echo ""
 
-echo "Geo Producer (no UI):"
+echo "PostGIS:"
+echo "  Host: localhost"
+echo "  Port: 5435"
+echo ""
+
+echo "Kafka Brokers (Bitnami KRaft):"
+echo "  Broker 1: PLAINTEXT://localhost:19092"
+echo "  Broker 2: PLAINTEXT://localhost:19094"
+echo ""
+
+echo "Geo Producer:"
 echo "  Streams events into Kafka topic 'spatial-events'"
+echo ""
+
+echo "Kafdrop (Kafka UI):"
+echo "  URL: http://localhost:9003"
+echo ""
+
+echo "Flink Metrics Endpoint:"
+echo "  URL: http://localhost:9000/metrics"
 echo ""
 
 echo "============================================================"

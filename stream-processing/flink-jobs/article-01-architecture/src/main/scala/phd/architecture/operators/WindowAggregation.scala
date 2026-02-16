@@ -1,19 +1,20 @@
 package phd.architecture.operators
 
-import phd.architecture.model.{Event, SpatialPartition, WindowResult}
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow
 import org.apache.flink.streaming.api.scala.function.ProcessWindowFunction
 import org.apache.flink.util.Collector
-import phd.architecture.metrics.MetricsRegistry
+import phd.architecture.model.{Event, SpatialPartition, WindowResult}
+import phd.architecture.metrics.Metrics
 
 
+/**
+ * Ω_count(W, p) = |{e ∈ W(p,T)}|
+ * Counts number of events in a window per spatial partition.
+ * Emits Prometheus metrics without modifying the job graph.
+ */
 final class CountEventsWindowFunction
   extends ProcessWindowFunction[Event, WindowResult, SpatialPartition, TimeWindow] {
 
-  /**
-   * Ω_count(W, p) = |{e ∈ W(p,T)}|
-   * Counts number of events in a window per spatial partition.
-   */
   override def process(
     key: SpatialPartition,
     context: Context,
@@ -24,12 +25,11 @@ final class CountEventsWindowFunction
     val count = elements.size.toLong
     val start = context.window.getStart
     val end = context.window.getEnd
-    val duration = end - start
 
-    MetricsRegistry.recordWindow(
-      s"window partition=${key.geohash} start=$start end=$end " +
-      s"durationMs=$duration count=$count"
-    )
+    val now = context.currentProcessingTime
+
+    Metrics.windowLatency.observe((now - end) / 1000.0)  // seconds
+    Metrics.processingLatency.set(now - end)             // ms
 
     out.collect(
       WindowResult(
@@ -37,7 +37,7 @@ final class CountEventsWindowFunction
         windowStart = start,
         windowEnd = end,
         value = count,
-        processingTime = None
+        processingTime = Some(now)
       )
     )
   }

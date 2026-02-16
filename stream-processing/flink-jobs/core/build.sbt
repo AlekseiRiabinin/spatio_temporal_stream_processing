@@ -6,18 +6,20 @@ lazy val core = (project in file("."))
   .settings(
     name := "flink-spatio-temporal-core",
 
-    // Core must stay lightweight and reusable
     libraryDependencies ++= Seq(
       // Flink APIs (provided by runtime)
       "org.apache.flink" %% "flink-streaming-scala" % "1.17.1" % Provided,
       "org.apache.flink" %% "flink-scala" % "1.17.1" % Provided,
 
-      // Spatial foundations (safe for reuse)
+      // Spatial foundations
       "org.locationtech.jts" % "jts-core" % "1.19.0",
-      "org.locationtech.spatial4j" % "spatial4j" % "0.8",
-      "org.apache.commons" % "commons-math3"% "3.6.1",
+      "org.locationtech.spatial4j" % "spatial4j" % "0.8"
+        exclude("commons-collections", "commons-collections"),
 
-      // Logging API only (binding stays in jobs)
+      // Math
+      "org.apache.commons" % "commons-math3" % "3.6.1",
+
+      // Logging API only
       "org.slf4j" % "slf4j-api" % "1.7.36"
     )
   )

@@ -1,13 +1,16 @@
 package phd.architecture.stream
 
 import org.apache.flink.api.common.eventtime._
-import java.time.Duration
 import phd.architecture.model.Event
-import phd.architecture.metrics.MetricsRegistry
+import phd.architecture.metrics.Metrics
 
 
 object WatermarkStrategyFactory {
 
+  /**
+    * Event-time watermark strategy with bounded out-of-orderness.
+    * Emits Prometheus watermark-lag metrics without modifying the job graph.
+    */
   def eventTimeWatermarks(maxOutOfOrdernessSeconds: Long): WatermarkStrategy[Event] = {
 
     new WatermarkStrategy[Event] {
@@ -16,21 +19,10 @@ object WatermarkStrategyFactory {
         context: TimestampAssignerSupplier.Context
       ): TimestampAssigner[Event] =
         new TimestampAssigner[Event] {
-
           override def extractTimestamp(
             element: Event,
             recordTimestamp: Long
-          ): Long = {
-
-            val ts = element.eventTime
-
-            // record event-time extraction 
-            MetricsRegistry.recordWatermark(
-              s"event-time id=${element.id} eventTs=$ts"
-            )
-
-            ts
-          }
+          ): Long = element.eventTime
         }
 
       override def createWatermarkGenerator(
@@ -45,18 +37,18 @@ object WatermarkStrategyFactory {
           eventTimestamp: Long,
           output: WatermarkOutput
         ): Unit = {
-
+          // Track max observed timestamp
           maxTs = Math.max(maxTs, eventTimestamp)
-          val watermark = maxTs - maxOutOfOrdernessMs
-
-          // record watermark progression
-          MetricsRegistry.recordWatermark(
-            s"watermark eventTs=$eventTimestamp maxTs=$maxTs wm=$watermark"
-          )
         }
 
         override def onPeriodicEmit(output: WatermarkOutput): Unit = {
+
+          // Compute watermark
           val watermark = maxTs - maxOutOfOrdernessMs
+
+          val lag = maxTs - watermark
+          Metrics.watermarkLag.set(lag)
+
           output.emitWatermark(new Watermark(watermark))
         }
       }
