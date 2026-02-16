@@ -24,7 +24,12 @@ lazy val root = (project in file("."))
       // Prometheus metrics
       "io.prometheus" % "simpleclient" % "0.16.0",
       "io.prometheus" % "simpleclient_hotspot" % "0.16.0",
-      "io.prometheus" % "simpleclient_httpserver" % "0.16.0"
+      "io.prometheus" % "simpleclient_httpserver" % "0.16.0",
+
+      // Jackson JSON library (needed for ObjectMapper)
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.2",
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.2",
+      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.2"
     ),
 
     // Exclude Flink, Kafka, and commons-collections from fat JAR

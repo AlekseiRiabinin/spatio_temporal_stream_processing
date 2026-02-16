@@ -46,6 +46,45 @@ wait_for_health() {
 }
 
 # ------------------------------------------------------------
+# Utility: create required Kafka topics (idempotent)
+# ------------------------------------------------------------
+create_kafka_topics() {
+    echo "=== Creating Kafka topics ==="
+
+    # Give Kafka a moment to fully start
+    sleep 5
+
+    docker exec kafka-1 bash -c '
+        set -e
+
+        # Define topics as: name:partitions:replicas
+        topics=(
+            "spatial-events:20:2"
+        )
+
+        for topic in "${topics[@]}"; do
+            IFS=":" read -r name partitions replicas <<< "$topic"
+
+            echo "Checking topic: $name"
+
+            if kafka-topics.sh --bootstrap-server kafka-1:19092 --describe --topic "$name" >/dev/null 2>&1; then
+                echo "  → Topic $name already exists"
+            else
+                echo "  → Creating topic: $name"
+                kafka-topics.sh --create \
+                    --topic "$name" \
+                    --partitions "$partitions" \
+                    --replication-factor "$replicas" \
+                    --bootstrap-server kafka-1:19092
+                echo "  → Topic $name created"
+            fi
+        done
+
+        echo "✅ Kafka topics ready"
+    '
+}
+
+# ------------------------------------------------------------
 # 1. Start PostGIS (CRE)
 # ------------------------------------------------------------
 start_postgis() {
@@ -126,6 +165,7 @@ start_kafdrop() {
 start_postgis
 start_prometheus
 start_kafka
+create_kafka_topics
 start_flink
 start_flink_job
 start_geo_producer

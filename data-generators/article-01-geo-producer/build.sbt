@@ -9,7 +9,7 @@ libraryDependencies ++= Seq(
   "ch.qos.logback" % "logback-classic" % "1.4.14"
 )
 
-Compile / mainClass := Some("GeoEventProducer")
+Compile / mainClass := Some("phd.architecture.producer.GeoEventProducer")
 
 assembly / assemblyJarName := "geo-producer.jar"
 

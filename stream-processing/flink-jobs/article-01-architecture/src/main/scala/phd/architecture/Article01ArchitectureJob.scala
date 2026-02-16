@@ -32,6 +32,7 @@ object Article01ArchitectureJob {
     // ------------------------------------------------------------------
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     env.setParallelism(parallelism)
+    env.enableCheckpointing(5000)
 
     // ------------------------------------------------------------------
     // 4. Source: spatial-temporal events from Kafka

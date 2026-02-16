@@ -1,3 +1,5 @@
+package phd.architecture.producer
+
 import java.util.Properties
 import java.util.UUID
 import scala.util.Random
