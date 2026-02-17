@@ -42,7 +42,7 @@ object GeoEventProducer {
     val topic = sys.env.getOrElse("KAFKA_TOPIC", "spatial-events")
     val bootstrap = sys.env.getOrElse(
       "KAFKA_BOOTSTRAP_SERVERS",
-      "kafka-1:19092,kafka-2:19094"
+      "kafka-1:19092"
     )
     val rate = sys.env.getOrElse("EVENT_RATE", "1000").toInt.max(1)
 

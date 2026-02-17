@@ -57,13 +57,13 @@ create_kafka_topics() {
     docker exec kafka-1 bash -c '
         set -e
 
-        # Define topics as: name:partitions:replicas
+        # Define topics as: name:partitions
         topics=(
-            "spatial-events:20:2"
+            "spatial-events:20"
         )
 
         for topic in "${topics[@]}"; do
-            IFS=":" read -r name partitions replicas <<< "$topic"
+            IFS=":" read -r name partitions <<< "$topic"
 
             echo "Checking topic: $name"
 
@@ -74,7 +74,7 @@ create_kafka_topics() {
                 kafka-topics.sh --create \
                     --topic "$name" \
                     --partitions "$partitions" \
-                    --replication-factor "$replicas" \
+                    --replication-factor 1 \
                     --bootstrap-server kafka-1:19092
                 echo "  → Topic $name created"
             fi
@@ -115,7 +115,7 @@ start_prometheus() {
 # ------------------------------------------------------------
 start_kafka() {
     echo "=== Starting Kafka brokers ==="
-    docker compose -f "$COMPOSE" up -d kafka-1 kafka-2
+    docker compose -f "$COMPOSE" up -d kafka-1
 }
 
 # ------------------------------------------------------------
@@ -191,9 +191,8 @@ echo "  Host: localhost"
 echo "  Port: 5435"
 echo ""
 
-echo "Kafka Brokers (Bitnami KRaft):"
+echo "Kafka Broker (Bitnami KRaft):"
 echo "  Broker 1: PLAINTEXT://localhost:19092"
-echo "  Broker 2: PLAINTEXT://localhost:19094"
 echo ""
 
 echo "Geo Producer:"

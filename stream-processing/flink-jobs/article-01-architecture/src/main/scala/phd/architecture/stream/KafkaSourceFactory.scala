@@ -15,6 +15,7 @@ import phd.architecture.metrics.Metrics
 
 import java.io.IOException
 
+
 object KafkaSourceFactory {
 
   private val objectMapper = new ObjectMapper()
@@ -26,7 +27,7 @@ object KafkaSourceFactory {
 
     val source =
       KafkaSource.builder[Event]()
-        .setBootstrapServers("kafka-1:19092,kafka-2:19094")
+        .setBootstrapServers("kafka-1:19092")
         .setTopics("spatial-events")
         .setGroupId("article-01-architecture")
         .setStartingOffsets(OffsetsInitializer.earliest())
