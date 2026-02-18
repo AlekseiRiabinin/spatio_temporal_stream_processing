@@ -21,15 +21,21 @@ lazy val root = (project in file("."))
       // Logging
       "org.slf4j" % "slf4j-simple" % "1.7.36",
 
-      // Prometheus metrics
+      // Prometheus metrics (your old custom metrics — optional now)
       "io.prometheus" % "simpleclient" % "0.16.0",
       "io.prometheus" % "simpleclient_hotspot" % "0.16.0",
       "io.prometheus" % "simpleclient_httpserver" % "0.16.0",
 
-      // Jackson JSON library (needed for ObjectMapper)
+      // Jackson JSON library
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.2",
       "com.fasterxml.jackson.core" % "jackson-core" % "2.15.2",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.2"
+      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.2",
+
+      // Flink Dropwizard metrics support
+      "org.apache.flink" % "flink-metrics-dropwizard" % "1.17.1",
+
+      // Dropwizard Metrics library
+      "io.dropwizard.metrics" % "metrics-core" % "4.2.19"
     ),
 
     // Exclude Flink, Kafka, and commons-collections from fat JAR

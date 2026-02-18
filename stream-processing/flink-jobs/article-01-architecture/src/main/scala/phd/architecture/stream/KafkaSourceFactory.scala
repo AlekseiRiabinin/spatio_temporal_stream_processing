@@ -2,18 +2,19 @@ package phd.architecture.stream
 
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
-import org.apache.flink.api.common.serialization.DeserializationSchema
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.connector.kafka.source.KafkaSource
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer
+import org.apache.flink.connector.kafka.source.reader.deserializer.KafkaRecordDeserializationSchema
 import org.apache.flink.streaming.api.scala.{DataStream, StreamExecutionEnvironment}
+import org.apache.flink.util.Collector
+import org.apache.kafka.clients.consumer.ConsumerRecord
+
+import java.io.IOException
 
 import phd.architecture.model.Event
 import phd.architecture.model.TypeInfos._
 import phd.architecture.util.{GeometryUtils, TimeUtils}
-import phd.architecture.metrics.Metrics
-
-import java.io.IOException
 
 
 object KafkaSourceFactory {
@@ -31,7 +32,7 @@ object KafkaSourceFactory {
         .setTopics("spatial-events")
         .setGroupId("article-01-architecture")
         .setStartingOffsets(OffsetsInitializer.earliest())
-        .setValueOnlyDeserializer(new EventDeserializationSchema)
+        .setDeserializer(new EventKafkaRecordDeserializationSchema)
         .build()
 
     env.fromSource(
@@ -42,18 +43,22 @@ object KafkaSourceFactory {
   }
 
   /**
-   * Custom JSON → Event deserializer with metrics.
+   * Minimal Kafka record deserializer (no metrics — Flink 1.17 cannot expose them here).
    */
-  private class EventDeserializationSchema
-      extends DeserializationSchema[Event]
+  private class EventKafkaRecordDeserializationSchema
+      extends KafkaRecordDeserializationSchema[Event]
       with Serializable {
 
     @throws[IOException]
-    override def deserialize(message: Array[Byte]): Event = {
-      val jsonStr = new String(message, "UTF-8")
+    override def deserialize(
+        record: ConsumerRecord[Array[Byte], Array[Byte]],
+        out: Collector[Event]
+    ): Unit = {
+      if (record == null || record.value() == null) return
+
+      val jsonStr = new String(record.value(), "UTF-8")
       val jsonNode: JsonNode = objectMapper.readTree(jsonStr)
 
-      // Extract fields safely
       val id = Option(jsonNode.get("id"))
         .map(_.asText())
         .getOrElse(throw new IllegalArgumentException(s"'id' field missing in JSON: $jsonStr"))
@@ -66,22 +71,15 @@ object KafkaSourceFactory {
         .map(_.asLong())
         .getOrElse(throw new IllegalArgumentException(s"'timestamp' field missing in JSON: $jsonStr"))
 
-      // Metrics
-      Metrics.eventsConsumed.inc()
-
-      val now = System.currentTimeMillis()
-      val latencySeconds = (now - producerTs) / 1000.0
-      Metrics.ingestionLatency.observe(latencySeconds)
-
-      Event(
+      val event = Event(
         id = id,
         geometry = GeometryUtils.fromWKT(wkt),
         eventTime = TimeUtils.toMillis(producerTs),
         attributes = Map.empty
       )
-    }
 
-    override def isEndOfStream(nextElement: Event): Boolean = false
+      out.collect(event)
+    }
 
     override def getProducedType: TypeInformation[Event] =
       TypeInformation.of(classOf[Event])

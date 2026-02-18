@@ -3,7 +3,6 @@ package phd.architecture.operators
 import org.apache.flink.api.java.functions.KeySelector
 import phd.architecture.model.{Event, SpatialPartition}
 import phd.architecture.util.GeometryUtils
-import phd.architecture.metrics.Metrics
 
 
 object SpatialPartitionFunction {

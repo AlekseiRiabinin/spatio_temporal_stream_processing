@@ -6,7 +6,7 @@ import phd.architecture.model._
 import phd.architecture.stream._
 import phd.architecture.operators._
 import phd.architecture.util._
-import phd.architecture.metrics._
+import phd.architecture.sink._
 
 
 object Article01ArchitectureJob {
@@ -14,34 +14,29 @@ object Article01ArchitectureJob {
   def main(args: Array[String]): Unit = {
 
     // ------------------------------------------------------------------
-    // 1. Start Prometheus HTTP server and JVM default metrics
+    // 1. Load configuration from environment variables
     // ------------------------------------------------------------------
-    Metrics.init()
-
-    // ------------------------------------------------------------------
-    // 2. Load configuration from environment variables
-    // ------------------------------------------------------------------
-    val parallelism = sys.env.getOrElse("FLINK_PARALLELISM", "1").toInt
+    val parallelism      = sys.env.getOrElse("FLINK_PARALLELISM", "1").toInt
     val maxOutOfOrderness = sys.env.getOrElse("MAX_OUT_OF_ORDERNESS", "5").toInt
     val geohashPrecision = sys.env.getOrElse("GEOHASH_PRECISION", "6").toInt
-    val windowSize = sys.env.getOrElse("WINDOW_SIZE", "30").toInt
-    val windowSlide = sys.env.getOrElse("WINDOW_SLIDE", "30").toInt
+    val windowSize       = sys.env.getOrElse("WINDOW_SIZE", "30").toInt
+    val windowSlide      = sys.env.getOrElse("WINDOW_SLIDE", "30").toInt
 
     // ------------------------------------------------------------------
-    // 3. Execution environment
+    // 2. Execution environment
     // ------------------------------------------------------------------
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     env.setParallelism(parallelism)
     env.enableCheckpointing(5000)
 
     // ------------------------------------------------------------------
-    // 4. Source: spatial-temporal events from Kafka
+    // 3. Source: spatial-temporal events from Kafka
     // ------------------------------------------------------------------
     val rawEvents: DataStream[Event] =
       KafkaSourceFactory.createSpatialEventSource(env)
 
     // ------------------------------------------------------------------
-    // 5. Event-time semantics and watermarks
+    // 4. Event-time semantics and watermarks
     // ------------------------------------------------------------------
     val eventTimeStream: DataStream[Event] =
       rawEvents.assignTimestampsAndWatermarks(
@@ -51,8 +46,7 @@ object Article01ArchitectureJob {
       )
 
     // ------------------------------------------------------------------
-    // 6. Spatial partitioning
-    //    π(e) → p
+    // 5. Spatial partitioning π(e) → p
     // ------------------------------------------------------------------
     val partitionedStream: KeyedStream[Event, SpatialPartition] =
       eventTimeStream.keyBy(
@@ -60,8 +54,7 @@ object Article01ArchitectureJob {
       )
 
     // ------------------------------------------------------------------
-    // 7. Windowed aggregation
-    //    Ω(W, p)
+    // 6. Windowed aggregation Ω(W, p)
     // ------------------------------------------------------------------
     val windowedResults: DataStream[WindowResult] =
       StreamTopology.applySlidingWindow(
@@ -72,13 +65,15 @@ object Article01ArchitectureJob {
       )
 
     // ------------------------------------------------------------------
-    // 8. Sink (results already include processingTime)
-    //    Metrics are emitted inside operators
+    // 7. Sink (results already include processingTime)
+    //    Metrics are emitted inside Flink operators
+    //    Write to Postgres
     // ------------------------------------------------------------------
     StreamTopology.sinkResults(windowedResults)
+    windowedResults.addSink(new PostgresWindowResultSink).name("PostgresSink")
 
     // ------------------------------------------------------------------
-    // 9. Execute
+    // 8. Execute
     // ------------------------------------------------------------------
     env.execute("Article 01 - Distributed Spatio-Temporal Architecture")
   }
