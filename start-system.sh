@@ -169,7 +169,7 @@ create_kafka_topics
 start_flink
 start_flink_job
 start_geo_producer
-start_kafdrop
+# start_kafdrop
 
 echo "=== System startup complete ==="
 

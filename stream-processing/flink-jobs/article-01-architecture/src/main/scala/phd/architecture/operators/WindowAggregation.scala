@@ -44,6 +44,10 @@ final class CountEventsWindowFunction
     out: Collector[WindowResult]
   ): Unit = {
 
+    println(s"🔥 WINDOW FIRING: partition=$key, elements=${elements.size}, " +
+            s"windowStart=${context.window.getStart}, windowEnd=${context.window.getEnd}, " +
+            s"currentWatermark=${context.currentWatermark}")
+
     val count = elements.size.toLong
     val start = context.window.getStart
     val end = context.window.getEnd

@@ -71,6 +71,8 @@ object KafkaSourceFactory {
         .map(_.asLong())
         .getOrElse(throw new IllegalArgumentException(s"'timestamp' field missing in JSON: $jsonStr"))
 
+      println(s"✅ Event: id=$id, ts=$producerTs")
+
       val event = Event(
         id = id,
         geometry = GeometryUtils.fromWKT(wkt),

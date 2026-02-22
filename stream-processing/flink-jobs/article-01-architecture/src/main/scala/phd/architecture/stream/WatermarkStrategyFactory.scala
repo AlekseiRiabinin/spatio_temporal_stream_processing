@@ -22,7 +22,10 @@ object WatermarkStrategyFactory {
           override def extractTimestamp(
             element: Event,
             recordTimestamp: Long
-          ): Long = element.eventTime
+          ): Long = {
+            val now = System.currentTimeMillis()
+            Math.min(element.eventTime, now)
+          }
         }
 
       override def createWatermarkGenerator(
@@ -50,16 +53,28 @@ object WatermarkStrategyFactory {
           eventTimestamp: Long,
           output: WatermarkOutput
         ): Unit = {
-          // Track max observed timestamp
           maxTs = Math.max(maxTs, eventTimestamp)
         }
 
         override def onPeriodicEmit(output: WatermarkOutput): Unit = {
 
-          // Compute watermark
           val watermark = maxTs - maxOutOfOrdernessMs
 
-          // Lag = max event time - watermark
+          val windowSizeMs =
+            if (maxOutOfOrdernessMs > 0) maxOutOfOrdernessMs else 1000L
+
+          val nextWindowEnd = ((watermark / windowSizeMs) + 1) * windowSizeMs
+
+          println(
+            s"""
+               |🔵 Watermark Debug →
+               |  watermark     = $watermark
+               |  maxTs         = $maxTs
+               |  nextWindowEnd = $nextWindowEnd
+               |  currentTime   = ${System.currentTimeMillis()}
+               |""".stripMargin
+          )
+
           lastLag = maxTs - watermark
 
           output.emitWatermark(new Watermark(watermark))

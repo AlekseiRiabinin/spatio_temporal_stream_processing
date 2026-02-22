@@ -48,12 +48,9 @@ object GeometryUtils {
     )
   }
 
-  // Placeholder (can be replaced with real library later)
-  private def encodeGeohash(
-      lat: Double,
-      lon: Double,
-      precision: Int
-  ): String =
-    f"$lat%.5f:$lon%.5f:$precision"
-
+  private def encodeGeohash(lat: Double, lon: Double, precision: Int): String = {
+    val latPart = ((lat + 90) * 10000).toInt
+    val lonPart = ((lon + 180) * 10000).toInt
+    Integer.toHexString(latPart ^ lonPart).substring(0, Math.min(precision, 8))
+  }
 }
