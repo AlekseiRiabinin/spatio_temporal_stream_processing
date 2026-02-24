@@ -17,8 +17,7 @@ class DataflowModel[K : TypeInformation](
   env: StreamExecutionEnvironment
 ) extends StreamModel[K] {
 
-  override val modelType: StreamModelType =
-    StreamModelType.Dataflow
+  override val modelType: StreamModelType = StreamModelType.Dataflow
 
   override def buildPipeline(
     source: DataStream[Event],

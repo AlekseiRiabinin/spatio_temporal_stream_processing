@@ -1,20 +1,30 @@
 package phd.streammodels.windows
 
+import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.streaming.api.scala._
-import org.apache.flink.streaming.api.windowing.time.Time
 import org.apache.flink.streaming.api.windowing.assigners.EventTimeSessionWindows
+import org.apache.flink.streaming.api.windowing.time.Time
 import phd.streammodels.model.{Event, WindowResult}
-import phd.streammodels.operators.WindowAggregation
 
 
-class SessionWindowStrategy extends WindowStrategy[String] {
+/**
+  * Session window strategy:
+  * - Groups events by key K
+  * - Creates a new session when the gap exceeds sessionGapSeconds
+  * - Uses event-time semantics (or whatever the model provides)
+  */
+class SessionWindowStrategy[K : TypeInformation](
+  sessionGapSeconds: Long,
+  keySelector: Event => K
+) extends WindowStrategy[K] {
 
-  override val name: String = "session"
+  override def applyWindow(
+    stream: DataStream[Event]
+  ): DataStream[WindowResult[K]] = {
 
-  override def applyWindow(stream: DataStream[Event]): DataStream[WindowResult[String]] = {
     stream
-      .keyBy(_.id) // key type = String
-      .window(EventTimeSessionWindows.withGap(Time.seconds(30)))
-      .process(WindowAggregation.countEvents[String])
+      .keyBy(keySelector)
+      .window(EventTimeSessionWindows.withGap(Time.seconds(sessionGapSeconds)))
+      .apply(new CountEventsWindowFunction[K])
   }
 }
