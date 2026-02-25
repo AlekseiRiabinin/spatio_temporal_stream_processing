@@ -29,6 +29,8 @@ class MultiTriggerWindowStrategy[K : TypeInformation](
     processingIntervalMs: Long
 ) extends WindowStrategy[K] {
 
+  override val name: String = "multitrigger"
+
   override def applyWindow(
       stream: DataStream[Event]
   ): DataStream[WindowResult[K]] = {

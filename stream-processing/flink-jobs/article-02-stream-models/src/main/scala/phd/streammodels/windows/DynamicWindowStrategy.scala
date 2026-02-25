@@ -5,6 +5,7 @@ import org.apache.flink.streaming.api.scala._
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows
 import org.apache.flink.streaming.api.windowing.time.Time
 import phd.streammodels.model.{Event, WindowResult}
+import phd.streammodels.model.TypeInfos._
 
 
 /**
@@ -23,6 +24,8 @@ class DynamicWindowStrategy[K : TypeInformation](
   densityFactor: Double,
   keySelector: Event => K
 ) extends WindowStrategy[K] {
+
+  override val name: String = "dynamic"
 
   override def applyWindow(
     stream: DataStream[Event]

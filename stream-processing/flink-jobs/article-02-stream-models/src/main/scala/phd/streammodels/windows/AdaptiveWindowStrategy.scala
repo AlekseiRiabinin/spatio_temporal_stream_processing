@@ -25,6 +25,8 @@ class AdaptiveWindowStrategy[K : TypeInformation](
     keySelector: Event => K
 ) extends WindowStrategy[K] {
 
+  override val name: String = "adaptive"
+
   override def applyWindow(
       stream: DataStream[Event]
   ): DataStream[WindowResult[K]] = {
