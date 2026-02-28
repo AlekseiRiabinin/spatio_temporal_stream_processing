@@ -3,6 +3,7 @@ package phd.streammodels.windows
 import org.apache.flink.api.common.state.{ValueState, ValueStateDescriptor}
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.streaming.api.scala._
+import org.apache.flink.streaming.api.scala.function.WindowFunction
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows
 import org.apache.flink.streaming.api.windowing.time.Time
 import org.apache.flink.streaming.api.windowing.triggers._
@@ -117,7 +118,7 @@ class MultiTrigger[K](
   * Produces a WindowResult[K] when the trigger fires.
   */
 class MultiTriggerWindowFunction[K]
-    extends org.apache.flink.streaming.api.scala.function.WindowFunction[
+    extends WindowFunction[
       Event,
       WindowResult[K],
       K,

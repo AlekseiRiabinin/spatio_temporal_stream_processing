@@ -81,7 +81,7 @@ services:
         metrics.reporter.prom.port: 9249
     command: jobmanager
     volumes:
-      - ../stream-processing/flink-jobs/article-01-architecture/target/scala-2.12/article-01-architecture.jar:/opt/flink/usrlib/article-01-architecture.jar
+      - ../stream-processing/flink-jobs/article-02-stream-models/target/scala-2.12/article-02-stream-models.jar:/opt/flink/usrlib/article-02-stream-models.jar
       - ./flink/flink-connector-kafka-3.0.0-1.17.jar:/opt/flink/lib/flink-connector-kafka-3.0.0-1.17.jar
       - ./flink/flink-metrics-prometheus-1.17.1.jar:/opt/flink/lib/flink-metrics-prometheus-1.17.1.jar
       - ./flink/kafka-clients-3.2.3.jar:/opt/flink/lib/kafka-clients-3.2.3.jar
@@ -113,68 +113,38 @@ services:
       - ./flink/kafka-clients-3.2.3.jar:/opt/flink/lib/kafka-clients-3.2.3.jar
     networks: [kafka-net]
 
-  geoflink_architecture_job:
+  geoflink_stream_models_job:
     image: flink:1.17.1
-    container_name: geoflink-architecture-job
+    container_name: geoflink-stream-models-job
     depends_on:
       jobmanager:
         condition: service_healthy
       kafka-1:
         condition: service_started
-    environment:
-      FLINK_MAIN_CLASS: "phd.architecture.Article01ArchitectureJob"
-      FLINK_PARALLELISM: "1"
-      MAX_OUT_OF_ORDERNESS: "1"
-      GEOHASH_PRECISION: "6"
-      WINDOW_SIZE: "2"
-      WINDOW_SLIDE: "2"
+      environment:
+        FLINK_MAIN_CLASS: "phd.streammodels.Article02StreamModelsJob"
+        FLINK_PARALLELISM: "1"
+        # STREAM_MODEL: "dataflow"
+        # WINDOW_STRATEGY: "adaptive"
+        WINDOW_SIZE: "30"
+        COUNT_THRESHOLD: "100"
+        PROCESSING_INTERVAL_MS: "5000"
+        DENSITY_FACTOR: "1.0"
     volumes:
-      - ../stream-processing/flink-jobs/article-01-architecture/target/scala-2.12/article-01-architecture.jar:/opt/flink/usrlib/article-01-architecture.jar:ro
+      - ../stream-processing/flink-jobs/article-02-stream-models/target/scala-2.12/article-02-stream-models.jar:/opt/flink/usrlib/article-02-stream-models.jar:ro
       - ./flink/flink-connector-kafka-3.0.0-1.17.jar:/opt/flink/lib/flink-connector-kafka-3.0.0-1.17.jar:ro
       - ./flink/kafka-clients-3.2.3.jar:/opt/flink/lib/kafka-clients-3.2.3.jar
     command: >
       flink run
-      -c phd.architecture.Article01ArchitectureJob
+      -c phd.streammodels.Article02StreamModelsJob
       -m jobmanager:8081
-      /opt/flink/usrlib/article-01-architecture.jar
+      /opt/flink/usrlib/article-02-stream-models.jar
     networks: [kafka-net]
     restart: "no"
 
-  # ============================================================
-  # 4. STORAGE LAYER (Materialized State)
-  # ============================================================
-
-  postgis-cre:
-    image: postgis/postgis:18-3.6
-    container_name: postgis-cre
-    ports:
-      - "5435:5432"
-    environment:
-      POSTGRES_DB: cre_db
-      POSTGRES_USER: cre_user
-      POSTGRES_PASSWORD: cre_password
-    volumes:
-      - postgis-cre-data:/var/lib/postgresql
-      - ./postgis/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cre_user -d cre_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks: [kafka-net]
-    restart: always
-
-  redis-cre:
-    image: redis:7.2-alpine
-    container_name: redis-cre
-    volumes:
-      - redis-cre-data:/data
-    networks: [kafka-net]
-    restart: always
-
 
   # ============================================================
-  # 5. VISUALIZATION & ACCESS
+  # 4. VISUALIZATION & ACCESS
   # ============================================================
 
   prometheus:
@@ -200,40 +170,6 @@ services:
       - kafka-net
     restart: always
 
-  tegola-cre:
-    image: gospatial/tegola:v0.21.2
-    container_name: tegola-cre
-    restart: unless-stopped
-    depends_on:
-      postgis-cre:
-        condition: service_healthy
-      redis-cre:
-        condition: service_healthy
-    volumes:
-      - ./tegola/config/config.toml:/config/config.toml:ro
-      - ./tegola/styles:/styles:ro
-    entrypoint: ["/opt/tegola", "serve", "--config", "/config/config.toml", "--port", ":8085"]
-    ports:
-      - "8085:8085"
-    environment:
-      TEGOLA_MAX_TILE_SIZE: "10MB"
-      TEGOLA_CACHE_TYPE: "redis"
-      TEGOLA_CACHE_REDIS_ENDPOINT: "redis-cre:6379"
-      TEGOLA_CACHE_REDIS_PREFIX: "tegola:"
-    networks:
-      - kafka-net
 
-  pgadmin-cre:
-    image: dpage/pgadmin4
-    container_name: pgadmin-cre
-    ports:
-      - "5051:80"
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@localhost.localdomain
-      PGADMIN_DEFAULT_PASSWORD: admin
-    depends_on: [postgis-cre]
-    networks: [kafka-net]
-
-
-# docker compose -f docker/docker-compose.yml up -d kafka-1
+# docker compose -f docker/docker-compose.stream-models.yml up -d kafka-1
 # ./scripts/test-geo-producer.sh

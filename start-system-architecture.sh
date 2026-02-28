@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-COMPOSE="docker/docker-compose.yml"
+COMPOSE="docker/docker-compose.architecture.yml"
 
 echo "=== Starting Spatial Stream Processing System ==="
 
