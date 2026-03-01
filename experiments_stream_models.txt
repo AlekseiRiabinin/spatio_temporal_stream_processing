@@ -1,0 +1,19 @@
+dataflow session
+dataflow dynamic
+dataflow adaptive
+dataflow multitrigger
+
+microbatch session
+microbatch dynamic
+microbatch adaptive
+microbatch multitrigger
+
+actor session
+actor dynamic
+actor adaptive
+actor multitrigger
+
+log session
+log dynamic
+log adaptive
+log multitrigger

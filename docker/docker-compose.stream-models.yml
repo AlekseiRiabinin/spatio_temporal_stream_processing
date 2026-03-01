@@ -121,15 +121,15 @@ services:
         condition: service_healthy
       kafka-1:
         condition: service_started
-      environment:
-        FLINK_MAIN_CLASS: "phd.streammodels.Article02StreamModelsJob"
-        FLINK_PARALLELISM: "1"
-        # STREAM_MODEL: "dataflow"
-        # WINDOW_STRATEGY: "adaptive"
-        WINDOW_SIZE: "30"
-        COUNT_THRESHOLD: "100"
-        PROCESSING_INTERVAL_MS: "5000"
-        DENSITY_FACTOR: "1.0"
+    environment:
+      FLINK_MAIN_CLASS: "phd.streammodels.Article02StreamModelsJob"
+      FLINK_PARALLELISM: "1"
+      # STREAM_MODEL: "dataflow"
+      # WINDOW_STRATEGY: "adaptive"
+      WINDOW_SIZE: "30"
+      COUNT_THRESHOLD: "100"
+      PROCESSING_INTERVAL_MS: "5000"
+      DENSITY_FACTOR: "1.0"
     volumes:
       - ../stream-processing/flink-jobs/article-02-stream-models/target/scala-2.12/article-02-stream-models.jar:/opt/flink/usrlib/article-02-stream-models.jar:ro
       - ./flink/flink-connector-kafka-3.0.0-1.17.jar:/opt/flink/lib/flink-connector-kafka-3.0.0-1.17.jar:ro

@@ -26,7 +26,23 @@ object StreamTopology {
     val source: DataStream[Event] =
       KafkaSourceFactory.createEventSource(env)
 
-    model.buildPipeline(source, windowStrategy)
+    println(
+      s"🔵 [TOPOLOGY] Source initialized, " +
+      s"model=${model.getClass.getSimpleName}, " +
+      s"strategy=${windowStrategy.getClass.getSimpleName}"
+    )
+
+    val pipeline = model.buildPipeline(source, windowStrategy)
+
+    // Log pipeline creation
+    println(
+      s"🔵 [TOPOLOGY] Pipeline built: " +
+      s"model=${model.getClass.getSimpleName}, " +
+      s"strategy=${windowStrategy.getClass.getSimpleName}, " +
+      s"pipelineType=${pipeline.getClass.getSimpleName}"
+    )
+
+    pipeline
   }
 
   /**
@@ -37,16 +53,22 @@ object StreamTopology {
   ): DataStream[WindowResult[K]] = {
 
     val debugged = results.map { r: WindowResult[K] =>
+      // per-window logging, not per record
       println(
-        s"📊 RESULT: key=${r.partition}, " +
-        s"window=[${r.windowStart}, ${r.windowEnd}], " +
-        s"value=${r.value}, " +
-        s"processingTime=${r.processingTime.getOrElse(-1L)}"
+        s"""
+          |🔵 [TOPOLOGY] Window Result →
+          |  key           = ${r.partition}
+          |  windowStart   = ${r.windowStart}
+          |  windowEnd     = ${r.windowEnd}
+          |  value         = ${r.value}
+          |  processingTime= ${r.processingTime.getOrElse(-1L)}
+          |  timestamp     = ${System.currentTimeMillis()}
+          |""".stripMargin
       )
       r
     }.name("DebugSink")
 
-    debugged.print().name("PrintSink")
+    debugged.print().name("PrintSink") // still useful for terminal output
 
     debugged
   }

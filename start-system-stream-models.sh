@@ -149,7 +149,7 @@ if [ "$MODEL" = "matrix" ]; then
     create_kafka_topics
     start_flink
     start_prometheus
-    start_kafdrop
+    # start_kafdrop
     start_producer
 
     run_matrix
@@ -160,7 +160,7 @@ else
     create_kafka_topics
     start_flink
     start_prometheus
-    start_kafdrop
+    # start_kafdrop
     start_job
     start_producer
 

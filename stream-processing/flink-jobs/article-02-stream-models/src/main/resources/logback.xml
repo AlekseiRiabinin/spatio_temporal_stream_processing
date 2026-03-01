@@ -1,5 +1,6 @@
 <configuration>
-    <logger name="phd.architecture.stream.WatermarkStrategyFactory" level="DEBUG"/>
-    <logger name="phd.architecture.operators.SpatialPartitionFunction" level="DEBUG"/>
-    <logger name="org.apache.flink.streaming.api.windowing" level="DEBUG"/>
+    <logger name="phd.streammodels.Article02StreamModelsJob" level="INFO"/>
+    <logger name="phd.streammodels.stream.KafkaSourceFactory" level="INFO"/>
+    <logger name="phd.streammodels.stream.WatermarkStrategyFactory" level="DEBUG"/>
+    <logger name="phd.streammodels.stream.StreamTopology" level="INFO"/>
 </configuration>
