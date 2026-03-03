@@ -35,17 +35,38 @@ services:
   # 2. GEO DATA PRODUCER (standalone service)
   # ============================================================
 
-  geo_producer_architecture:
+  geo_producer_stream_models:
     build:
-      context: ../data-generators/article-01-geo-producer
+      context: ../data-generators/article-02-geo-producer
       dockerfile: Dockerfile
-    container_name: geo_producer_architecture
+    container_name: geo_producer_stream_models
     depends_on:
       - kafka-1
     environment:
       KAFKA_BOOTSTRAP_SERVERS: "kafka-1:19092"
       KAFKA_TOPIC: "spatial-events"
-      EVENT_RATE: "50"    
+
+      # --- Rate patterns ---
+      EVENT_RATE_PATTERN: ${EVENT_RATE_PATTERN}
+      EVENT_RATE: ${EVENT_RATE}
+      BURST_RATE: ${BURST_RATE}
+      BURST_DURATION_MS: ${BURST_DURATION_MS}
+      PAUSE_MS: ${PAUSE_MS}
+      WAVE_MIN: ${WAVE_MIN}
+      WAVE_MAX: ${WAVE_MAX}
+      WAVE_PERIOD_MS: ${WAVE_PERIOD_MS}
+
+      # --- Geometry patterns ---
+      GEOMETRY_PATTERN: ${GEOMETRY_PATTERN}
+
+      # --- Timestamp patterns ---
+      TIMESTAMP_PATTERN: ${TIMESTAMP_PATTERN}
+      MAX_SKEW_MS: ${MAX_SKEW_MS}
+      MAX_DELAY_MS: ${MAX_DELAY_MS}
+
+      # --- Number of logical keys (vehicles) ---
+      KEYS: ${KEYS}
+
     networks: [kafka-net]
     restart: unless-stopped
 
@@ -124,12 +145,15 @@ services:
     environment:
       FLINK_MAIN_CLASS: "phd.streammodels.Article02StreamModelsJob"
       FLINK_PARALLELISM: "1"
-      STREAM_MODEL: ${STREAM_MODEL:-dataflow}
-      WINDOW_STRATEGY: ${WINDOW_STRATEGY:-session}
-      WINDOW_SIZE: "30"
-      COUNT_THRESHOLD: "100"
-      PROCESSING_INTERVAL_MS: "5000"
-      DENSITY_FACTOR: "1.0"
+      STREAM_MODEL: ${STREAM_MODEL}
+      WINDOW_STRATEGY: ${WINDOW_STRATEGY}
+      WINDOW_SIZE: ${WINDOW_SIZE}
+      COUNT_THRESHOLD: ${COUNT_THRESHOLD}
+      PROCESSING_INTERVAL_MS: ${PROCESSING_INTERVAL_MS}
+      DENSITY_FACTOR: ${DENSITY_FACTOR}
+      CHECKPOINT_INTERVAL: "15000"
+      RESTART_ATTEMPTS: "10"
+      RESTART_DELAY: "10000"
     volumes:
       - ../stream-processing/flink-jobs/article-02-stream-models/target/scala-2.12/article-02-stream-models.jar:/opt/flink/usrlib/article-02-stream-models.jar:ro
       - ./flink/flink-connector-kafka-3.0.0-1.17.jar:/opt/flink/lib/flink-connector-kafka-3.0.0-1.17.jar:ro

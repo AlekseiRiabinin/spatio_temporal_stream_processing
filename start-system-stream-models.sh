@@ -11,6 +11,59 @@ echo "Stream Model:    $MODEL"
 echo "Window Strategy: $WINDOW"
 
 # ------------------------------------------------------------
+# Set experiment parameters early (before any docker compose)
+# ------------------------------------------------------------
+set_params() {
+    MODEL=$1
+    WINDOW=$2
+
+    case "$WINDOW" in
+        session)
+            EVENT_RATE=1
+            WINDOW_SIZE=3
+            COUNT_THRESHOLD=100
+            PROCESSING_INTERVAL_MS=5000
+            DENSITY_FACTOR=1.0
+            ;;
+        dynamic)
+            EVENT_RATE=50
+            WINDOW_SIZE=5
+            COUNT_THRESHOLD=100
+            PROCESSING_INTERVAL_MS=5000
+            DENSITY_FACTOR=1.0
+            ;;
+        adaptive)
+            EVENT_RATE=50
+            WINDOW_SIZE=5
+            COUNT_THRESHOLD=100
+            PROCESSING_INTERVAL_MS=5000
+            DENSITY_FACTOR=1.0
+            ;;
+        multitrigger)
+            EVENT_RATE=50
+            WINDOW_SIZE=10
+            COUNT_THRESHOLD=100
+            PROCESSING_INTERVAL_MS=5000
+            DENSITY_FACTOR=1.0
+            ;;
+    esac
+}
+
+# Load parameters for single-run mode
+if [ "$MODEL" != "matrix" ]; then
+    set_params "$MODEL" "$WINDOW"
+fi
+
+# Export BEFORE any docker compose command
+export STREAM_MODEL="$MODEL"
+export WINDOW_STRATEGY="$WINDOW"
+export EVENT_RATE="$EVENT_RATE"
+export WINDOW_SIZE="$WINDOW_SIZE"
+export COUNT_THRESHOLD="$COUNT_THRESHOLD"
+export PROCESSING_INTERVAL_MS="$PROCESSING_INTERVAL_MS"
+export DENSITY_FACTOR="$DENSITY_FACTOR"
+
+# ------------------------------------------------------------
 # Utility: check if service exists
 # ------------------------------------------------------------
 service_exists() {
@@ -97,6 +150,7 @@ start_producer() {
     docker compose -f "$COMPOSE" up -d geo_producer_architecture
 }
 
+
 # ------------------------------------------------------------
 # Start Flink Job
 # ------------------------------------------------------------
@@ -105,9 +159,14 @@ start_job() {
     echo "=== Stream Model Job ==="
     echo "STREAM_MODEL=$MODEL"
     echo "WINDOW_STRATEGY=$WINDOW"
+    echo "EVENT_RATE=$EVENT_RATE"
+    echo "WINDOW_SIZE=$WINDOW_SIZE"
+    echo "COUNT_THRESHOLD=$COUNT_THRESHOLD"
+    echo "PROCESSING_INTERVAL_MS=$PROCESSING_INTERVAL_MS"
+    echo "DENSITY_FACTOR=$DENSITY_FACTOR"
 
-    STREAM_MODEL=$MODEL \
-    WINDOW_STRATEGY=$WINDOW \
+    export STREAM_MODEL WINDOW_STRATEGY EVENT_RATE WINDOW_SIZE COUNT_THRESHOLD PROCESSING_INTERVAL_MS DENSITY_FACTOR
+
     docker compose -f "$COMPOSE" up -d geoflink_stream_models_job
 }
 
@@ -127,8 +186,11 @@ run_matrix() {
             echo "Running: $m + $w"
             echo "===================================="
 
-            STREAM_MODEL=$m \
-            WINDOW_STRATEGY=$w \
+            set_params "$m" "$w"
+
+            export STREAM_MODEL="$m" WINDOW_STRATEGY="$w" \
+                   EVENT_RATE WINDOW_SIZE COUNT_THRESHOLD PROCESSING_INTERVAL_MS DENSITY_FACTOR
+
             docker compose -f "$COMPOSE" up -d geoflink_stream_models_job
 
             sleep 20
@@ -142,7 +204,6 @@ run_matrix() {
 # ------------------------------------------------------------
 # MAIN
 # ------------------------------------------------------------
-
 if [ "$MODEL" = "matrix" ]; then
 
     start_kafka
@@ -155,6 +216,8 @@ if [ "$MODEL" = "matrix" ]; then
     run_matrix
 
 else
+
+    set_params "$MODEL" "$WINDOW"
 
     start_kafka
     create_kafka_topics
@@ -177,4 +240,4 @@ echo "Kafdrop: http://localhost:9003"
 
 
 # Example:
-# ./start-system-stream-models.sh dataflow adaptive
+# ./start-system-stream-models.sh dataflow session

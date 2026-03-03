@@ -26,14 +26,18 @@ object Article02StreamModelsJob {
     val processingIntervalMs = sys.env.getOrElse("PROCESSING_INTERVAL_MS", "5000").toLong
     val densityFactor = sys.env.getOrElse("DENSITY_FACTOR", "1.0").toDouble
 
-    println(s">>> MAIN: model=$modelName, window=$strategyName")
+    val checkpointInterval = sys.env.getOrElse("CHECKPOINT_INTERVAL", "15000").toLong
+    val restartAttempts = sys.env.getOrElse("RESTART_ATTEMPTS", "10").toInt
+    val restartDelay = sys.env.getOrElse("RESTART_DELAY", "10000").toLong
+
+    println(s"[MAIN] model=$modelName, window=$strategyName")
 
     // 2. Execution environment
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     env.setParallelism(parallelism)
 
-    env.enableCheckpointing(15000, CheckpointingMode.EXACTLY_ONCE)
-    env.setRestartStrategy(RestartStrategies.fixedDelayRestart(10, 10000))
+    env.enableCheckpointing(checkpointInterval, CheckpointingMode.EXACTLY_ONCE)
+    env.setRestartStrategy(RestartStrategies.fixedDelayRestart(restartAttempts, restartDelay))
 
     env.setStateBackend(new HashMapStateBackend())
     env.getCheckpointConfig.setCheckpointStorage("file:///tmp/flink-checkpoints")
