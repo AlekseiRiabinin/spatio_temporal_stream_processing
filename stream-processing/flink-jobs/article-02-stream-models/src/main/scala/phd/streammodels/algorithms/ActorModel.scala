@@ -23,6 +23,14 @@ class ActorModel[K : TypeInformation](
     windowStrategy: WindowStrategy[K]
   ): DataStream[WindowResult[K]] = {
 
+    println(
+      s"""
+        |[MODEL] Building pipeline in ${getClass.getSimpleName}
+        |    modelType      = $modelType
+        |    windowStrategy = ${windowStrategy.getClass.getSimpleName}
+        |""".stripMargin
+    )
+
     // Processing-time model → no watermarks, no timestamp extraction
     val processingTimeStream: DataStream[Event] = source
 

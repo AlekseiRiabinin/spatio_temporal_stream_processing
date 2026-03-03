@@ -8,27 +8,21 @@ import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindo
 import org.apache.flink.streaming.api.windowing.time.Time
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow
 import org.apache.flink.util.Collector
+import org.apache.flink.configuration.Configuration
+
 import phd.streammodels.model.{Event, WindowResult}
 import phd.streammodels.model.TypeInfos._
 
 
-/**
-  * Adaptive window strategy:
-  * - Learns event density per key
-  * - Shrinks windows when density is high
-  * - Expands windows when density is low
-  *
-  * windowSize = baseWindowSeconds / (1 + density)
-  */
 class AdaptiveWindowStrategy[K : TypeInformation](
-    baseWindowSeconds: Long,
-    keySelector: Event => K
+  baseWindowSeconds: Long,
+  keySelector: Event => K
 ) extends WindowStrategy[K] {
 
   override val name: String = "adaptive"
 
   override def applyWindow(
-      stream: DataStream[Event]
+    stream: DataStream[Event]
   ): DataStream[WindowResult[K]] = {
 
     // Step 1: compute adaptive window metadata
@@ -45,7 +39,36 @@ class AdaptiveWindowStrategy[K : TypeInformation](
     adaptiveStream
       .keyBy(resultKeySelector)
       .window(TumblingEventTimeWindows.of(Time.seconds(baseWindowSeconds)))
-      .apply(new AdaptiveCountWindowFunction[K])
+      .apply { (
+        key: K,
+        window: TimeWindow,
+        input: Iterable[WindowResult[K]],
+        out: Collector[WindowResult[K]]
+      ) =>
+
+        val count = input.size
+
+        println(
+          s"""
+             |[WINDOW RESULT]
+             |  key         = $key
+             |  windowStart = ${window.getStart}
+             |  windowEnd   = ${window.getEnd}
+             |  count       = $count
+             |  timestamp   = ${System.currentTimeMillis()}
+             |""".stripMargin
+        )
+
+        out.collect(
+          WindowResult(
+            partition = key,
+            windowStart = window.getStart,
+            windowEnd = window.getEnd,
+            value = count,
+            processingTime = Some(System.currentTimeMillis())
+          )
+        )
+      }
   }
 }
 
@@ -54,12 +77,12 @@ class AdaptiveWindowStrategy[K : TypeInformation](
   * an adjusted window size.
   */
 class AdaptiveWindowSizer[K](baseWindowSeconds: Long)
-    extends KeyedProcessFunction[K, Event, WindowResult[K]] {
+  extends KeyedProcessFunction[K, Event, WindowResult[K]] {
 
   private var countState: ValueState[Long] = _
   private var lastUpdateState: ValueState[Long] = _
 
-  override def open(parameters: org.apache.flink.configuration.Configuration): Unit = {
+  override def open(parameters: Configuration): Unit = {
     countState = getRuntimeContext.getState(
       new ValueStateDescriptor[Long]("count", classOf[Long])
     )
@@ -84,7 +107,6 @@ class AdaptiveWindowSizer[K](baseWindowSeconds: Long)
 
     val adjustedSeconds = Math.max(1, (baseWindowSeconds / (1.0 + density)).toLong)
 
-    // Emit a pseudo-window result containing the adaptive window size
     out.collect(
       WindowResult(
         partition = ctx.getCurrentKey,
@@ -97,37 +119,5 @@ class AdaptiveWindowSizer[K](baseWindowSeconds: Long)
 
     countState.update(count)
     lastUpdateState.update(now)
-  }
-}
-
-/**
-  * Applies the final count inside the adaptive window.
-  */
-class AdaptiveCountWindowFunction[K]
-    extends org.apache.flink.streaming.api.scala.function.WindowFunction[
-      WindowResult[K],
-      WindowResult[K],
-      K,
-      TimeWindow
-    ] {
-
-  override def apply(
-      key: K,
-      window: TimeWindow,
-      input: Iterable[WindowResult[K]],
-      out: Collector[WindowResult[K]]
-  ): Unit = {
-
-    val count = input.size
-
-    out.collect(
-      WindowResult(
-        partition = key,
-        windowStart = window.getStart,
-        windowEnd = window.getEnd,
-        value = count,
-        processingTime = Some(System.currentTimeMillis())
-      )
-    )
   }
 }

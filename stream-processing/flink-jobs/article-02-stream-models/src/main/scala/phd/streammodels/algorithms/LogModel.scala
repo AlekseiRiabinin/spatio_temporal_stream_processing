@@ -24,6 +24,14 @@ class LogModel[K : TypeInformation](
     windowStrategy: WindowStrategy[K]
   ): DataStream[WindowResult[K]] = {
 
+    println(
+      s"""
+        |[MODEL] Building pipeline in ${getClass.getSimpleName}
+        |    modelType      = $modelType
+        |    windowStrategy = ${windowStrategy.getClass.getSimpleName}
+        |""".stripMargin
+    )
+
     // Assign ingestion-time timestamps and monotonic watermarks
     val withWatermarks: DataStream[Event] =
       source.assignTimestampsAndWatermarks(

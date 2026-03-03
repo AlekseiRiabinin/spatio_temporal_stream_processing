@@ -124,8 +124,8 @@ services:
     environment:
       FLINK_MAIN_CLASS: "phd.streammodels.Article02StreamModelsJob"
       FLINK_PARALLELISM: "1"
-      # STREAM_MODEL: "dataflow"
-      # WINDOW_STRATEGY: "adaptive"
+      STREAM_MODEL: ${STREAM_MODEL:-dataflow}
+      WINDOW_STRATEGY: ${WINDOW_STRATEGY:-session}
       WINDOW_SIZE: "30"
       COUNT_THRESHOLD: "100"
       PROCESSING_INTERVAL_MS: "5000"

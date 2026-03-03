@@ -7,7 +7,7 @@ MODEL=${1:-dataflow}
 WINDOW=${2:-adaptive}
 
 echo "=== Starting Stream Models System ==="
-echo "Model: $MODEL"
+echo "Stream Model:    $MODEL"
 echo "Window Strategy: $WINDOW"
 
 # ------------------------------------------------------------

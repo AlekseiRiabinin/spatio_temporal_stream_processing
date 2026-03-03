@@ -19,12 +19,14 @@ object Article02StreamModelsJob {
     // 1. Load configuration
     val parallelism = sys.env.getOrElse("FLINK_PARALLELISM", "1").toInt
     val modelName = sys.env.getOrElse("STREAM_MODEL", "dataflow").toLowerCase
-    val strategyName = sys.env.getOrElse("WINDOW_STRATEGY", "adaptive").toLowerCase
+    val strategyName = sys.env.getOrElse("WINDOW_STRATEGY", "session").toLowerCase
 
     val baseWindowSeconds = sys.env.getOrElse("WINDOW_SIZE", "30").toLong
     val countThreshold = sys.env.getOrElse("COUNT_THRESHOLD", "100").toInt
     val processingIntervalMs = sys.env.getOrElse("PROCESSING_INTERVAL_MS", "5000").toLong
     val densityFactor = sys.env.getOrElse("DENSITY_FACTOR", "1.0").toDouble
+
+    println(s">>> MAIN: model=$modelName, window=$strategyName")
 
     // 2. Execution environment
     val env = StreamExecutionEnvironment.getExecutionEnvironment

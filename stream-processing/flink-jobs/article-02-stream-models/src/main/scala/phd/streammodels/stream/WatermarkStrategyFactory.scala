@@ -67,7 +67,7 @@ object WatermarkStrategyFactory {
 
           println(
             s"""
-               |🔵 Watermark Debug →
+               |[WATERMARK]
                |  watermark     = $watermark
                |  maxTs         = $maxTs
                |  nextWindowEnd = $nextWindowEnd

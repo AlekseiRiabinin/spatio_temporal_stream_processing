@@ -4,21 +4,12 @@ import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.streaming.api.scala._
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows
 import org.apache.flink.streaming.api.windowing.time.Time
+import org.apache.flink.streaming.api.windowing.windows.TimeWindow
+import org.apache.flink.util.Collector
 import phd.streammodels.model.{Event, WindowResult}
 import phd.streammodels.model.TypeInfos._
 
 
-/**
-  * Dynamic window strategy:
-  * - Window size adapts based on event density
-  * - High density → smaller windows
-  * - Low density → larger windows
-  *
-  * This is a simplified version:
-  *   windowSize = baseSize / (1 + densityFactor)
-  *
-  * In a real system, densityFactor would come from a model or statistics.
-  */
 class DynamicWindowStrategy[K : TypeInformation](
   baseWindowSeconds: Long,
   densityFactor: Double,
@@ -31,15 +22,50 @@ class DynamicWindowStrategy[K : TypeInformation](
     stream: DataStream[Event]
   ): DataStream[WindowResult[K]] = {
 
-    // Compute adaptive window size
     val adjustedSeconds =
       Math.max(1, (baseWindowSeconds / (1.0 + densityFactor)).toLong)
 
-    val windowSize = Time.seconds(adjustedSeconds)
+    println(
+      s"""
+         |[WINDOW] Applying DynamicWindowStrategy
+         |    baseWindowSeconds = $baseWindowSeconds
+         |    densityFactor     = $densityFactor
+         |    adjustedSeconds   = $adjustedSeconds
+         |""".stripMargin
+    )
 
     stream
       .keyBy(keySelector)
-      .window(TumblingEventTimeWindows.of(windowSize))
-      .apply(new CountEventsWindowFunction[K])
+      .window(TumblingEventTimeWindows.of(Time.seconds(adjustedSeconds)))
+      .apply { (
+        key: K,
+        window: TimeWindow,
+        input: Iterable[Event],
+        out: Collector[WindowResult[K]]
+      ) =>
+
+        val count = input.size
+
+        println(
+          s"""
+             |[WINDOW RESULT]
+             |  key         = $key
+             |  windowStart = ${window.getStart}
+             |  windowEnd   = ${window.getEnd}
+             |  count       = $count
+             |  timestamp   = ${System.currentTimeMillis()}
+             |""".stripMargin
+        )
+
+        out.collect(
+          WindowResult(
+            partition = key,
+            windowStart = window.getStart,
+            windowEnd = window.getEnd,
+            value = count,
+            processingTime = Some(System.currentTimeMillis())
+          )
+        )
+      }
   }
 }
