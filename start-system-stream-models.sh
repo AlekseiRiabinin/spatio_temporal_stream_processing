@@ -147,7 +147,7 @@ start_kafdrop() {
 
 start_producer() {
     echo "=== Geo Producer ==="
-    docker compose -f "$COMPOSE" up -d geo_producer_architecture
+    docker compose -f "$COMPOSE" up -d geo_producer_stream_models
 }
 
 

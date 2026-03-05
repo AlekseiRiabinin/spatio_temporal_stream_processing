@@ -3,7 +3,7 @@ package phd.streammodels.windows
 import org.apache.flink.api.common.state.{ValueState, ValueStateDescriptor}
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.streaming.api.scala._
-import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows
+import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows
 import org.apache.flink.streaming.api.windowing.time.Time
 import org.apache.flink.streaming.api.windowing.triggers._
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow
@@ -27,7 +27,7 @@ class MultiTriggerWindowStrategy[K : TypeInformation](
 
     stream
       .keyBy(keySelector)
-      .window(TumblingEventTimeWindows.of(Time.seconds(windowSeconds)))
+      .window(TumblingProcessingTimeWindows.of(Time.seconds(windowSeconds)))
       .trigger(
         new MultiTrigger[K](
           countThreshold = countThreshold,

@@ -11,11 +11,13 @@ import org.locationtech.jts.geom.Geometry
  * id : unique object identifier
  * g  : spatial geometry (POINT / LINESTRING / POLYGON)
  * t  : event-time timestamp (milliseconds since epoch)
- * A  : optional attribute map
+ * A  : attribute map
+ * _  : kafka key
  */
 case class Event(
   id: String,
   geometry: Geometry,
   eventTime: Long,
-  attributes: Map[String, String] = Map.empty
+  attributes: Map[String, String] = Map.empty,
+  kafkaKey: String = ""
 )

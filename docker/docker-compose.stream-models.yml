@@ -47,25 +47,25 @@ services:
       KAFKA_TOPIC: "spatial-events"
 
       # --- Rate patterns ---
-      EVENT_RATE_PATTERN: ${EVENT_RATE_PATTERN}
-      EVENT_RATE: ${EVENT_RATE}
-      BURST_RATE: ${BURST_RATE}
-      BURST_DURATION_MS: ${BURST_DURATION_MS}
-      PAUSE_MS: ${PAUSE_MS}
-      WAVE_MIN: ${WAVE_MIN}
-      WAVE_MAX: ${WAVE_MAX}
-      WAVE_PERIOD_MS: ${WAVE_PERIOD_MS}
+      EVENT_RATE_PATTERN: ${EVENT_RATE_PATTERN:-constant}
+      EVENT_RATE: ${EVENT_RATE:-50}
+      BURST_RATE: ${BURST_RATE:-100}
+      BURST_DURATION_MS: ${BURST_DURATION_MS:-10000}
+      PAUSE_MS: ${PAUSE_MS:-5000}
+      WAVE_MIN: ${WAVE_MIN:-5}
+      WAVE_MAX: ${WAVE_MAX:-100}
+      WAVE_PERIOD_MS: ${WAVE_PERIOD_MS:-10000}
 
       # --- Geometry patterns ---
-      GEOMETRY_PATTERN: ${GEOMETRY_PATTERN}
+      GEOMETRY_PATTERN: ${GEOMETRY_PATTERN:-random}
 
       # --- Timestamp patterns ---
-      TIMESTAMP_PATTERN: ${TIMESTAMP_PATTERN}
-      MAX_SKEW_MS: ${MAX_SKEW_MS}
-      MAX_DELAY_MS: ${MAX_DELAY_MS}
+      TIMESTAMP_PATTERN: ${TIMESTAMP_PATTERN:-realtime}
+      MAX_SKEW_MS: ${MAX_SKEW_MS:-2000}
+      MAX_DELAY_MS: ${MAX_DELAY_MS:-5000}
 
       # --- Number of logical keys (vehicles) ---
-      KEYS: ${KEYS}
+      KEYS: ${KEYS:-10}
 
     networks: [kafka-net]
     restart: unless-stopped
@@ -143,17 +143,27 @@ services:
       kafka-1:
         condition: service_started
     environment:
+      # --- Flink job configuration ---
       FLINK_MAIN_CLASS: "phd.streammodels.Article02StreamModelsJob"
       FLINK_PARALLELISM: "1"
-      STREAM_MODEL: ${STREAM_MODEL}
-      WINDOW_STRATEGY: ${WINDOW_STRATEGY}
-      WINDOW_SIZE: ${WINDOW_SIZE}
-      COUNT_THRESHOLD: ${COUNT_THRESHOLD}
-      PROCESSING_INTERVAL_MS: ${PROCESSING_INTERVAL_MS}
-      DENSITY_FACTOR: ${DENSITY_FACTOR}
+
+      # --- Stream model selection ---
+      STREAM_MODEL: ${STREAM_MODEL:-dataflow}
+
+      # --- Window strategy configuration ---
+      WINDOW_STRATEGY: ${WINDOW_STRATEGY:-session}
+
+      # --- Window parameters ---
+      WINDOW_SIZE: ${WINDOW_SIZE:-30}                          # seconds
+      COUNT_THRESHOLD: ${COUNT_THRESHOLD:-100}                 # for multitrigger
+      PROCESSING_INTERVAL_MS: ${PROCESSING_INTERVAL_MS:-5000}  # for multitrigger
+      DENSITY_FACTOR: ${DENSITY_FACTOR:-1.0}                   # for dynamic windows
+
+      # --- Checkpointing & restart strategy ---
       CHECKPOINT_INTERVAL: "15000"
       RESTART_ATTEMPTS: "10"
       RESTART_DELAY: "10000"
+
     volumes:
       - ../stream-processing/flink-jobs/article-02-stream-models/target/scala-2.12/article-02-stream-models.jar:/opt/flink/usrlib/article-02-stream-models.jar:ro
       - ./flink/flink-connector-kafka-3.0.0-1.17.jar:/opt/flink/lib/flink-connector-kafka-3.0.0-1.17.jar:ro

@@ -43,7 +43,7 @@ object KafkaSourceFactory {
   }
 
   /**
-    * Minimal Kafka record deserializer.
+    * Kafka record deserializer.
     */
   private class EventKafkaRecordDeserializationSchema
       extends KafkaRecordDeserializationSchema[Event]
@@ -51,8 +51,8 @@ object KafkaSourceFactory {
 
     @throws[IOException]
     override def deserialize(
-        record: ConsumerRecord[Array[Byte], Array[Byte]],
-        out: Collector[Event]
+      record: ConsumerRecord[Array[Byte], Array[Byte]],
+      out: Collector[Event]
     ): Unit = {
       if (record == null || record.value() == null) return
 
@@ -62,12 +62,14 @@ object KafkaSourceFactory {
       val id = jsonNode.get("id").asText()
       val wkt = jsonNode.get("wkt").asText()
       val producerTs = jsonNode.get("timestamp").asLong()
+      val kafkaKey = Option(record.key()).map(new String(_, "UTF-8")).getOrElse("")
 
       val event = Event(
         id = id,
         geometry = GeometryUtils.fromWKT(wkt),
-        eventTime = TimeUtils.toMillis(producerTs),
-        attributes = Map.empty
+        eventTime = producerTs,
+        attributes = Map.empty,
+        kafkaKey = kafkaKey
       )
 
       out.collect(event)

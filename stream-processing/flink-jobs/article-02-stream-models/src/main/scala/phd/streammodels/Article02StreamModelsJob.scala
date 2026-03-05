@@ -67,7 +67,7 @@ object Article02StreamModelsJob {
     }
 
     // 5. Key selector for events
-    val eventKeySelector: Event => String = e => e.id
+    val eventKeySelector: Event => String = e => e.kafkaKey
 
     // 6. Select WindowStrategy
     val strategy: WindowStrategy[String] = strategyName match {
