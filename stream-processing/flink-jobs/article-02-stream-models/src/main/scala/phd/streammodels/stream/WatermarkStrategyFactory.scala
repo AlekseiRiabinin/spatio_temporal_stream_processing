@@ -23,6 +23,7 @@ object WatermarkStrategyFactory {
             element: Event,
             recordTimestamp: Long
           ): Long = {
+            // Trust event timestamps directly.
             val now = System.currentTimeMillis()
             Math.min(element.eventTime, now)
           }
@@ -33,9 +34,13 @@ object WatermarkStrategyFactory {
       ): WatermarkGenerator[Event] = new WatermarkGenerator[Event] {
 
         private var maxTs: Long = Long.MinValue
-        private val maxOutOfOrdernessMs = maxOutOfOrdernessSeconds * 1000
 
-        // Metric: watermark lag (ms)
+        // Allow override in milliseconds
+        private val maxOutOfOrdernessMs: Long = {
+          val fromEnvMs = sys.env.get("WATERMARK_MAX_DELAY_MS").map(_.toLong)
+          fromEnvMs.getOrElse(maxOutOfOrdernessSeconds * 1000)
+        }
+
         @transient private var lastLag: Long = 0L
 
         // Register gauge
@@ -72,28 +77,30 @@ object WatermarkStrategyFactory {
                |  maxTs         = $maxTs
                |  nextWindowEnd = $nextWindowEnd
                |  currentTime   = ${System.currentTimeMillis()}
+               |  outOfOrderMs  = $maxOutOfOrdernessMs
                |""".stripMargin
           )
 
           lastLag = maxTs - watermark
-
           output.emitWatermark(new Watermark(watermark))
         }
       }
     }
   }
 
-  def forModel(modelType: StreamModelType): WatermarkStrategy[Event] =
+
+  def forModel(modelType: StreamModelType): WatermarkStrategy[Event] = {
+
+    val maxOutOfOrdernessSeconds: Long =
+      sys.env.getOrElse("WATERMARK_OUT_OF_ORDERNESS", "5").toLong
+
     modelType match {
 
-      // 1. Dataflow model → true event-time (as Article 1)
       case StreamModelType.Dataflow =>
-        eventTimeWatermarks(maxOutOfOrdernessSeconds = 5)
+        eventTimeWatermarks(maxOutOfOrdernessSeconds)
 
-      // 2. MicroBatch model → coarse-grained watermarks
       case StreamModelType.MicroBatch =>
         new WatermarkStrategy[Event] {
-
           override def createTimestampAssigner(
             context: TimestampAssignerSupplier.Context
           ): TimestampAssigner[Event] =
@@ -104,15 +111,14 @@ object WatermarkStrategyFactory {
           ): WatermarkGenerator[Event] =
             new WatermarkGenerator[Event] {
 
-              private val batchSizeMs = 5000L // 5-second micro-batches
+              private val batchSizeMs =
+                sys.env.getOrElse("MICROBATCH_WM_DELAY_MS", "5000").toLong
 
               override def onEvent(
                 event: Event,
                 eventTimestamp: Long,
                 output: WatermarkOutput
-              ): Unit = {
-                // no per-event logic
-              }
+              ): Unit = {}
 
               override def onPeriodicEmit(output: WatermarkOutput): Unit = {
                 val now = System.currentTimeMillis()
@@ -122,11 +128,9 @@ object WatermarkStrategyFactory {
             }
         }
 
-      // 3. Actor model → processing-time only
       case StreamModelType.Actor =>
         WatermarkStrategy.noWatermarks()
 
-      // 4. Log model → ingestion-time semantics
       case StreamModelType.Log =>
         WatermarkStrategy
           .forMonotonousTimestamps[Event]()
@@ -139,4 +143,5 @@ object WatermarkStrategyFactory {
             }
           )
     }
+  }
 }

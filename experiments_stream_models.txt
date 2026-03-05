@@ -1,19 +1,106 @@
-dataflow session         | EVENT_RATE=1   WINDOW_SIZE=3   COUNT_THRESHOLD=100  PROCESSING_INTERVAL_MS=5000  DENSITY_FACTOR=1.0
-dataflow dynamic         | EVENT_RATE=50  WINDOW_SIZE=5   COUNT_THRESHOLD=100  PROCESSING_INTERVAL_MS=5000  DENSITY_FACTOR=1.0
-dataflow adaptive        | EVENT_RATE=50  WINDOW_SIZE=5   COUNT_THRESHOLD=100  PROCESSING_INTERVAL_MS=5000  DENSITY_FACTOR=1.0
-dataflow multitrigger    | EVENT_RATE=50  WINDOW_SIZE=10  COUNT_THRESHOLD=100  PROCESSING_INTERVAL_MS=5000  DENSITY_FACTOR=1.0
+1. Dataflow model (true event‑time)
++--------------+------------------+-------------+--------------+--------------+---------------------+----------------------------------------------------+
+| Window       | Timestamp pattern| Rate pattern| EVENT_RATE   | WINDOW_SIZE  | WM_OUT_OF_ORDERNESS | Notes                                              |
++--------------+------------------+-------------+--------------+--------------+---------------------+----------------------------------------------------+
+| session      | realtime         | constant    | 1            | 3            | 0                   | Ideal ET baseline; windows close fast.             |
+| session      | skewed (500ms)   | constant    | 1            | 3            | 1                   | Realistic jitter; session gaps behave correctly.   |
+| session      | late (3s)        | wave        | 20–100       | 3            | 3                   | Late events; tests merging and lateness.           |
+| dynamic      | realtime         | constant    | 50           | 5            | 0                   | Ideal ET baseline.                                 |
+| dynamic      | skewed (500ms)   | wave        | 50           | 5            | 1                   | Adaptive window boundaries under jitter.           |
+| dynamic      | late (3s)        | burst       | 50–200       | 5            | 3                   | Stress test for dynamic windows.                   |
+| adaptive     | realtime         | constant    | 50           | 5            | 0                   | Ideal ET baseline.                                 |
+| adaptive     | skewed (500ms)   | wave        | 50           | 5            | 1                   | Adaptive windows under periodic load.              |
+| adaptive     | late (5s)        | burst       | 50–200       | 5            | 5                   | Extreme lateness + bursts.                         |
+| multitrigger | any              | any         | 50           | 10           | 0                   | PT windows; watermark irrelevant.                  |
++--------------+------------------+-------------+--------------+--------------+---------------------+----------------------------------------------------+
 
-microbatch session       | EVENT_RATE=1   WINDOW_SIZE=3   COUNT_THRESHOLD=100  PROCESSING_INTERVAL_MS=5000  DENSITY_FACTOR=1.0
-microbatch dynamic       | EVENT_RATE=50  WINDOW_SIZE=5   COUNT_THRESHOLD=100  PROCESSING_INTERVAL_MS=5000  DENSITY_FACTOR=1.0
-microbatch adaptive      | EVENT_RATE=50  WINDOW_SIZE=5   COUNT_THRESHOLD=100  PROCESSING_INTERVAL_MS=5000  DENSITY_FACTOR=1.0
-microbatch multitrigger  | EVENT_RATE=50  WINDOW_SIZE=10  COUNT_THRESHOLD=100  PROCESSING_INTERVAL_MS=5000  DENSITY_FACTOR=1.0
+2. Microbatch model (coarse watermarks)
++--------------+------------------+-------------+--------------+--------------+---------------------+----------------------------------------------------+
+| Window       | Timestamp pattern| Rate pattern| EVENT_RATE   | WINDOW_SIZE  | WM_OUT_OF_ORDERNESS | Notes                                              |
++--------------+------------------+-------------+--------------+--------------+---------------------+----------------------------------------------------+
+| session      | realtime         | constant    | 1            | 3            | 0                   | Microbatch WM = now−5s; session windows close slowly.|
+| dynamic      | realtime         | constant    | 50           | 5            | 0                   | Coarse WM; dynamic windows behave like microbatches.|
+| adaptive     | realtime         | wave        | 50           | 5            | 0                   | Adaptive windows with coarse WM.                   |
+| multitrigger | any              | any         | 50           | 10           | 0                   | PT windows; microbatch WM irrelevant.              |
++--------------+------------------+-------------+--------------+--------------+---------------------+----------------------------------------------------+
 
-actor session            | EVENT_RATE=1   WINDOW_SIZE=3   COUNT_THRESHOLD=100  PROCESSING_INTERVAL_MS=5000  DENSITY_FACTOR=1.0
-actor dynamic            | EVENT_RATE=50  WINDOW_SIZE=5   COUNT_THRESHOLD=100  PROCESSING_INTERVAL_MS=5000  DENSITY_FACTOR=1.0
-actor adaptive           | EVENT_RATE=50  WINDOW_SIZE=5   COUNT_THRESHOLD=100  PROCESSING_INTERVAL_MS=5000  DENSITY_FACTOR=1.0
-actor multitrigger       | EVENT_RATE=50  WINDOW_SIZE=10  COUNT_THRESHOLD=100  PROCESSING_INTERVAL_MS=5000  DENSITY_FACTOR=1.0
+3. Actor model (processing‑time only)
++--------------+------------------+-------------+--------------+--------------+---------------------+----------------------------------------------------+
+| Window       | Timestamp pattern| Rate pattern| EVENT_RATE   | WINDOW_SIZE  | WM_OUT_OF_ORDERNESS | Notes                                              |
++--------------+------------------+-------------+--------------+--------------+---------------------+----------------------------------------------------+
+| session      | any              | constant    | 1            | 3            | 0                   | Session windows behave like PT windows.            |
+| dynamic      | any              | wave        | 50           | 5            | 0                   | No event‑time; boundaries based on PT.             |
+| adaptive     | any              | wave        | 50           | 5            | 0                   | Adaptive PT windows.                               |
+| multitrigger | any              | any         | 50           | 10           | 0                   | Pure PT; ideal for comparison.                     |
++--------------+------------------+-------------+--------------+--------------+---------------------+----------------------------------------------------+
 
-log session              | EVENT_RATE=1   WINDOW_SIZE=3   COUNT_THRESHOLD=100  PROCESSING_INTERVAL_MS=5000  DENSITY_FACTOR=1.0
-log dynamic              | EVENT_RATE=50  WINDOW_SIZE=5   COUNT_THRESHOLD=100  PROCESSING_INTERVAL_MS=5000  DENSITY_FACTOR=1.0
-log adaptive             | EVENT_RATE=50  WINDOW_SIZE=5   COUNT_THRESHOLD=100  PROCESSING_INTERVAL_MS=5000  DENSITY_FACTOR=1.0
-log multitrigger         | EVENT_RATE=50  WINDOW_SIZE=10  COUNT_THRESHOLD=100  PROCESSING_INTERVAL_MS=5000  DENSITY_FACTOR=1.0
+4. Log model (ingestion‑time)
++--------------+------------------+-------------+--------------+--------------+---------------------+----------------------------------------------------+
+| Window       | Timestamp pattern| Rate pattern| EVENT_RATE   | WINDOW_SIZE  | WM_OUT_OF_ORDERNESS | Notes                                              |
++--------------+------------------+-------------+--------------+--------------+---------------------+----------------------------------------------------+
+| session      | realtime         | constant    | 1            | 3            | 0                   | Ingestion‑time windows; no lateness.               |
+| dynamic      | realtime         | constant    | 50           | 5            | 0                   | Ingestion‑time dynamic windows.                    |
+| adaptive     | realtime         | wave        | 50           | 5            | 0                   | Adaptive ingestion‑time windows.                   |
+| multitrigger | any              | any         | 50           | 10           | 0                   | PT windows; ingestion‑time irrelevant.             |
++--------------+------------------+-------------+--------------+--------------+---------------------+----------------------------------------------------+
+
+
+Experiment Configuration Parameters
++-----------------------------+-------------------+---------------------------+----------------------------------------------+----------------------------------------------+
+| Parameter                   | Category          | Possible Values           | Description                                  | Impact on Experiment                         |
++-----------------------------+-------------------+---------------------------+----------------------------------------------+----------------------------------------------+
+| STREAM_MODEL                | Processing Model  | dataflow, microbatch,     | Selects time semantics.                      | Determines event‑time vs processing‑time     |
+|                             |                   | actor, log                |                                              | behavior of windows.                         |
++-----------------------------+-------------------+---------------------------+----------------------------------------------+----------------------------------------------+
+| WINDOW_STRATEGY             | Windowing         | session, dynamic,         | Selects windowing algorithm.                 | Defines window formation and triggers.       |
+|                             |                   | adaptive, multitrigger    |                                              |                                              |
+| WINDOW_SIZE                 | Windowing         | Integer (sec)             | Base window size or session gap.             | Controls window boundaries.                  |
+| COUNT_THRESHOLD             | Windowing         | Integer                   | Count trigger threshold.                     | Affects multitrigger firing frequency.       |
+| PROCESSING_INTERVAL_MS      | Windowing         | Integer (ms)              | Processing‑time trigger interval.            | Controls periodic flushing.                  |
+| DENSITY_FACTOR              | Windowing         | Float                     | Adaptive window sensitivity.                 | Controls adaptive window resizing.           |
++-----------------------------+-------------------+---------------------------+----------------------------------------------+----------------------------------------------+
+| WATERMARK_OUT_OF_ORDERNESS  | Watermarks        | Integer (sec)             | Allowed lateness for event‑time windows.     | Must be 0 for ideal timestamps; >0 for skew. |
+| WATERMARK_MAX_DELAY_MS      | Watermarks        | Integer (ms)              | Fine‑grained lateness override.              | Precise watermark control.                   |
+| MICROBATCH_WM_DELAY_MS      | Watermarks        | Integer (ms)              | Watermark delay for microbatch model.        | Defines microbatch granularity.              |
++-----------------------------+-------------------+---------------------------+----------------------------------------------+----------------------------------------------+
+| TIMESTAMP_PATTERN           | Timestamp Model   | realtime, skewed, late    | Controls timestamp generation.               | Determines ordering, skew, lateness.         |
+| MAX_SKEW_MS                 | Timestamp Model   | Integer (ms)              | Max jitter for skewed timestamps.            | Simulates clock drift.                       |
+| MAX_DELAY_MS                | Timestamp Model   | Integer (ms)              | Max lateness for late events.                | Simulates buffering and delayed sensors.     |
++-----------------------------+-------------------+---------------------------+----------------------------------------------+----------------------------------------------+
+| EVENT_RATE_PATTERN          | Rate Model        | constant, burst, wave     | Controls event emission pattern.             | Simulates stable, bursty, or periodic load.  |
+| EVENT_RATE                  | Rate Model        | Integer (events/sec)      | Base rate for constant pattern.              | Controls throughput.                         |
+| BURST_RATE                  | Rate Model        | Integer                   | Rate during burst phase.                     | Simulates high‑load bursts.                  |
+| BURST_DURATION_MS           | Rate Model        | Integer (ms)              | Duration of burst phase.                     | Controls burst length.                       |
+| PAUSE_MS                    | Rate Model        | Integer (ms)              | Duration of pause phase.                     | Controls idle periods.                       |
+| WAVE_MIN                    | Rate Model        | Integer                   | Minimum wave rate.                           | Lower bound of periodic load.                |
+| WAVE_MAX                    | Rate Model        | Integer                   | Maximum wave rate.                           | Upper bound of periodic load.                |
+| WAVE_PERIOD_MS              | Rate Model        | Integer (ms)              | Duration of wave cycle.                      | Controls oscillation frequency.              |
++-----------------------------+-------------------+---------------------------+----------------------------------------------+----------------------------------------------+
+| NUM_VEHICLES                | Key Space         | Integer                   | Number of unique keys.                       | Controls key cardinality and window parallel |
+|                             |                   |                           |                                              | ism.                                         |
++-----------------------------+-------------------+---------------------------+----------------------------------------------+----------------------------------------------+
+
+Canonical 16‑experiment matrix 
++----------------+----------------+-------------------+-------------------+-----------------------------+
+| STREAM_MODEL   | WINDOW_STRATEGY| TIMESTAMP_PATTERN | RATE_PATTERN      | WATERMARK_OUT_OF_ORDERNESS |
++----------------+----------------+-------------------+-------------------+-----------------------------+
+| dataflow       | session        | skewed            | constant          | 1                           |
+| dataflow       | dynamic        | late              | wave              | 3                           |
+| dataflow       | adaptive       | skewed            | wave              | 1                           |
+| dataflow       | multitrigger   | realtime          | constant          | 0                           |
++----------------+----------------+-------------------+-------------------+-----------------------------+
+| microbatch     | session        | realtime          | constant          | 0                           |
+| microbatch     | dynamic        | realtime          | constant          | 0                           |
+| microbatch     | adaptive       | realtime          | wave              | 0                           |
+| microbatch     | multitrigger   | realtime          | constant          | 0                           |
++----------------+----------------+-------------------+-------------------+-----------------------------+
+| actor          | session        | realtime          | constant          | 0                           |
+| actor          | dynamic        | realtime          | wave              | 0                           |
+| actor          | adaptive       | realtime          | wave              | 0                           |
+| actor          | multitrigger   | realtime          | constant          | 0                           |
++----------------+----------------+-------------------+-------------------+-----------------------------+
+| log            | session        | realtime          | constant          | 0                           |
+| log            | dynamic        | realtime          | constant          | 0                           |
+| log            | adaptive       | realtime          | wave              | 0                           |
+| log            | multitrigger   | realtime          | constant          | 0                           |
++----------------+----------------+-------------------+-------------------+-----------------------------+

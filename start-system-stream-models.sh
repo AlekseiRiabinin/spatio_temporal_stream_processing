@@ -5,63 +5,227 @@ COMPOSE="docker/docker-compose.stream-models.yml"
 
 MODEL=${1:-dataflow}
 WINDOW=${2:-adaptive}
+TIMESTAMP_PATTERN_ARG=${3:-}
+EVENT_RATE_PATTERN_ARG=${4:-}
 
 echo "=== Starting Stream Models System ==="
-echo "Stream Model:    $MODEL"
-echo "Window Strategy: $WINDOW"
+echo "Stream Model:        $MODEL"
+echo "Window Strategy:     $WINDOW"
+[ -n "$TIMESTAMP_PATTERN_ARG" ] && echo "Timestamp Pattern:   $TIMESTAMP_PATTERN_ARG"
+[ -n "$EVENT_RATE_PATTERN_ARG" ] && echo "Rate Pattern:        $EVENT_RATE_PATTERN_ARG"
 
 # ------------------------------------------------------------
-# Set experiment parameters early (before any docker compose)
+# Canonical experiment configuration
+# Core experimental knobs:
+#   STREAM_MODEL
+#   WINDOW_STRATEGY
+#   TIMESTAMP_PATTERN
+#   EVENT_RATE_PATTERN
+#   EVENT_RATE
+#   WINDOW_SIZE
+#   WATERMARK_OUT_OF_ORDERNESS
 # ------------------------------------------------------------
-set_params() {
-    MODEL=$1
-    WINDOW=$2
+configure_experiment() {
+    local m="$1"
+    local w="$2"
 
-    case "$WINDOW" in
-        session)
-            EVENT_RATE=1
-            WINDOW_SIZE=3
-            COUNT_THRESHOLD=100
-            PROCESSING_INTERVAL_MS=5000
-            DENSITY_FACTOR=1.0
+    # Defaults (can be overridden per regime)
+    EVENT_RATE=50
+    WINDOW_SIZE=5
+    COUNT_THRESHOLD=100
+    PROCESSING_INTERVAL_MS=5000
+    DENSITY_FACTOR=1.0
+    WATERMARK_OUT_OF_ORDERNESS=0
+    MICROBATCH_WM_DELAY_MS=5000
+
+    # Default patterns (can be overridden by CLI args)
+    TIMESTAMP_PATTERN="realtime"
+    EVENT_RATE_PATTERN="constant"
+
+    case "$m:$w" in
+        # ----------------- DATAFLOW (event-time) -----------------
+        dataflow:session)
+            EVENT_RATE=5
+            WINDOW_SIZE=2
+            TIMESTAMP_PATTERN="skewed"      # realistic jitter
+            EVENT_RATE_PATTERN="constant"
+            WATERMARK_OUT_OF_ORDERNESS=1    # > max skew
             ;;
-        dynamic)
+        dataflow:dynamic)
             EVENT_RATE=50
             WINDOW_SIZE=5
-            COUNT_THRESHOLD=100
-            PROCESSING_INTERVAL_MS=5000
-            DENSITY_FACTOR=1.0
+            TIMESTAMP_PATTERN="late"        # late events
+            EVENT_RATE_PATTERN="wave"       # varying load
+            WATERMARK_OUT_OF_ORDERNESS=3
             ;;
-        adaptive)
+        dataflow:adaptive)
             EVENT_RATE=50
             WINDOW_SIZE=5
-            COUNT_THRESHOLD=100
-            PROCESSING_INTERVAL_MS=5000
-            DENSITY_FACTOR=1.0
+            TIMESTAMP_PATTERN="skewed"
+            EVENT_RATE_PATTERN="wave"
+            WATERMARK_OUT_OF_ORDERNESS=1
             ;;
-        multitrigger)
+        dataflow:multitrigger)
             EVENT_RATE=50
             WINDOW_SIZE=10
-            COUNT_THRESHOLD=100
-            PROCESSING_INTERVAL_MS=5000
-            DENSITY_FACTOR=1.0
+            COUNT_THRESHOLD=10
+            PROCESSING_INTERVAL_MS=1000
+            TIMESTAMP_PATTERN="realtime"
+            EVENT_RATE_PATTERN="constant"
+            WATERMARK_OUT_OF_ORDERNESS=0    # PT windows, WM irrelevant
+            ;;
+
+        # ----------------- MICROBATC H (coarse ET) ---------------
+        microbatch:session)
+            EVENT_RATE=20
+            WINDOW_SIZE=3
+            TIMESTAMP_PATTERN="realtime"
+            EVENT_RATE_PATTERN="constant"
+            WATERMARK_OUT_OF_ORDERNESS=0
+            MICROBATCH_WM_DELAY_MS=5000
+            ;;
+        microbatch:dynamic)
+            EVENT_RATE=50
+            WINDOW_SIZE=5
+            TIMESTAMP_PATTERN="realtime"
+            EVENT_RATE_PATTERN="constant"
+            WATERMARK_OUT_OF_ORDERNESS=0
+            MICROBATCH_WM_DELAY_MS=5000
+            ;;
+        microbatch:adaptive)
+            EVENT_RATE=50
+            WINDOW_SIZE=5
+            TIMESTAMP_PATTERN="realtime"
+            EVENT_RATE_PATTERN="wave"
+            WATERMARK_OUT_OF_ORDERNESS=0
+            MICROBATCH_WM_DELAY_MS=5000
+            ;;
+        microbatch:multitrigger)
+            EVENT_RATE=50
+            WINDOW_SIZE=10
+            COUNT_THRESHOLD=10
+            PROCESSING_INTERVAL_MS=1000
+            TIMESTAMP_PATTERN="realtime"
+            EVENT_RATE_PATTERN="constant"
+            WATERMARK_OUT_OF_ORDERNESS=0
+            MICROBATCH_WM_DELAY_MS=5000
+            ;;
+
+        # ----------------- ACTOR (processing-time) ----------------
+        actor:session)
+            EVENT_RATE=20
+            WINDOW_SIZE=3
+            TIMESTAMP_PATTERN="realtime"
+            EVENT_RATE_PATTERN="constant"
+            WATERMARK_OUT_OF_ORDERNESS=0
+            ;;
+        actor:dynamic)
+            EVENT_RATE=50
+            WINDOW_SIZE=5
+            TIMESTAMP_PATTERN="realtime"
+            EVENT_RATE_PATTERN="wave"
+            WATERMARK_OUT_OF_ORDERNESS=0
+            ;;
+        actor:adaptive)
+            EVENT_RATE=50
+            WINDOW_SIZE=5
+            TIMESTAMP_PATTERN="realtime"
+            EVENT_RATE_PATTERN="wave"
+            WATERMARK_OUT_OF_ORDERNESS=0
+            ;;
+        actor:multitrigger)
+            EVENT_RATE=50
+            WINDOW_SIZE=10
+            COUNT_THRESHOLD=10
+            PROCESSING_INTERVAL_MS=1000
+            TIMESTAMP_PATTERN="realtime"
+            EVENT_RATE_PATTERN="constant"
+            WATERMARK_OUT_OF_ORDERNESS=0
+            ;;
+
+        # ----------------- LOG (ingestion-time) -------------------
+        log:session)
+            EVENT_RATE=20
+            WINDOW_SIZE=3
+            TIMESTAMP_PATTERN="realtime"
+            EVENT_RATE_PATTERN="constant"
+            WATERMARK_OUT_OF_ORDERNESS=0
+            ;;
+        log:dynamic)
+            EVENT_RATE=50
+            WINDOW_SIZE=5
+            TIMESTAMP_PATTERN="realtime"
+            EVENT_RATE_PATTERN="constant"
+            WATERMARK_OUT_OF_ORDERNESS=0
+            ;;
+        log:adaptive)
+            EVENT_RATE=50
+            WINDOW_SIZE=5
+            TIMESTAMP_PATTERN="realtime"
+            EVENT_RATE_PATTERN="wave"
+            WATERMARK_OUT_OF_ORDERNESS=0
+            ;;
+        log:multitrigger)
+            EVENT_RATE=50
+            WINDOW_SIZE=10
+            COUNT_THRESHOLD=10
+            PROCESSING_INTERVAL_MS=1000
+            TIMESTAMP_PATTERN="realtime"
+            EVENT_RATE_PATTERN="constant"
+            WATERMARK_OUT_OF_ORDERNESS=0
+            ;;
+        *)
+            echo "Unknown combination: $m + $w"
+            exit 1
             ;;
     esac
+
+    if [ "$TIMESTAMP_PATTERN" = "skewed" ]; then
+        MAX_SKEW_MS=500
+    fi
+
+    # CLI overrides for patterns (if provided)
+    if [ -n "$TIMESTAMP_PATTERN_ARG" ]; then
+        TIMESTAMP_PATTERN="$TIMESTAMP_PATTERN_ARG"
+    fi
+    if [ -n "$EVENT_RATE_PATTERN_ARG" ]; then
+        EVENT_RATE_PATTERN="$EVENT_RATE_PATTERN_ARG"
+    fi
 }
 
-# Load parameters for single-run mode
-if [ "$MODEL" != "matrix" ]; then
-    set_params "$MODEL" "$WINDOW"
-fi
+# ------------------------------------------------------------
+# Export experiment parameters
+# ------------------------------------------------------------
+export_experiment_env() {
+    export STREAM_MODEL="$MODEL"
+    export WINDOW_STRATEGY="$WINDOW"
+    export EVENT_RATE="$EVENT_RATE"
+    export WINDOW_SIZE="$WINDOW_SIZE"
+    export COUNT_THRESHOLD="$COUNT_THRESHOLD"
+    export PROCESSING_INTERVAL_MS="$PROCESSING_INTERVAL_MS"
+    export DENSITY_FACTOR="$DENSITY_FACTOR"
+    export WATERMARK_OUT_OF_ORDERNESS="$WATERMARK_OUT_OF_ORDERNESS"
+    export WATERMARK_MAX_DELAY_MS=""          # optional override
+    export MICROBATCH_WM_DELAY_MS="$MICROBATCH_WM_DELAY_MS"
+    export TIMESTAMP_PATTERN="$TIMESTAMP_PATTERN"
+    export EVENT_RATE_PATTERN="$EVENT_RATE_PATTERN"
+    export MAX_SKEW_MS
 
-# Export BEFORE any docker compose command
-export STREAM_MODEL="$MODEL"
-export WINDOW_STRATEGY="$WINDOW"
-export EVENT_RATE="$EVENT_RATE"
-export WINDOW_SIZE="$WINDOW_SIZE"
-export COUNT_THRESHOLD="$COUNT_THRESHOLD"
-export PROCESSING_INTERVAL_MS="$PROCESSING_INTERVAL_MS"
-export DENSITY_FACTOR="$DENSITY_FACTOR"
+    echo "=== Experiment Parameters ==="
+    echo "STREAM_MODEL               = $STREAM_MODEL"
+    echo "WINDOW_STRATEGY            = $WINDOW_STRATEGY"
+    echo "TIMESTAMP_PATTERN          = $TIMESTAMP_PATTERN"
+    echo "EVENT_RATE_PATTERN         = $EVENT_RATE_PATTERN"
+    echo "EVENT_RATE                 = $EVENT_RATE"
+    echo "WINDOW_SIZE                = $WINDOW_SIZE"
+    echo "COUNT_THRESHOLD            = $COUNT_THRESHOLD"
+    echo "PROCESSING_INTERVAL_MS     = $PROCESSING_INTERVAL_MS"
+    echo "DENSITY_FACTOR             = $DENSITY_FACTOR"
+    echo "WATERMARK_OUT_OF_ORDERNESS = $WATERMARK_OUT_OF_ORDERNESS"
+    echo "MICROBATCH_WM_DELAY_MS     = $MICROBATCH_WM_DELAY_MS"
+    echo "MAX_SKEW_MS                = $MAX_SKEW_MS"
+    echo "===================================="
+}
 
 # ------------------------------------------------------------
 # Utility: check if service exists
@@ -92,7 +256,6 @@ wait_for_jobmanager() {
 # Kafka topics
 # ------------------------------------------------------------
 create_kafka_topics() {
-
     echo "=== Creating Kafka topics ==="
     sleep 5
 
@@ -150,53 +313,43 @@ start_producer() {
     docker compose -f "$COMPOSE" up -d geo_producer_stream_models
 }
 
-
 # ------------------------------------------------------------
 # Start Flink Job
 # ------------------------------------------------------------
 start_job() {
-
     echo "=== Stream Model Job ==="
-    echo "STREAM_MODEL=$MODEL"
-    echo "WINDOW_STRATEGY=$WINDOW"
-    echo "EVENT_RATE=$EVENT_RATE"
-    echo "WINDOW_SIZE=$WINDOW_SIZE"
-    echo "COUNT_THRESHOLD=$COUNT_THRESHOLD"
-    echo "PROCESSING_INTERVAL_MS=$PROCESSING_INTERVAL_MS"
-    echo "DENSITY_FACTOR=$DENSITY_FACTOR"
-
-    export STREAM_MODEL WINDOW_STRATEGY EVENT_RATE WINDOW_SIZE COUNT_THRESHOLD PROCESSING_INTERVAL_MS DENSITY_FACTOR
-
+    export_experiment_env
     docker compose -f "$COMPOSE" up -d geoflink_stream_models_job
 }
 
 # ------------------------------------------------------------
-# Matrix Experiments
+# Canonical 16-experiment matrix
+#   4 models × 4 window strategies
+#   Each with a fixed canonical timestamp + rate pattern
 # ------------------------------------------------------------
 run_matrix() {
-
     MODELS=("dataflow" "microbatch" "actor" "log")
     WINDOWS=("session" "dynamic" "adaptive" "multitrigger")
 
     for m in "${MODELS[@]}"; do
         for w in "${WINDOWS[@]}"; do
+            MODEL="$m"
+            WINDOW="$w"
 
             echo ""
             echo "===================================="
-            echo "Running: $m + $w"
+            echo "Running canonical regime: $m + $w"
             echo "===================================="
 
-            set_params "$m" "$w"
-
-            export STREAM_MODEL="$m" WINDOW_STRATEGY="$w" \
-                   EVENT_RATE WINDOW_SIZE COUNT_THRESHOLD PROCESSING_INTERVAL_MS DENSITY_FACTOR
+            configure_experiment "$MODEL" "$WINDOW"
+            export_experiment_env
 
             docker compose -f "$COMPOSE" up -d geoflink_stream_models_job
 
+            # Let it run for some time (adjust as needed)
             sleep 20
 
             docker compose -f "$COMPOSE" stop geoflink_stream_models_job
-
         done
     done
 }
@@ -205,7 +358,7 @@ run_matrix() {
 # MAIN
 # ------------------------------------------------------------
 if [ "$MODEL" = "matrix" ]; then
-
+    # Matrix mode: run canonical 16 regimes
     start_kafka
     create_kafka_topics
     start_flink
@@ -214,10 +367,9 @@ if [ "$MODEL" = "matrix" ]; then
     start_producer
 
     run_matrix
-
 else
-
-    set_params "$MODEL" "$WINDOW"
+    # Single experiment mode
+    configure_experiment "$MODEL" "$WINDOW"
 
     start_kafka
     create_kafka_topics
@@ -226,18 +378,17 @@ else
     # start_kafdrop
     start_job
     start_producer
-
 fi
 
 echo ""
 echo "======================================"
 echo "System Ready"
 echo "======================================"
-
-echo "Flink UI: http://localhost:8081"
+echo "Flink UI:   http://localhost:8081"
 echo "Prometheus: http://localhost:9091"
-echo "Kafdrop: http://localhost:9003"
+echo "Kafdrop:    http://localhost:9003"
 
-
-# Example:
-# ./start-system-stream-models.sh dataflow session
+# Examples:
+#   ./start-system-stream-models.sh dataflow session
+#   ./start-system-stream-models.sh dataflow adaptive skewed wave
+#   ./start-system-stream-models.sh matrix

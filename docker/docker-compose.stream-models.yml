@@ -61,7 +61,7 @@ services:
 
       # --- Timestamp patterns ---
       TIMESTAMP_PATTERN: ${TIMESTAMP_PATTERN:-realtime}
-      MAX_SKEW_MS: ${MAX_SKEW_MS:-2000}
+      MAX_SKEW_MS: ${MAX_SKEW_MS:-500}
       MAX_DELAY_MS: ${MAX_DELAY_MS:-5000}
 
       # --- Number of logical keys (vehicles) ---
@@ -158,6 +158,9 @@ services:
       COUNT_THRESHOLD: ${COUNT_THRESHOLD:-100}                 # for multitrigger
       PROCESSING_INTERVAL_MS: ${PROCESSING_INTERVAL_MS:-5000}  # for multitrigger
       DENSITY_FACTOR: ${DENSITY_FACTOR:-1.0}                   # for dynamic windows
+      WATERMARK_OUT_OF_ORDERNESS: ${WATERMARK_OUT_OF_ORDERNESS:-0}
+      WATERMARK_MAX_DELAY_MS: ${WATERMARK_MAX_DELAY_MS:-}
+
 
       # --- Checkpointing & restart strategy ---
       CHECKPOINT_INTERVAL: "15000"

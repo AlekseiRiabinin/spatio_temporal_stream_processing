@@ -46,8 +46,6 @@ object StreamTopology {
         .map { r: WindowResult[K] => r }
         .name("TopologyDebugSink")
 
-    debugged.print().name("PrintSink")
-
     debugged
   }
 }
