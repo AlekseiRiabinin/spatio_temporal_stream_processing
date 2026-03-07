@@ -67,9 +67,12 @@ services:
       # --- Number of logical keys (vehicles) ---
       KEYS: ${KEYS:-10}
 
+      # --- Debug selection ---
+      DEBUG_TIMESTAMPS: ${DEBUG_TIMESTAMPS:-true}
+      DEBUG_WATERMARKS: ${DEBUG_WATERMARKS:-true}
+
     networks: [kafka-net]
     restart: unless-stopped
-
 
   # ============================================================
   # 3. STREAM PROCESSING LAYER (Flink + GeoFlink)

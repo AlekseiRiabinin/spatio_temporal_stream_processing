@@ -1,4 +1,4 @@
-package phd.streammodels.windows
+package phd.streammodels.window
 
 import org.apache.flink.streaming.api.scala.DataStream
 import phd.streammodels.model.{Event, WindowResult} 

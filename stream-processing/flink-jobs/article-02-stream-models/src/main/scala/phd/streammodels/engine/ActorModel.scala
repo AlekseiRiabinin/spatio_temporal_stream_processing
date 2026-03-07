@@ -1,9 +1,9 @@
-package phd.streammodels.algorithms
+package phd.streammodels.engine
 
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.streaming.api.scala._
 import phd.streammodels.model.{Event, WindowResult, StreamModelType}
-import phd.streammodels.windows.WindowStrategy
+import phd.streammodels.window.WindowStrategy
 
 
 /**

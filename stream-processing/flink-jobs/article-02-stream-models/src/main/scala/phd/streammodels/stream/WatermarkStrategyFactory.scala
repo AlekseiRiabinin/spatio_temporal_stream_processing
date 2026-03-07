@@ -9,7 +9,7 @@ object WatermarkStrategyFactory {
 
   /**
     * Event-time watermark strategy with bounded out-of-orderness.
-    * Emits Flink watermark-lag metrics (Prometheus-compatible).
+    * Emits watermark-lag metrics and debug logs.
     */
   def eventTimeWatermarks(maxOutOfOrdernessSeconds: Long): WatermarkStrategy[Event] = {
 
@@ -19,13 +19,25 @@ object WatermarkStrategyFactory {
         context: TimestampAssignerSupplier.Context
       ): TimestampAssigner[Event] =
         new TimestampAssigner[Event] {
+
+          private val debug =
+            sys.env.getOrElse("DEBUG_TIMESTAMPS", "true").toBoolean
+
           override def extractTimestamp(
             element: Event,
             recordTimestamp: Long
           ): Long = {
-            // Trust event timestamps directly.
-            val now = System.currentTimeMillis()
-            Math.min(element.eventTime, now)
+
+            val ts = element.eventTime
+
+            if (debug) {
+              val now = System.currentTimeMillis()
+              println(
+                s"[TIMESTAMP] eventTime=$ts processingTime=$now lag=${now - ts}"
+              )
+            }
+
+            ts
           }
         }
 
@@ -35,15 +47,18 @@ object WatermarkStrategyFactory {
 
         private var maxTs: Long = Long.MinValue
 
-        // Allow override in milliseconds
-        private val maxOutOfOrdernessMs: Long = {
-          val fromEnvMs = sys.env.get("WATERMARK_MAX_DELAY_MS").map(_.toLong)
-          fromEnvMs.getOrElse(maxOutOfOrdernessSeconds * 1000)
-        }
+        private val maxOutOfOrdernessMs: Long =
+          sys.env
+            .get("WATERMARK_MAX_DELAY_MS")
+            .map(_.toLong)
+            .getOrElse(maxOutOfOrdernessSeconds * 1000)
 
         @transient private var lastLag: Long = 0L
 
-        // Register gauge
+        private val debug =
+          sys.env.getOrElse("DEBUG_WATERMARKS", "true").toBoolean
+
+        // Register metric for Prometheus
         context
           .getMetricGroup
           .gauge[Long, Gauge[Long]](
@@ -58,40 +73,50 @@ object WatermarkStrategyFactory {
           eventTimestamp: Long,
           output: WatermarkOutput
         ): Unit = {
-          maxTs = Math.max(maxTs, eventTimestamp)
+
+          if (eventTimestamp > maxTs)
+            maxTs = eventTimestamp
         }
 
         override def onPeriodicEmit(output: WatermarkOutput): Unit = {
+
+          if (maxTs == Long.MinValue)
+            return
+
+          val currentTime = System.currentTimeMillis()
 
           val watermark = maxTs - maxOutOfOrdernessMs
 
           val windowSizeMs =
             if (maxOutOfOrdernessMs > 0) maxOutOfOrdernessMs else 1000L
 
-          val nextWindowEnd = ((watermark / windowSizeMs) + 1) * windowSizeMs
+          val nextWindowEnd =
+            ((watermark / windowSizeMs) + 1) * windowSizeMs
 
-          println(
-            s"""
-               |[WATERMARK]
-               |  watermark     = $watermark
-               |  maxTs         = $maxTs
-               |  nextWindowEnd = $nextWindowEnd
-               |  currentTime   = ${System.currentTimeMillis()}
-               |  outOfOrderMs  = $maxOutOfOrdernessMs
-               |""".stripMargin
-          )
+          if (debug) {
+            println(
+              s"""
+                 |[WATERMARK]
+                 |  watermark     = $watermark
+                 |  maxTs         = $maxTs
+                 |  nextWindowEnd = $nextWindowEnd
+                 |  currentTime   = $currentTime
+                 |  outOfOrderMs  = $maxOutOfOrdernessMs
+                 |""".stripMargin
+            )
+          }
 
-          lastLag = maxTs - watermark
+          lastLag = currentTime - watermark
+
           output.emitWatermark(new Watermark(watermark))
         }
       }
     }
   }
 
-
   def forModel(modelType: StreamModelType): WatermarkStrategy[Event] = {
 
-    val maxOutOfOrdernessSeconds: Long =
+    val maxOutOfOrdernessSeconds =
       sys.env.getOrElse("WATERMARK_OUT_OF_ORDERNESS", "5").toLong
 
     modelType match {
@@ -101,6 +126,7 @@ object WatermarkStrategyFactory {
 
       case StreamModelType.MicroBatch =>
         new WatermarkStrategy[Event] {
+
           override def createTimestampAssigner(
             context: TimestampAssignerSupplier.Context
           ): TimestampAssigner[Event] =

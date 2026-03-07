@@ -1,8 +1,8 @@
-package phd.streammodels.windows
+package phd.streammodels.window
 
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.streaming.api.scala._
-import org.apache.flink.streaming.api.windowing.assigners.EventTimeSessionWindows
+import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows
 import org.apache.flink.streaming.api.windowing.time.Time
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow
 import org.apache.flink.util.Collector
@@ -10,22 +10,33 @@ import phd.streammodels.model.{Event, WindowResult}
 import phd.streammodels.model.TypeInfos._
 
 
-class SessionWindowStrategy[K : TypeInformation](
-  sessionGapSeconds: Long,
+class DynamicWindowStrategy[K : TypeInformation](
+  baseWindowSeconds: Long,
+  densityFactor: Double,
   keySelector: Event => K
 ) extends WindowStrategy[K] {
 
-  override val name: String = "session"
+  override val name: String = "dynamic"
 
   override def applyWindow(
     stream: DataStream[Event]
   ): DataStream[WindowResult[K]] = {
 
-    println(s"[WINDOW] Applying SessionWindowStrategy gap=$sessionGapSeconds")
+    val adjustedSeconds =
+      Math.max(1, (baseWindowSeconds / (1.0 + densityFactor)).toLong)
+
+    println(
+      s"""
+         |[WINDOW] Applying DynamicWindowStrategy
+         |    baseWindowSeconds = $baseWindowSeconds
+         |    densityFactor     = $densityFactor
+         |    adjustedSeconds   = $adjustedSeconds
+         |""".stripMargin
+    )
 
     stream
       .keyBy(keySelector)
-      .window(EventTimeSessionWindows.withGap(Time.seconds(sessionGapSeconds)))
+      .window(TumblingEventTimeWindows.of(Time.seconds(adjustedSeconds)))
       .apply { (
         key: K,
         window: TimeWindow,

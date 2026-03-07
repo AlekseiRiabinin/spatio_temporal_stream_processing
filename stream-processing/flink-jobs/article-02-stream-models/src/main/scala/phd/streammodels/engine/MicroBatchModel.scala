@@ -1,23 +1,23 @@
-package phd.streammodels.algorithms
+package phd.streammodels.engine
 
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.streaming.api.scala._
 import phd.streammodels.model.{Event, WindowResult, StreamModelType}
 import phd.streammodels.stream.WatermarkStrategyFactory
-import phd.streammodels.windows.WindowStrategy
+import phd.streammodels.window.WindowStrategy
 
 
 /**
-  * Log stream model (Article 2):
-  * - Ingestion-time semantics
-  * - Watermarks assume monotonically increasing timestamps
-  * - Timestamp = system ingestion time, not event.eventTime
+  * MicroBatch stream model (Article 2):
+  * - Coarse-grained event-time semantics
+  * - Watermarks advance in batch-sized jumps
+  * - Simulates mini-batch processing inside Flink
   */
-class LogModel[K : TypeInformation](
+class MicroBatchModel[K : TypeInformation](
   env: StreamExecutionEnvironment
 ) extends StreamModel[K] {
 
-  override val modelType: StreamModelType = StreamModelType.Log
+  override val modelType: StreamModelType = StreamModelType.MicroBatch
 
   override def buildPipeline(
     source: DataStream[Event],
@@ -32,7 +32,7 @@ class LogModel[K : TypeInformation](
         |""".stripMargin
     )
 
-    // Assign ingestion-time timestamps and monotonic watermarks
+    // Assign coarse watermarks (batch-like)
     val withWatermarks: DataStream[Event] =
       source.assignTimestampsAndWatermarks(
         WatermarkStrategyFactory.forModel(modelType)

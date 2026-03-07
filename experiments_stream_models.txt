@@ -82,7 +82,7 @@ Experiment Configuration Parameters
 
 Canonical 16‑experiment matrix 
 +----------------+----------------+-------------------+-------------------+-----------------------------+
-| STREAM_MODEL   | WINDOW_STRATEGY| TIMESTAMP_PATTERN | RATE_PATTERN      | WATERMARK_OUT_OF_ORDERNESS |
+| STREAM_MODEL   | WINDOW_STRATEGY| TIMESTAMP_PATTERN | RATE_PATTERN      | WATERMARK_OUT_OF_ORDERNESS  |
 +----------------+----------------+-------------------+-------------------+-----------------------------+
 | dataflow       | session        | skewed            | constant          | 1                           |
 | dataflow       | dynamic        | late              | wave              | 3                           |

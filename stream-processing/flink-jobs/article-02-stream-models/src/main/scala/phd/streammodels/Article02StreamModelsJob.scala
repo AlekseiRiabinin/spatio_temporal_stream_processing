@@ -7,8 +7,8 @@ import org.apache.flink.streaming.api.CheckpointingMode
 
 import phd.streammodels.model._
 import phd.streammodels.stream._
-import phd.streammodels.windows._
-import phd.streammodels.algorithms._
+import phd.streammodels.window._
+import phd.streammodels.engine._
 import phd.streammodels.util._
 
 

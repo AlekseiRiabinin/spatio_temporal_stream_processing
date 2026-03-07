@@ -1,4 +1,4 @@
-package phd.streammodels.windows
+package phd.streammodels.window
 
 import org.apache.flink.api.common.state.{ValueState, ValueStateDescriptor}
 import org.apache.flink.api.common.typeinfo.TypeInformation

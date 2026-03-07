@@ -4,8 +4,8 @@ import org.apache.flink.streaming.api.scala._
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.scala.createTypeInformation
 import phd.streammodels.model.{Event, WindowResult}
-import phd.streammodels.algorithms.StreamModel
-import phd.streammodels.windows.WindowStrategy
+import phd.streammodels.engine.StreamModel
+import phd.streammodels.window.WindowStrategy
 import phd.streammodels.model.TypeInfos._
 
 

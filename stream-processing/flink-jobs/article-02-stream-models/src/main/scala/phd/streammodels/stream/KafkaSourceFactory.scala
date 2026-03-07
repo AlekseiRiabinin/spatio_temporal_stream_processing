@@ -14,7 +14,7 @@ import java.io.IOException
 
 import phd.streammodels.model.Event
 import phd.streammodels.model.TypeInfos._
-import phd.streammodels.util.{GeometryUtils, TimeUtils}
+import phd.streammodels.util.GeometryUtils
 
 
 object KafkaSourceFactory {

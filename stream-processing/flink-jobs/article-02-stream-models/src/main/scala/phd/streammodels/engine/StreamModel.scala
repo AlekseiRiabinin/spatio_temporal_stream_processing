@@ -1,8 +1,8 @@
-package phd.streammodels.algorithms
+package phd.streammodels.engine
 
 import org.apache.flink.streaming.api.scala.DataStream
 import phd.streammodels.model.{Event, WindowResult, StreamModelType}
-import phd.streammodels.windows.WindowStrategy
+import phd.streammodels.window.WindowStrategy
 
 
 // Generic in K: the key / partition type

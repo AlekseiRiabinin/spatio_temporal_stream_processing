@@ -1,23 +1,23 @@
-package phd.streammodels.algorithms
+package phd.streammodels.engine
 
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.streaming.api.scala._
 import phd.streammodels.model.{Event, WindowResult, StreamModelType}
 import phd.streammodels.stream.WatermarkStrategyFactory
-import phd.streammodels.windows.WindowStrategy
+import phd.streammodels.window.WindowStrategy
 
 
 /**
-  * Dataflow stream model (Article 2):
-  * - Event-time semantics
-  * - Uses WatermarkStrategyFactory.forModel(StreamModelType.Dataflow)
-  * - Delegates windowing to a WindowStrategy[K]
+  * Log stream model (Article 2):
+  * - Ingestion-time semantics
+  * - Watermarks assume monotonically increasing timestamps
+  * - Timestamp = system ingestion time, not event.eventTime
   */
-class DataflowModel[K : TypeInformation](
+class LogModel[K : TypeInformation](
   env: StreamExecutionEnvironment
 ) extends StreamModel[K] {
 
-  override val modelType: StreamModelType = StreamModelType.Dataflow
+  override val modelType: StreamModelType = StreamModelType.Log
 
   override def buildPipeline(
     source: DataStream[Event],
@@ -32,11 +32,13 @@ class DataflowModel[K : TypeInformation](
         |""".stripMargin
     )
 
+    // Assign ingestion-time timestamps and monotonic watermarks
     val withWatermarks: DataStream[Event] =
       source.assignTimestampsAndWatermarks(
         WatermarkStrategyFactory.forModel(modelType)
       )
 
+    // Delegate windowing to the strategy
     windowStrategy.applyWindow(withWatermarks)
   }
 }
