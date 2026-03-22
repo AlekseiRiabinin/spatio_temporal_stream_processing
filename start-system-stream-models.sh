@@ -75,7 +75,7 @@ configure_experiment() {
             WATERMARK_OUT_OF_ORDERNESS=0    # PT windows, WM irrelevant
             ;;
 
-        # ----------------- MICROBATC H (coarse ET) ---------------
+        # ----------------- MICROBATCH (coarse ET) ---------------
         microbatch:session)
             EVENT_RATE=20
             WINDOW_SIZE=3
@@ -88,7 +88,7 @@ configure_experiment() {
             EVENT_RATE=50
             WINDOW_SIZE=5
             TIMESTAMP_PATTERN="realtime"
-            EVENT_RATE_PATTERN="constant"
+            EVENT_RATE_PATTERN="burst"
             WATERMARK_OUT_OF_ORDERNESS=0
             MICROBATCH_WM_DELAY_MS=5000
             ;;
@@ -148,7 +148,7 @@ configure_experiment() {
             EVENT_RATE=20
             WINDOW_SIZE=3
             TIMESTAMP_PATTERN="realtime"
-            EVENT_RATE_PATTERN="constant"
+            EVENT_RATE_PATTERN="burst"
             WATERMARK_OUT_OF_ORDERNESS=0
             ;;
         log:dynamic)

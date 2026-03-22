@@ -89,7 +89,7 @@ Canonical 16‑experiment matrix
 | dataflow       | adaptive       | skewed            | wave              | 1                           |
 | dataflow       | multitrigger   | realtime          | constant          | 0                           |
 +----------------+----------------+-------------------+-------------------+-----------------------------+
-| microbatch     | session        | realtime          | constant          | 0                           |
+| microbatch     | session        | realtime          | burst             | 0                           |
 | microbatch     | dynamic        | realtime          | constant          | 0                           |
 | microbatch     | adaptive       | realtime          | wave              | 0                           |
 | microbatch     | multitrigger   | realtime          | constant          | 0                           |
@@ -99,7 +99,7 @@ Canonical 16‑experiment matrix
 | actor          | adaptive       | realtime          | wave              | 0                           |
 | actor          | multitrigger   | realtime          | constant          | 0                           |
 +----------------+----------------+-------------------+-------------------+-----------------------------+
-| log            | session        | realtime          | constant          | 0                           |
+| log            | session        | realtime          | burst             | 0                           |
 | log            | dynamic        | realtime          | constant          | 0                           |
 | log            | adaptive       | realtime          | wave              | 0                           |
 | log            | multitrigger   | realtime          | constant          | 0                           |

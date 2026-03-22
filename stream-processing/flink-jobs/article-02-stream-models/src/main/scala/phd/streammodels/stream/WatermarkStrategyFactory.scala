@@ -130,7 +130,14 @@ object WatermarkStrategyFactory {
           override def createTimestampAssigner(
             context: TimestampAssignerSupplier.Context
           ): TimestampAssigner[Event] =
-            (event: Event, _: Long) => event.eventTime
+            new TimestampAssigner[Event] {
+              override def extractTimestamp(event: Event, recordTimestamp: Long): Long = {
+                val ts = event.eventTime
+                val now = System.currentTimeMillis()
+                println(s"[TIMESTAMP] eventTime=$ts processingTime=$now lag=${now - ts}")
+                ts
+              }
+            }
 
           override def createWatermarkGenerator(
             context: WatermarkGeneratorSupplier.Context
@@ -149,6 +156,16 @@ object WatermarkStrategyFactory {
               override def onPeriodicEmit(output: WatermarkOutput): Unit = {
                 val now = System.currentTimeMillis()
                 val wm = now - batchSizeMs
+
+                println(
+                  s"""
+                    |[WATERMARK]
+                    |  watermark     = $wm
+                    |  currentTime   = $now
+                    |  batchSizeMs   = $batchSizeMs
+                    |""".stripMargin
+                )
+
                 output.emitWatermark(new Watermark(wm))
               }
             }
