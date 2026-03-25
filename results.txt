@@ -1,0 +1,96 @@
+Processing logs/actor_adaptive_20260324_004516.log
+Event latency (ms): 0.00
+Watermark lag (ms): 0.00
+Window latency (ms): 236.05
+Throughput (windows/sec): 2.02
+----------------------
+Processing logs/actor_dynamic_20260324_003338.log
+Event latency (ms): 0.00
+Watermark lag (ms): 0.00
+Window latency (ms): 165.91
+Throughput (windows/sec): 5.02
+----------------------
+Processing logs/actor_multitrigger_20260324_005745.log
+Event latency (ms): 0.00
+Watermark lag (ms): 0.00
+Window latency (ms): -4469.83
+Throughput (windows/sec): 38.74
+----------------------
+Processing logs/actor_session_20260324_002116.log
+Event latency (ms): 0.00
+Watermark lag (ms): 0.00
+Window latency (ms): 143.00
+Throughput (windows/sec): 0.05
+----------------------
+Processing logs/dataflow_adaptive_20260323_213148.log
+Event latency (ms): 469.66
+Watermark lag (ms): 681.71
+Window latency (ms): 916.37
+Throughput (windows/sec): 2.02
+----------------------
+Processing logs/dataflow_dynamic_20260323_212014.log
+Event latency (ms): 2605.53
+Watermark lag (ms): 3400.41
+Window latency (ms): 3547.76
+Throughput (windows/sec): 5.05
+----------------------
+Processing logs/dataflow_multitrigger_20260323_214242.log
+Event latency (ms): 92.24
+Watermark lag (ms): 15.78
+Window latency (ms): -4443.49
+Throughput (windows/sec): 39.08
+----------------------
+Processing logs/dataflow_session_20260323_210736.log
+Event latency (ms): 465.51
+Watermark lag (ms): 1006.85
+Window latency (ms): 1219.53
+Throughput (windows/sec): 1.85
+----------------------
+Processing logs/log_adaptive_20260324_230950.log
+Event latency (ms): 0.00
+Watermark lag (ms): 0.00
+Window latency (ms): 192.76
+Throughput (windows/sec): 2.02
+----------------------
+Processing logs/log_dynamic_20260324_225935.log
+Event latency (ms): 0.00
+Watermark lag (ms): 0.00
+Window latency (ms): 139.78
+Throughput (windows/sec): 5.02
+----------------------
+Processing logs/log_multitrigger_20260324_232142.log
+Event latency (ms): 0.00
+Watermark lag (ms): 0.00
+Window latency (ms): -4383.63
+Throughput (windows/sec): 39.18
+----------------------
+Processing logs/log_session_20260324_224844.log
+Event latency (ms): 0.00
+Watermark lag (ms): 0.00
+Window latency (ms): 177.74
+Throughput (windows/sec): 0.68
+----------------------
+Processing logs/microbatch_adaptive_20260323_221748.log
+Event latency (ms): 103.99
+Watermark lag (ms): 0.00
+Window latency (ms): 5220.60
+Throughput (windows/sec): 2.02
+----------------------
+Processing logs/microbatch_dynamic_20260323_220555.log
+Event latency (ms): 111.46
+Watermark lag (ms): 0.00
+Window latency (ms): 5143.85
+Throughput (windows/sec): 5.02
+----------------------
+Processing logs/microbatch_multitrigger_20260323_222935.log
+Event latency (ms): 108.63
+Watermark lag (ms): 0.00
+Window latency (ms): -4373.43
+Throughput (windows/sec): 39.17
+----------------------
+Processing logs/microbatch_session_20260323_215500.log
+Event latency (ms): 178.54
+Watermark lag (ms): 0.00
+Window latency (ms): 5171.39
+Throughput (windows/sec): 0.68
+----------------------
