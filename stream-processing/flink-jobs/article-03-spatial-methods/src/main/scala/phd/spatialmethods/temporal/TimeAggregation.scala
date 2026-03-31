@@ -1,8 +1,8 @@
 package phd.spatialmethods.temporal
 
+import java.time.{Duration, Instant}
 import phd.spatialmethods.model.{GeoEvent, Trajectory}
 
-import java.time.{Duration, Instant}
 
 /**
  * TimeAggregation provides temporal aggregation methods

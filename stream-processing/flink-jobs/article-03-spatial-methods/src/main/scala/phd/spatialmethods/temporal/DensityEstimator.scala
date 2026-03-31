@@ -1,7 +1,7 @@
 package phd.spatialmethods.temporal
 
-import phd.spatialmethods.model.{GeoEvent, SpatialRegion}
 import java.time.Instant
+import phd.spatialmethods.model.{GeoEvent, SpatialRegion}
 
 
 /**

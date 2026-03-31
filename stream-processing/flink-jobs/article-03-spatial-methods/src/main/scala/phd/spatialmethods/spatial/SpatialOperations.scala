@@ -1,9 +1,8 @@
 package phd.spatialmethods.spatial
 
-import phd.spatialmethods.model.{GeoEvent, SpatialRegion}
-
 import org.locationtech.jts.geom._
 import org.locationtech.jts.io.WKTReader
+import phd.spatialmethods.model.{GeoEvent, SpatialRegion}
 
 
 /**

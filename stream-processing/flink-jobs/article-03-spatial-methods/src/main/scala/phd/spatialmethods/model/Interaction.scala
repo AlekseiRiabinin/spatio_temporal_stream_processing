@@ -9,9 +9,10 @@ import java.time.Instant
  *
  * @param id              Unique interaction identifier
  * @param interactionType Type of interaction (collision, proximity, clustering, conflict)
- * @param objectIds       მონაწილating objects (rover IDs)
+ * @param objectIds       Participating objects (rover IDs)
  * @param timestamp       Event time of interaction
- * @param locationWKT     Geometry where interaction occurred
+ * @param lat             Latitude of interaction center
+ * @param lon             Longitude of interaction center
  * @param severity        Optional severity score (e.g., risk level)
  * @param attributes      Additional metadata
  */
@@ -20,7 +21,8 @@ case class Interaction(
   interactionType: InteractionType,
   objectIds: Seq[String],
   timestamp: Instant,
-  locationWKT: String,
+  lat: Double,
+  lon: Double,
   severity: Option[Double] = None,
   attributes: Map[String, String] = Map.empty
 ) {
@@ -46,21 +48,27 @@ case class Interaction(
   def eventTimeMillis: Long = timestamp.toEpochMilli
 
   /**
+   * Convert to WKT (optional, for storage/export)
+   */
+  def toWKT: String = s"POINT($lon $lat)"
+
+  /**
    * Basic validation
    */
   def isValid: Boolean =
     objectIds.nonEmpty &&
-    locationWKT != null &&
-    locationWKT.nonEmpty
+    lat >= -90 && lat <= 90 &&
+    lon >= -180 && lon <= 180
 
   override def toString: String =
-    s"Interaction(id=$id, type=$interactionType, participants=$participantsCount)"
+    s"Interaction(id=$id, type=$interactionType, participants=$participantsCount, lat=$lat, lon=$lon)"
 }
+
 
 /**
  * Enumeration of supported interaction types
  */
-sealed trait InteractionType
+sealed trait InteractionType extends Serializable
 
 object InteractionType {
 

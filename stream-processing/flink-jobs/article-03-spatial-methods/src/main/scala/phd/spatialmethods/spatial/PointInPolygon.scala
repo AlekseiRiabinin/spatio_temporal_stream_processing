@@ -2,6 +2,7 @@ package phd.spatialmethods.spatial
 
 import org.locationtech.jts.geom.{Coordinate, GeometryFactory, Point, Polygon}
 
+
 /**
  * Utility object for Point-in-Polygon checks.
  * Uses JTS for robust geometric computations.

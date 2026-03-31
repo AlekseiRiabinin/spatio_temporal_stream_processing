@@ -1,7 +1,7 @@
 package phd.spatialmethods.temporal
 
-import phd.spatialmethods.model.{GeoEvent, Trajectory}
 import java.time.Duration
+import phd.spatialmethods.model.{GeoEvent, Trajectory}
 
 
 /**
