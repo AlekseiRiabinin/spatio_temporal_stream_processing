@@ -12,7 +12,8 @@ import phd.spatialmethods.util.GeometryUtils
 class SpatialIndex(cellSizeMeters: Double = 100.0) {
 
   // Maps (gridX, gridY) -> events in that cell
-  private val grid: mutable.Map[(Int, Int), mutable.ListBuffer[GeoEvent]] = mutable.Map.empty
+  private val grid: mutable.Map[(Int, Int), mutable.ListBuffer[GeoEvent]] = 
+    mutable.Map.empty
 
   /**
    * Converts lat/lon to approximate grid coordinates
@@ -62,5 +63,6 @@ class SpatialIndex(cellSizeMeters: Double = 100.0) {
 }
 
 object SpatialIndex {
-  def apply(cellSizeMeters: Double = 100.0): SpatialIndex = new SpatialIndex(cellSizeMeters)
+  def apply(cellSizeMeters: Double = 100.0): SpatialIndex = 
+    new SpatialIndex(cellSizeMeters)
 }

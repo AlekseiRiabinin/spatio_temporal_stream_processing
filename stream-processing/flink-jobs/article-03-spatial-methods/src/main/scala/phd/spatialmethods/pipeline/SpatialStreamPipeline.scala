@@ -4,10 +4,12 @@ import org.apache.flink.streaming.api.scala._
 import org.apache.flink.streaming.api.windowing.time.Time
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows
-import org.apache.flink.api.common.eventtime.{WatermarkStrategy, SerializableTimestampAssigner}
-import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.util.Collector
-
+import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.api.common.eventtime.{
+  WatermarkStrategy,
+  SerializableTimestampAssigner
+}
 import java.time.Duration
 
 import phd.spatialmethods.model.{GeoEvent, Interaction}
@@ -29,8 +31,8 @@ object SpatialStreamPipeline {
    * Builds the full streaming pipeline
    */
   def buildPipeline(
-      env: StreamExecutionEnvironment,
-      inputStream: DataStream[GeoEvent]
+    env: StreamExecutionEnvironment,
+    inputStream: DataStream[GeoEvent]
   ): DataStream[Interaction] = {
 
     // ------------------------------------------------------------------

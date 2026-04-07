@@ -1,6 +1,7 @@
 package phd.spatialmethods.temporal
 
 import java.time.Duration
+import scala.collection.mutable
 import phd.spatialmethods.model.{GeoEvent, Trajectory}
 
 
@@ -94,7 +95,7 @@ class TrajectoryBuilder(
 
     if (sorted.isEmpty) return Seq.empty
 
-    val segments = scala.collection.mutable.ListBuffer[List[GeoEvent]]()
+    val segments = mutable.ListBuffer[List[GeoEvent]]()
     var currentSegment = List(sorted.head)
 
     sorted.sliding(2).foreach {

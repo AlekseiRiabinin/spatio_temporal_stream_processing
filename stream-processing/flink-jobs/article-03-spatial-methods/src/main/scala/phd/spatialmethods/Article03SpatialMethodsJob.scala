@@ -32,7 +32,8 @@ object Article03SpatialMethodsJob {
     // ------------------------------------------------------------------
     // 1. Flink environment (Scala API)
     // ------------------------------------------------------------------
-    val env: StreamExecutionEnvironment = StreamExecutionEnvironment.getExecutionEnvironment
+    val env: StreamExecutionEnvironment = 
+      StreamExecutionEnvironment.getExecutionEnvironment
     env.setParallelism(4)
 
     // ------------------------------------------------------------------
@@ -52,7 +53,8 @@ object Article03SpatialMethodsJob {
     // 3. Deserialize JSON -> GeoEvent
     // ------------------------------------------------------------------
     // Provide implicit TypeInformation for GeoEvent
-    implicit val geoEventTypeInfo: TypeInformation[GeoEvent] = createTypeInformation[GeoEvent]
+    implicit val geoEventTypeInfo: TypeInformation[GeoEvent] = 
+      createTypeInformation[GeoEvent]
 
     val geoEventStream: DataStream[GeoEvent] =
       env.addSource(kafkaConsumer)

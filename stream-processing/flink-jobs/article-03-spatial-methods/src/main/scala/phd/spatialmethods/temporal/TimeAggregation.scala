@@ -1,6 +1,7 @@
 package phd.spatialmethods.temporal
 
 import java.time.{Duration, Instant}
+import scala.collection.mutable
 import phd.spatialmethods.model.{GeoEvent, Trajectory}
 
 
@@ -50,7 +51,7 @@ object TimeAggregation {
     val minTime = sorted.headOption.map(_.timestamp.toEpochMilli).getOrElse(0L)
     val maxTime = sorted.lastOption.map(_.timestamp.toEpochMilli).getOrElse(0L)
 
-    val windows = scala.collection.mutable.Map[Long, Seq[GeoEvent]]()
+    val windows = mutable.Map[Long, Seq[GeoEvent]]()
 
     var start = minTime
 

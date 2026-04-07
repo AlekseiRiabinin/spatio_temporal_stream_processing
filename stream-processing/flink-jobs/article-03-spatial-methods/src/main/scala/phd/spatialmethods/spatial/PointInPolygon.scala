@@ -16,13 +16,13 @@ object PointInPolygon {
    *
    * @param lat Latitude of the point
    * @param lon Longitude of the point
-   * @param polygonCoords Sequence of (lat, lon) representing polygon vertices (must be closed or will be closed automatically)
+   * @param polygonCoords Sequence of (lat, lon) representing polygon vertices
    * @return true if point is inside polygon
    */
   def contains(
-      lat: Double,
-      lon: Double,
-      polygonCoords: Seq[(Double, Double)]
+    lat: Double,
+    lon: Double,
+    polygonCoords: Seq[(Double, Double)]
   ): Boolean = {
 
     val point: Point = geometryFactory.createPoint(new Coordinate(lon, lat))
