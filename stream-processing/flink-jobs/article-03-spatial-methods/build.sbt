@@ -21,7 +21,7 @@ lazy val root = (project in file("."))
       // Logging
       "org.slf4j" % "slf4j-simple" % "1.7.36",
 
-      // Prometheus metrics (your old custom metrics — optional now)
+      // Prometheus metrics
       "io.prometheus" % "simpleclient" % "0.16.0",
       "io.prometheus" % "simpleclient_hotspot" % "0.16.0",
       "io.prometheus" % "simpleclient_httpserver" % "0.16.0",

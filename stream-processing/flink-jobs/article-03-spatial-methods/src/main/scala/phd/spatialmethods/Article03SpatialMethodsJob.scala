@@ -39,12 +39,18 @@ object Article03SpatialMethodsJob {
     // ------------------------------------------------------------------
     // 2. Kafka configuration
     // ------------------------------------------------------------------
+    val bootstrap =
+      sys.env.getOrElse("KAFKA_BOOTSTRAP_SERVERS", "kafka-1:19092")
+
+    val topic =
+      sys.env.getOrElse("KAFKA_TOPIC", "geo-events-topic")
+
     val kafkaProps = new Properties()
-    kafkaProps.setProperty("bootstrap.servers", "localhost:9092")
-    kafkaProps.setProperty("group.id", "spatial-stream-group")
+    kafkaProps.setProperty("bootstrap.servers", bootstrap)
+    kafkaProps.setProperty("group.id", "article03-spatial-methods")
 
     val kafkaConsumer = new FlinkKafkaConsumer[String](
-      "geo-events-topic",
+      topic,
       new SimpleStringSchema(),
       kafkaProps
     )
