@@ -34,15 +34,37 @@ class CollisionDetector(
     thresholdMeters: Double
   ): Seq[Interaction] = {
 
+    val start = System.nanoTime()
+
     val interactions = mutable.ArrayBuffer.empty[Interaction]
 
-    if (events.isEmpty) return Seq.empty
+    if (events.isEmpty) {
+      println(
+        s"[COLLISION] action=emptyInput " +
+        s"threshold=$thresholdMeters " +
+        s"k=$kNeighbors " +
+        s"ttcThreshold=$ttcThresholdSec"
+      )
+      return Seq.empty
+    }
+
+    println(
+      s"[COLLISION] action=start " +
+      s"events=${events.size} " +
+      s"threshold=$thresholdMeters " +
+      s"k=$kNeighbors " +
+      s"ttcThreshold=$ttcThresholdSec"
+    )
 
     // ------------------------------------------------------------------
     // 1. Build spatial index
     // ------------------------------------------------------------------
     val spatialIndex = SpatialIndex()
     events.foreach(spatialIndex.insert)
+
+    println(
+      s"[COLLISION] action=spatialIndexBuilt size=${events.size}"
+    )
 
     // ------------------------------------------------------------------
     // 2. Build trajectories per object
@@ -55,14 +77,25 @@ class CollisionDetector(
       trajectories.update(e.objectId, updated)
     }
 
+    println(
+      s"[COLLISION] action=trajectoriesBuilt count=${trajectories.size}"
+    )
+
     // ------------------------------------------------------------------
     // 3. For each event → find candidate neighbors
     // ------------------------------------------------------------------
+    var spatialCandidatesTotal = 0
+    var knnCandidatesTotal = 0
+    var distanceComputations = 0
+    var collisionsDetected = 0
+
     events.foreach { e1 =>
 
       // Step 3.1: spatial pre-filter (radius query)
       val spatialCandidates =
         spatialIndex.queryRadius(e1.lat, e1.lon, thresholdMeters)
+
+      spatialCandidatesTotal += spatialCandidates.size
 
       // Step 3.2: refine with KNN (limit to k nearest)
       val neighbors =
@@ -70,12 +103,21 @@ class CollisionDetector(
           .map(_._1)
           .filter(_.id != e1.id)
 
+      knnCandidatesTotal += neighbors.size
+
       neighbors.foreach { e2 =>
 
         // ------------------------------------------------------------------
         // 4. Distance check (SpatialOperations)
         // ------------------------------------------------------------------
         val distance = SpatialOperations.distance(e1, e2)
+        distanceComputations += 1
+
+        println(
+          s"[COLLISION] pair=(${e1.objectId},${e2.objectId}) " +
+          s"distance=$distance " +
+          s"threshold=$thresholdMeters"
+        )
 
         if (distance <= thresholdMeters) {
 
@@ -97,7 +139,15 @@ class CollisionDetector(
             if (relativeSpeed > 1e-6) distance / relativeSpeed
             else Double.PositiveInfinity
 
+          println(
+            s"[COLLISION] pair=(${e1.objectId},${e2.objectId}) " +
+            s"ttc=$ttc " +
+            s"relativeSpeed=$relativeSpeed"
+          )
+
           if (ttc <= ttcThresholdSec) {
+
+            collisionsDetected += 1
 
             val lat = (e1.lat + e2.lat) / 2.0
             val lon = (e1.lon + e2.lon) / 2.0
@@ -119,6 +169,13 @@ class CollisionDetector(
                 "relative_speed" -> relativeSpeed.toString
               )
             )
+
+            println(
+              s"[COLLISION] detected " +
+              s"pair=(${e1.objectId},${e2.objectId}) " +
+              s"distance=$distance " +
+              s"ttc=$ttc"
+            )
           }
         }
       }
@@ -127,10 +184,23 @@ class CollisionDetector(
     // ------------------------------------------------------------------
     // 7. Deduplicate interactions (A-B == B-A)
     // ------------------------------------------------------------------
-    interactions
-      .groupBy(i => i.objectIds.toSet)
-      .map(_._2.head)
-      .toSeq
+    val deduped =
+      interactions
+        .groupBy(i => i.objectIds.toSet)
+        .map(_._2.head)
+        .toSeq
+
+    val end = System.nanoTime()
+    val elapsedMs = (end - start) / 1e6
+
+    println(
+      s"[COLLISION] action=summary events=${events.size} " +
+      s"spatialCandidates=$spatialCandidatesTotal knnCandidates=$knnCandidatesTotal " +
+      s"distanceComputations=$distanceComputations collisionsRaw=${interactions.size} " +
+      s"collisionsFinal=${deduped.size} timeMs=$elapsedMs"
+    )
+
+    deduped
   }
 
   /**

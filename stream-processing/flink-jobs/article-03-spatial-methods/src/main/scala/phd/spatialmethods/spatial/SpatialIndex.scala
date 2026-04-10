@@ -12,7 +12,7 @@ import phd.spatialmethods.util.GeometryUtils
 class SpatialIndex(cellSizeMeters: Double = 100.0) {
 
   // Maps (gridX, gridY) -> events in that cell
-  private val grid: mutable.Map[(Int, Int), mutable.ListBuffer[GeoEvent]] = 
+  private val grid: mutable.Map[(Int, Int), mutable.ListBuffer[GeoEvent]] =
     mutable.Map.empty
 
   /**
@@ -30,6 +30,11 @@ class SpatialIndex(cellSizeMeters: Double = 100.0) {
     val key = toGrid(event.lat, event.lon)
     val cell = grid.getOrElseUpdate(key, mutable.ListBuffer.empty)
     cell += event
+
+    println(
+      s"[SPATIAL INDEX] action=insert cell=($key) size=${cell.size} " +
+      s"objectId=${event.objectId} lat=${event.lat} lon=${event.lon}"
+    )
   }
 
   /** Remove a GeoEvent from the index */
@@ -37,12 +42,19 @@ class SpatialIndex(cellSizeMeters: Double = 100.0) {
     val key = toGrid(event.lat, event.lon)
     grid.get(key).foreach { buf =>
       buf --= Seq(event)
+
+      println(
+        s"[SPATIAL INDEX] action=remove cell=($key) size=${buf.size} " +
+        s"objectId=${event.objectId}"
+      )
     }
   }
 
-
   /** Query events within radius (meters) of a point */
   def queryRadius(lat: Double, lon: Double, radiusMeters: Double): Seq[GeoEvent] = {
+
+    val start = System.nanoTime()
+
     val (gx, gy) = toGrid(lat, lon)
     val cellsToCheck = (-1 to 1).flatMap { dx =>
       (-1 to 1).map(dy => (gx + dx, gy + dy))
@@ -52,17 +64,31 @@ class SpatialIndex(cellSizeMeters: Double = 100.0) {
       grid.getOrElse(key, Seq.empty)
     }
 
-    candidates.filter { e =>
+    val filtered = candidates.filter { e =>
       val dist = GeometryUtils.haversineDistance(lat, lon, e.lat, e.lon)
       dist <= radiusMeters
     }
+
+    val end = System.nanoTime()
+    val elapsedMs = (end - start) / 1e6
+
+    println(
+      s"[SPATIAL INDEX] action=queryRadius center=($gx,$gy) " +
+      s"radius=$radiusMeters candidates=${candidates.size} " +
+      s"returned=${filtered.size} timeMs=$elapsedMs"
+    )
+
+    filtered
   }
 
   /** Clear the index */
-  def clear(): Unit = grid.clear()
+  def clear(): Unit = {
+    grid.clear()
+    println("[SPATIAL INDEX] action=clear")
+  }
 }
 
 object SpatialIndex {
-  def apply(cellSizeMeters: Double = 100.0): SpatialIndex = 
+  def apply(cellSizeMeters: Double = 100.0): SpatialIndex =
     new SpatialIndex(cellSizeMeters)
 }

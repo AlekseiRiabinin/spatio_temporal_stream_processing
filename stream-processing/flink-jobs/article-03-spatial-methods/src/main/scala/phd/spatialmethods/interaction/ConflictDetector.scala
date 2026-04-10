@@ -33,9 +33,25 @@ class ConflictDetector(
     thresholdMeters: Double
   ): Seq[Interaction] = {
 
+    val start = System.nanoTime()
+
     val interactions = mutable.ArrayBuffer.empty[Interaction]
 
-    if (events.isEmpty) return Seq.empty
+    if (events.isEmpty) {
+      println(
+        s"[CONFLICT] action=emptyInput " +
+        s"horizon=$predictionHorizonSec " +
+        s"threshold=$thresholdMeters"
+      )
+      return Seq.empty
+    }
+
+    println(
+      s"[CONFLICT] action=start " +
+      s"events=${events.size} " +
+      s"horizon=$predictionHorizonSec " +
+      s"threshold=$thresholdMeters"
+    )
 
     // ------------------------------------------------------------------
     // 1. Build trajectories per object
@@ -47,6 +63,10 @@ class ConflictDetector(
       val updated = trajectoryBuilder.updateTrajectory(current, e)
       trajectories.update(e.objectId, updated)
     }
+
+    println(
+      s"[CONFLICT] action=trajectoriesBuilt count=${trajectories.size}"
+    )
 
     val trajList = trajectories.values.toSeq
 
@@ -63,9 +83,18 @@ class ConflictDetector(
 
     val activeTrajectories = activeObjects.values.toSeq
 
+    println(
+      s"[CONFLICT] action=temporalFilter " +
+      s"active=${activeTrajectories.size} " +
+      s"minRate=$minEventRate"
+    )
+
     // ------------------------------------------------------------------
     // 3. Pairwise trajectory conflict detection
     // ------------------------------------------------------------------
+    var distanceComputations = 0
+    var conflictPairs = 0
+
     for {
       i <- activeTrajectories.indices
       j <- i + 1 until activeTrajectories.length
@@ -91,16 +120,24 @@ class ConflictDetector(
         val (lat2Future, lon2Future) =
           predictFromTrajectory(t2, predictionHorizonSec)
 
-        // create temporary GeoEvents for spatial check
         val futureE1 = e1.copy(lat = lat1Future, lon = lon1Future)
         val futureE2 = e2.copy(lat = lat2Future, lon = lon2Future)
 
         val futureDistance = SpatialOperations.distance(futureE1, futureE2)
+        distanceComputations += 1
+
+        println(
+          s"[CONFLICT] pair=(${t1.objectId},${t2.objectId}) " +
+          s"predictedDistance=$futureDistance " +
+          s"horizon=$predictionHorizonSec"
+        )
 
         // ------------------------------------------------------------------
         // 5. Conflict condition (future convergence)
         // ------------------------------------------------------------------
         if (futureDistance <= thresholdMeters) {
+
+          conflictPairs += 1
 
           val lat = (lat1Future + lat2Future) / 2.0
           val lon = (lon1Future + lon2Future) / 2.0
@@ -121,6 +158,12 @@ class ConflictDetector(
               "horizonSec" -> predictionHorizonSec.toString
             )
           )
+
+          println(
+            s"[CONFLICT] detected " +
+            s"pair=(${t1.objectId},${t2.objectId}) " +
+            s"distance=$futureDistance"
+          )
         }
       }
     }
@@ -128,10 +171,23 @@ class ConflictDetector(
     // ------------------------------------------------------------------
     // 6. Deduplicate interactions
     // ------------------------------------------------------------------
-    interactions
-      .groupBy(i => i.objectIds.toSet)
-      .map(_._2.head)
-      .toSeq
+    val deduped =
+      interactions
+        .groupBy(i => i.objectIds.toSet)
+        .map(_._2.head)
+        .toSeq
+
+    val end = System.nanoTime()
+    val elapsedMs = (end - start) / 1e6
+
+    println(
+      s"[CONFLICT] action=summary trajectories=${trajectories.size} " +
+      s"active=${activeTrajectories.size} distanceComputations=$distanceComputations " +
+      s"conflictsRaw=${interactions.size} conflictsFinal=${deduped.size} " +
+      s"timeMs=$elapsedMs"
+    )
+
+    deduped
   }
 
   /**

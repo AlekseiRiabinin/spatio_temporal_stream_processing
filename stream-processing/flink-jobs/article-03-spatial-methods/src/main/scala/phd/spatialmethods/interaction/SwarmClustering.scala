@@ -26,16 +26,31 @@ class SwarmClustering {
     minPoints: Int
   ): Seq[Interaction] = {
 
+    val start = System.nanoTime()
+
     val visited = mutable.Set.empty[String]
     val clusters = mutable.ArrayBuffer.empty[Seq[GeoEvent]]
 
-    if (events.isEmpty) return Seq.empty
+    if (events.isEmpty) {
+      println(
+        s"[SWARM] action=emptyInput eps=$epsMeters minPoints=$minPoints"
+      )
+      return Seq.empty
+    }
+
+    println(
+      s"[SWARM] action=start events=${events.size} eps=$epsMeters minPoints=$minPoints"
+    )
 
     // ------------------------------------------------------------------
     // 1. Build spatial index
     // ------------------------------------------------------------------
     val spatialIndex = SpatialIndex()
     events.foreach(spatialIndex.insert)
+
+    println(
+      s"[SWARM] action=spatialIndexBuilt size=${events.size}"
+    )
 
     // ------------------------------------------------------------------
     // 2. Temporal density filtering (global)
@@ -46,20 +61,34 @@ class SwarmClustering {
     val globalDensity =
       DensityEstimator.globalDensity(events, totalArea = 1.0, windowStart, windowEnd)
 
-    // Optional: skip clustering if density too low
-    if (globalDensity <= 0) return Seq.empty
+    println(
+      s"[SWARM] action=globalDensity density=$globalDensity"
+    )
+
+    if (globalDensity <= 0) {
+      println("[SWARM] action=skip reason=lowDensity")
+      return Seq.empty
+    }
 
     // ------------------------------------------------------------------
     // 3. DBSCAN-style clustering
     // ------------------------------------------------------------------
+    var clusterCount = 0
+    var neighborChecks = 0
+
     events.foreach { event =>
 
       if (!visited.contains(event.id)) {
         visited += event.id
 
         val neighbors =
-          spatialIndex
-            .queryRadius(event.lat, event.lon, epsMeters)
+          spatialIndex.queryRadius(event.lat, event.lon, epsMeters)
+
+        neighborChecks += neighbors.size
+
+        println(
+          s"[SWARM] seed=${event.objectId} neighbors=${neighbors.size}"
+        )
 
         if (neighbors.size >= minPoints) {
 
@@ -72,6 +101,12 @@ class SwarmClustering {
             minPoints
           )
 
+          clusterCount += 1
+
+          println(
+            s"[SWARM] clusterFormed id=$clusterCount size=${cluster.size}"
+          )
+
           clusters += cluster
         }
       }
@@ -80,7 +115,7 @@ class SwarmClustering {
     // ------------------------------------------------------------------
     // 4. Convert clusters → Interaction
     // ------------------------------------------------------------------
-    clusters.map { cluster =>
+    val interactions = clusters.map { cluster =>
 
       val objectIds = cluster.map(_.objectId)
 
@@ -89,6 +124,10 @@ class SwarmClustering {
 
       val timestamp: Instant =
         cluster.map(_.timestamp).maxBy(_.toEpochMilli)
+
+      println(
+        s"[SWARM] clusterSummary size=${cluster.size} avgLat=$avgLat avgLon=$avgLon"
+      )
 
       Interaction(
         id = s"swarm-${timestamp.toEpochMilli}-${objectIds.hashCode()}",
@@ -104,6 +143,16 @@ class SwarmClustering {
         )
       )
     }.toSeq
+
+    val end = System.nanoTime()
+    val elapsedMs = (end - start) / 1e6
+
+    println(
+      s"[SWARM] action=summary events=${events.size} clusters=${clusters.size} " +
+      s"neighborChecks=$neighborChecks timeMs=$elapsedMs"
+    )
+
+    interactions
   }
 
   /**
@@ -123,6 +172,10 @@ class SwarmClustering {
 
     cluster += seed
 
+    println(
+      s"[SWARM] expand start seed=${seed.objectId} initialNeighbors=${neighbors.size}"
+    )
+
     while (queue.nonEmpty) {
 
       val current = queue.dequeue()
@@ -133,6 +186,10 @@ class SwarmClustering {
         val currentNeighbors =
           spatialIndex.queryRadius(current.lat, current.lon, epsMeters)
 
+        println(
+          s"[SWARM] expand current=${current.objectId} neighbors=${currentNeighbors.size}"
+        )
+
         if (currentNeighbors.size >= minPoints) {
           queue.enqueue(currentNeighbors: _*)
         }
@@ -142,6 +199,10 @@ class SwarmClustering {
         cluster += current
       }
     }
+
+    println(
+      s"[SWARM] expand complete seed=${seed.objectId} clusterSize=${cluster.size}"
+    )
 
     cluster.toSeq
   }

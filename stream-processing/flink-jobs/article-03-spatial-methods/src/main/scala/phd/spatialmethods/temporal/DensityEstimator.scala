@@ -28,8 +28,19 @@ object DensityEstimator {
       !e.timestamp.isAfter(windowEnd)
     )
 
+    println(
+      s"[DENSITY] windowStart=${windowStart.toEpochMilli} " +
+      s"windowEnd=${windowEnd.toEpochMilli} " +
+      s"eventsInWindow=${filtered.size}"
+    )
+
     regions.map { region =>
       val count = filtered.count(e => isInside(e, region))
+
+      println(
+        s"[DENSITY] region=${region.id} count=$count"
+      )
+
       region.id -> count
     }.toMap
   }
@@ -46,7 +57,13 @@ object DensityEstimator {
 
     counts.map { case (regionId, count) =>
       val area = regionAreas.getOrElse(regionId, 1.0) // avoid division by zero
-      regionId -> (count.toDouble / area)
+      val density = count.toDouble / area
+
+      println(
+        s"[DENSITY] region=$regionId count=$count area=$area density=$density"
+      )
+
+      regionId -> density
     }
   }
 
@@ -56,10 +73,18 @@ object DensityEstimator {
   def detectHotspots(
     density: Map[String, Double],
     threshold: Double
-  ): Seq[String] =
-    density.collect {
+  ): Seq[String] = {
+
+    val hotspots = density.collect {
       case (regionId, d) if d >= threshold => regionId
     }.toSeq
+
+    println(
+      s"[DENSITY] hotspots threshold=$threshold ids=${hotspots.mkString(",")}"
+    )
+
+    hotspots
+  }
 
   /**
    * Global density (events per unit area over all regions)
@@ -76,8 +101,14 @@ object DensityEstimator {
       !e.timestamp.isAfter(windowEnd)
     )
 
-    if (totalArea <= 0) 0.0
-    else count.toDouble / totalArea
+    val density =
+      if (totalArea <= 0) 0.0 else count.toDouble / totalArea
+
+    println(
+      s"[DENSITY] global count=$count totalArea=$totalArea density=$density"
+    )
+
+    density
   }
 
   /**
@@ -98,6 +129,12 @@ object DensityEstimator {
     windows.map { case (windowStart, evs) =>
       val durationSec = windowSizeMillis / 1000.0
       val density = if (durationSec == 0) 0.0 else evs.size / durationSec
+
+      println(
+        s"[DENSITY] windowStart=$windowStart events=${evs.size} " +
+        s"windowSizeMs=$windowSizeMillis density=$density"
+      )
+
       windowStart -> density
     }
   }

@@ -31,10 +31,17 @@ class TrajectoryBuilder(
 
       case None =>
         // Start new trajectory
-        Trajectory(
+        val newTraj = Trajectory(
           objectId = event.objectId,
           events = Seq(event)
         )
+
+        println(
+          s"[TRAJECTORY] start objectId=${event.objectId} " +
+          s"events=1 timestamp=${event.timestamp.toEpochMilli}"
+        )
+
+        newTraj
 
       case Some(traj) =>
         val lastEventOpt = traj.sortedEvents.lastOption
@@ -46,10 +53,30 @@ class TrajectoryBuilder(
               event.timestamp.toEpochMilli - lastEvent.timestamp.toEpochMilli
 
             if (timeGap <= maxGap.toMillis && timeGap >= 0) {
+
               // Continue trajectory
-              traj.addEvent(event)
+              val updated = traj.addEvent(event)
+
+              println(
+                s"[TRAJECTORY] update objectId=${event.objectId} " +
+                s"length=${updated.events.size} " +
+                s"timeGap=$timeGap " +
+                s"lastTs=${lastEvent.timestamp.toEpochMilli} " +
+                s"newTs=${event.timestamp.toEpochMilli}"
+              )
+
+              updated
+
             } else {
+
               // Gap too large OR out-of-order → start new trajectory
+              println(
+                s"[TRAJECTORY] reset objectId=${event.objectId} " +
+                s"reason=gap_exceeded gap=$timeGap maxGap=${maxGap.toMillis} " +
+                s"lastTs=${lastEvent.timestamp.toEpochMilli} " +
+                s"newTs=${event.timestamp.toEpochMilli}"
+              )
+
               Trajectory(
                 objectId = event.objectId,
                 events = Seq(event)
@@ -58,10 +85,17 @@ class TrajectoryBuilder(
 
           case None =>
             // Edge case: empty trajectory
-            Trajectory(
+            val newTraj = Trajectory(
               objectId = event.objectId,
               events = Seq(event)
             )
+
+            println(
+              s"[TRAJECTORY] start-empty objectId=${event.objectId} " +
+              s"events=1 timestamp=${event.timestamp.toEpochMilli}"
+            )
+
+            newTraj
         }
     }
   }
@@ -79,11 +113,19 @@ class TrajectoryBuilder(
       "Cannot merge trajectories of different objects"
     )
 
-    Trajectory(
+    val merged = Trajectory(
       objectId = t1.objectId,
       events = (t1.events ++ t2.events)
         .sortBy(_.timestamp.toEpochMilli)
     )
+
+    println(
+      s"[TRAJECTORY] merge objectId=${t1.objectId} " +
+      s"len1=${t1.events.size} len2=${t2.events.size} " +
+      s"merged=${merged.events.size}"
+    )
+
+    merged
   }
 
   /**
@@ -106,11 +148,22 @@ class TrajectoryBuilder(
           currentSegment = currentSegment :+ next
         } else {
           segments += currentSegment
+
+          println(
+            s"[TRAJECTORY] segment objectId=${traj.objectId} " +
+            s"segmentSize=${currentSegment.size} gap=$gap"
+          )
+
           currentSegment = List(next)
         }
     }
 
     segments += currentSegment
+
+    println(
+      s"[TRAJECTORY] segment-final objectId=${traj.objectId} " +
+      s"segmentSize=${currentSegment.size}"
+    )
 
     segments.map(events =>
       Trajectory(traj.objectId, events)

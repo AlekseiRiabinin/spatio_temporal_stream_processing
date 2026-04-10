@@ -26,9 +26,18 @@ class ProximityDetector {
     thresholdMeters: Double
   ): Seq[Interaction] = {
 
+    val start = System.nanoTime()
+
     val interactions = ArrayBuffer.empty[Interaction]
 
-    if (events.isEmpty) return Seq.empty
+    if (events.isEmpty) {
+      println(s"[PROXIMITY] action=emptyInput threshold=$thresholdMeters")
+      return Seq.empty
+    }
+
+    println(
+      s"[PROXIMITY] action=start events=${events.size} threshold=$thresholdMeters"
+    )
 
     // ------------------------------------------------------------------
     // 1. Build spatial index
@@ -39,6 +48,9 @@ class ProximityDetector {
     // ------------------------------------------------------------------
     // 2. For each event → query neighbors within threshold
     // ------------------------------------------------------------------
+    var totalNeighbors = 0
+    var distanceComputations = 0
+
     events.foreach { e1 =>
 
       val neighbors =
@@ -46,14 +58,22 @@ class ProximityDetector {
           .queryRadius(e1.lat, e1.lon, thresholdMeters)
           .filter(_.id != e1.id)
 
+      totalNeighbors += neighbors.size
+
       neighbors.foreach { e2 =>
 
         // ------------------------------------------------------------------
         // 3. Distance check (SpatialOperations)
         // ------------------------------------------------------------------
         val distance = SpatialOperations.distance(e1, e2)
+        distanceComputations += 1
 
         if (distance <= thresholdMeters) {
+
+          println(
+            s"[PROXIMITY] pair=(${e1.objectId},${e2.objectId}) " +
+            s"distance=$distance threshold=$thresholdMeters"
+          )
 
           val lat = (e1.lat + e2.lat) / 2.0
           val lon = (e1.lon + e2.lon) / 2.0
@@ -80,9 +100,22 @@ class ProximityDetector {
     // ------------------------------------------------------------------
     // 4. Deduplicate interactions (A-B == B-A)
     // ------------------------------------------------------------------
-    interactions
-      .groupBy(i => i.objectIds.toSet)
-      .map(_._2.head)
-      .toSeq
+    val deduped =
+      interactions
+        .groupBy(i => i.objectIds.toSet)
+        .map(_._2.head)
+        .toSeq
+
+    val end = System.nanoTime()
+    val elapsedMs = (end - start) / 1e6
+
+    println(
+      s"[PROXIMITY] action=summary events=${events.size} " +
+      s"neighbors=$totalNeighbors distanceComputations=$distanceComputations " +
+      s"interactionsRaw=${interactions.size} interactionsFinal=${deduped.size} " +
+      s"timeMs=$elapsedMs"
+    )
+
+    deduped
   }
 }

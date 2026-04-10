@@ -29,12 +29,18 @@ object Article03SpatialMethodsJob {
 
   def main(args: Array[String]): Unit = {
 
+    println("[MAIN] action=start job=Article03SpatialMethodsJob")
+
     // ------------------------------------------------------------------
     // 1. Flink environment (Scala API)
     // ------------------------------------------------------------------
-    val env: StreamExecutionEnvironment = 
+    val env: StreamExecutionEnvironment =
       StreamExecutionEnvironment.getExecutionEnvironment
     env.setParallelism(4)
+
+    println(
+      s"[MAIN] action=env parallelism=${env.getParallelism}"
+    )
 
     // ------------------------------------------------------------------
     // 2. Kafka configuration
@@ -44,6 +50,10 @@ object Article03SpatialMethodsJob {
 
     val topic =
       sys.env.getOrElse("KAFKA_TOPIC", "geo-events-topic")
+
+    println(
+      s"[MAIN] action=kafkaConfig bootstrap=$bootstrap topic=$topic"
+    )
 
     val kafkaProps = new Properties()
     kafkaProps.setProperty("bootstrap.servers", bootstrap)
@@ -58,8 +68,9 @@ object Article03SpatialMethodsJob {
     // ------------------------------------------------------------------
     // 3. Deserialize JSON -> GeoEvent
     // ------------------------------------------------------------------
-    // Provide implicit TypeInformation for GeoEvent
-    implicit val geoEventTypeInfo: TypeInformation[GeoEvent] = 
+    println("[MAIN] action=deserialization status=starting")
+
+    implicit val geoEventTypeInfo: TypeInformation[GeoEvent] =
       createTypeInformation[GeoEvent]
 
     val geoEventStream: DataStream[GeoEvent] =
@@ -67,22 +78,51 @@ object Article03SpatialMethodsJob {
         .map(json => mapper.readValue(json, classOf[GeoEvent]))
         .filter(_.isValid)
 
+    println("[MAIN] action=deserialization status=ready")
+
     // ------------------------------------------------------------------
     // 4. Apply spatial-temporal processing pipeline
     // ------------------------------------------------------------------
+    println("[MAIN] action=pipelineInit status=starting")
+
     val interactionsStream: DataStream[Interaction] =
       SpatialStreamPipeline.buildPipeline(env, geoEventStream)
+
+    println("[MAIN] action=pipelineInit status=ready")
 
     // ------------------------------------------------------------------
     // 5. Output results
     // ------------------------------------------------------------------
+    println("[MAIN] action=output status=printing")
+
+    var throughputCounter = 0L
+    var lastReportTime = System.currentTimeMillis()
+
     interactionsStream
-      .map(interaction => mapper.writeValueAsString(interaction))
+      .map { interaction =>
+
+        // Throughput counter
+        throughputCounter += 1
+        val now = System.currentTimeMillis()
+
+        // Emit throughput once per second
+        if (now - lastReportTime >= 1000) {
+          println(
+            s"[THROUGHPUT] interactionsPerSec=$throughputCounter timestamp=$now"
+          )
+          throughputCounter = 0
+          lastReportTime = now
+        }
+
+        mapper.writeValueAsString(interaction)
+      }
       .print()
 
     // ------------------------------------------------------------------
     // 6. Execute job
     // ------------------------------------------------------------------
+    println("[MAIN] action=execute job=Article03SpatialMethodsJob")
+
     env.execute("Article 03: Spatio-Temporal Data Stream Processing")
   }
 }

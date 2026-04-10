@@ -47,8 +47,21 @@ object SpatialStreamPipeline {
     val watermarkStrategy = WatermarkStrategy
       .forBoundedOutOfOrderness[GeoEvent](Duration.ofSeconds(5))
       .withTimestampAssigner(new SerializableTimestampAssigner[GeoEvent] {
-        override def extractTimestamp(event: GeoEvent, recordTimestamp: Long): Long =
-          event.eventTimeMillis
+        override def extractTimestamp(event: GeoEvent, recordTimestamp: Long): Long = {
+
+          val ts = event.eventTimeMillis
+          val now = System.currentTimeMillis()
+          val lag = now - ts
+
+          println(
+            s"[TIMESTAMP] eventTime=$ts " +
+            s"processingTime=$now " +
+            s"lag=$lag " +
+            s"objectId=${event.objectId}"
+          )
+
+          ts
+        }
       })
 
     val timedStream = inputStream
@@ -69,20 +82,31 @@ object SpatialStreamPipeline {
     // 5. Apply spatial-temporal processing on each window batch
     // ------------------------------------------------------------------
     val interactionsStream: DataStream[Interaction] =
-      windowedStream.apply { 
+      windowedStream.apply {
         (
           window: TimeWindow,
           elements: Iterable[GeoEvent],
           out: Collector[Interaction]
         ) =>
-        val batch = elements.toSeq
 
-        // Core scientific logic
-        val interactions = processingGraph.process(batch)
+          val batch = elements.toSeq
+          val count = batch.size
+          val windowStart = window.getStart
+          val windowEnd   = window.getEnd
+          val now = System.currentTimeMillis()
 
-        interactions.foreach(out.collect)
+          println(
+            s"[WINDOW RESULT] windowStart=$windowStart windowEnd=$windowEnd " +
+            s"count=$count processingTime=$now"
+          )
+
+          // Core scientific logic
+          val interactions = processingGraph.process(batch)
+
+          interactions.foreach(out.collect)
       }
 
     interactionsStream
+
   }
 }
