@@ -1,6 +1,5 @@
 package phd.spatialmethods.temporal
 
-import java.time.{Duration, Instant}
 import scala.collection.mutable
 import phd.spatialmethods.model.{GeoEvent, Trajectory}
 
@@ -8,84 +7,96 @@ import phd.spatialmethods.model.{GeoEvent, Trajectory}
 /**
  * TimeAggregation provides temporal aggregation methods
  * over GeoEvents and Trajectories for real-time analytics.
+ *
+ * All timestamps are epoch milliseconds (Long).
  */
 object TimeAggregation {
 
   /**
-   * Count events within a time window
+   * Count events within a time window [windowStartMs, windowEndMs]
    */
   def countEvents(
     events: Seq[GeoEvent],
-    windowStart: Instant,
-    windowEnd: Instant
+    windowStartMs: Long,
+    windowEndMs: Long
   ): Int =
     events.count(e =>
-      !e.timestamp.isBefore(windowStart) &&
-      !e.timestamp.isAfter(windowEnd)
+      e.timestamp >= windowStartMs &&
+      e.timestamp <= windowEndMs
     )
 
   /**
-   * Group events into fixed-size time windows
+   * Group events into fixed-size tumbling windows.
+   *
+   * @param windowSizeMs window size in milliseconds
+   * @return Map(windowStartMs → events)
    */
   def tumblingWindow(
     events: Seq[GeoEvent],
-    windowSize: Duration
+    windowSizeMs: Long
   ): Map[Long, Seq[GeoEvent]] = {
 
     events.groupBy { e =>
-      val ts = e.timestamp.toEpochMilli
-      ts - (ts % windowSize.toMillis)
+      val ts = e.timestamp
+      ts - (ts % windowSizeMs)
     }
   }
 
   /**
-   * Sliding window aggregation (returns window start → events)
+   * Sliding window aggregation.
+   *
+   * @param windowSizeMs window size in milliseconds
+   * @param slideMs      slide interval in milliseconds
+   * @return Map(windowStartMs → events)
    */
   def slidingWindow(
     events: Seq[GeoEvent],
-    windowSize: Duration,
-    slide: Duration
+    windowSizeMs: Long,
+    slideMs: Long
   ): Map[Long, Seq[GeoEvent]] = {
 
-    val sorted = events.sortBy(_.timestamp.toEpochMilli)
-    val minTime = sorted.headOption.map(_.timestamp.toEpochMilli).getOrElse(0L)
-    val maxTime = sorted.lastOption.map(_.timestamp.toEpochMilli).getOrElse(0L)
+    if (events.isEmpty) return Map.empty
+
+    val sorted = events.sortBy(_.timestamp)
+    val minTime = sorted.head.timestamp
+    val maxTime = sorted.last.timestamp
 
     val windows = mutable.Map[Long, Seq[GeoEvent]]()
 
     var start = minTime
 
     while (start <= maxTime) {
-      val end = start + windowSize.toMillis
+      val end = start + windowSizeMs
 
-      val windowEvents = sorted.filter(e => {
-        val ts = e.timestamp.toEpochMilli
-        ts >= start && ts < end
-      })
+      val windowEvents = sorted.filter(e =>
+        e.timestamp >= start && e.timestamp < end
+      )
 
       windows.put(start, windowEvents)
-      start += slide.toMillis
+      start += slideMs
     }
 
     windows.toMap
   }
 
   /**
-   * Average speed over trajectories in a time window
+   * Average speed over trajectories active in a time window.
+   *
+   * Trajectory.startTime and endTime must also be epoch millis.
    */
   def averageSpeed(
     trajectories: Seq[Trajectory],
-    windowStart: Instant,
-    windowEnd: Instant
+    windowStartMs: Long,
+    windowEndMs: Long
   ): Double = {
 
-    val filtered = trajectories.filter(t =>
-      t.startTime.exists(!_.isAfter(windowEnd)) &&
-      t.endTime.exists(!_.isBefore(windowStart))
-    )
+    val active = trajectories.filter { t =>
+      t.startTime.exists(_ <= windowEndMs) &&
+      t.endTime.exists(_ >= windowStartMs)
+    }
 
-    if (filtered.isEmpty) 0.0
-    else filtered.map(_.averageSpeed).sum / filtered.size
+    if (active.isEmpty) 0.0
+    else active.map(_.averageSpeed).sum / active.size
   }
 
   /**
@@ -93,13 +104,12 @@ object TimeAggregation {
    */
   def eventRate(
     events: Seq[GeoEvent],
-    windowStart: Instant,
-    windowEnd: Instant
+    windowStartMs: Long,
+    windowEndMs: Long
   ): Double = {
 
-    val count = countEvents(events, windowStart, windowEnd)
-    val durationSec =
-      (windowEnd.toEpochMilli - windowStart.toEpochMilli) / 1000.0
+    val count = countEvents(events, windowStartMs, windowEndMs)
+    val durationSec = (windowEndMs - windowStartMs) / 1000.0
 
     if (durationSec <= 0) 0.0
     else count / durationSec
@@ -109,12 +119,11 @@ object TimeAggregation {
    * Compute inter-arrival times (useful for burst detection)
    */
   def interArrivalTimes(events: Seq[GeoEvent]): Seq[Long] = {
-    val sorted = events.sortBy(_.timestamp.toEpochMilli)
+    val sorted = events.sortBy(_.timestamp)
 
     sorted.sliding(2).collect {
       case Seq(a, b) =>
-        b.timestamp.toEpochMilli - a.timestamp.toEpochMilli
+        b.timestamp - a.timestamp
     }.toSeq
   }
-
 }

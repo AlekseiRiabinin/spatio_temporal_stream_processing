@@ -12,7 +12,7 @@ class ProcessingGraph {
 
   private val spatialIndex = SpatialIndex()
 
-  // Instantiate detectors (Option 1 style)
+  // Instantiate detectors
   private val collisionDetector = new CollisionDetector
   private val proximityDetector = new ProximityDetector
   private val conflictDetector = new ConflictDetector
@@ -41,9 +41,15 @@ class ProcessingGraph {
     val filteredEvents = events
 
     // 3. Run detectors with FULL parameters
-    val collisions = collisionDetector.detect(filteredEvents, collisionThreshold)
+    val collisions = collisionDetector.detect(
+      filteredEvents,
+      collisionThreshold
+    )
 
-    val proximity = proximityDetector.detect(filteredEvents, proximityThreshold)
+    val proximity = proximityDetector.detect(
+      filteredEvents,
+      proximityThreshold
+    )
 
     val conflicts = conflictDetector.detect(
       filteredEvents,

@@ -1,6 +1,5 @@
 package phd.spatialmethods.interaction
 
-import java.time.Instant
 import scala.collection.mutable
 
 import phd.spatialmethods.model.{GeoEvent, Interaction, InteractionType}
@@ -13,7 +12,7 @@ import phd.spatialmethods.temporal.DensityEstimator
  *
  * Detects swarm behavior using ST-DBSCAN-like logic:
  *  - SpatialIndex (efficient neighbor search)
- *  - SpatialOperations (distance checks)
+ *  - SpatialOperations (distance checks in meters)
  *  - DensityEstimator (temporal density filtering)
  *
  * A swarm = dense cluster in space-time
@@ -42,9 +41,9 @@ class SwarmClustering {
       s"[SWARM] action=start events=${events.size} eps=$epsMeters minPoints=$minPoints"
     )
 
-    // ------------------------------------------------------------------
+    // ------------------------------------------------------------
     // 1. Build spatial index
-    // ------------------------------------------------------------------
+    // ------------------------------------------------------------
     val spatialIndex = SpatialIndex()
     events.foreach(spatialIndex.insert)
 
@@ -52,14 +51,14 @@ class SwarmClustering {
       s"[SWARM] action=spatialIndexBuilt size=${events.size}"
     )
 
-    // ------------------------------------------------------------------
-    // 2. Temporal density filtering (global)
-    // ------------------------------------------------------------------
-    val windowStart = events.map(_.timestamp).min
-    val windowEnd   = events.map(_.timestamp).max
+    // ------------------------------------------------------------
+    // 2. Temporal density filtering
+    // ------------------------------------------------------------
+    val windowStartMs = events.map(_.timestamp).min
+    val windowEndMs   = events.map(_.timestamp).max
 
     val globalDensity =
-      DensityEstimator.globalDensity(events, totalArea = 1.0, windowStart, windowEnd)
+      DensityEstimator.globalDensity(events, totalArea = 1.0, windowStartMs, windowEndMs)
 
     println(
       s"[SWARM] action=globalDensity density=$globalDensity"
@@ -70,30 +69,34 @@ class SwarmClustering {
       return Seq.empty
     }
 
-    // ------------------------------------------------------------------
+    // ------------------------------------------------------------
     // 3. DBSCAN-style clustering
-    // ------------------------------------------------------------------
+    // ------------------------------------------------------------
     var clusterCount = 0
     var neighborChecks = 0
 
-    events.foreach { event =>
+    events.foreach { seed =>
 
-      if (!visited.contains(event.id)) {
-        visited += event.id
+      if (!visited.contains(seed.id)) {
+        visited += seed.id
 
+        // Initial neighbors (filter same-object)
         val neighbors =
-          spatialIndex.queryRadius(event.lat, event.lon, epsMeters)
+          spatialIndex
+            .queryRadius(seed.lat, seed.lon, epsMeters)
+            .filter(_.objectId != seed.objectId)
+            .filter(e => SpatialOperations.distance(seed, e) <= epsMeters)
 
         neighborChecks += neighbors.size
 
         println(
-          s"[SWARM] seed=${event.objectId} neighbors=${neighbors.size}"
+          s"[SWARM] seed=${seed.objectId} neighbors=${neighbors.size}"
         )
 
         if (neighbors.size >= minPoints) {
 
           val cluster = expandCluster(
-            event,
+            seed,
             neighbors,
             spatialIndex,
             visited,
@@ -112,9 +115,9 @@ class SwarmClustering {
       }
     }
 
-    // ------------------------------------------------------------------
+    // ------------------------------------------------------------
     // 4. Convert clusters → Interaction
-    // ------------------------------------------------------------------
+    // ------------------------------------------------------------
     val interactions = clusters.map { cluster =>
 
       val objectIds = cluster.map(_.objectId)
@@ -122,18 +125,17 @@ class SwarmClustering {
       val avgLat = cluster.map(_.lat).sum / cluster.size
       val avgLon = cluster.map(_.lon).sum / cluster.size
 
-      val timestamp: Instant =
-        cluster.map(_.timestamp).maxBy(_.toEpochMilli)
+      val ts = cluster.map(_.timestamp).max
 
       println(
         s"[SWARM] clusterSummary size=${cluster.size} avgLat=$avgLat avgLon=$avgLon"
       )
 
       Interaction(
-        id = s"swarm-${timestamp.toEpochMilli}-${objectIds.hashCode()}",
+        id = s"swarm-$ts-${objectIds.hashCode()}",
         interactionType = InteractionType.Swarm,
         objectIds = objectIds,
-        timestamp = timestamp,
+        timestamp = ts,
         lat = avgLat,
         lon = avgLon,
         severity = Some(cluster.size.toDouble),
@@ -144,8 +146,7 @@ class SwarmClustering {
       )
     }.toSeq
 
-    val end = System.nanoTime()
-    val elapsedMs = (end - start) / 1e6
+    val elapsedMs = (System.nanoTime() - start) / 1e6
 
     println(
       s"[SWARM] action=summary events=${events.size} clusters=${clusters.size} " +
@@ -184,7 +185,10 @@ class SwarmClustering {
         visited += current.id
 
         val currentNeighbors =
-          spatialIndex.queryRadius(current.lat, current.lon, epsMeters)
+          spatialIndex
+            .queryRadius(current.lat, current.lon, epsMeters)
+            .filter(_.objectId != current.objectId)
+            .filter(e => SpatialOperations.distance(current, e) <= epsMeters)
 
         println(
           s"[SWARM] expand current=${current.objectId} neighbors=${currentNeighbors.size}"

@@ -36,7 +36,7 @@ object Article03SpatialMethodsJob {
     // ------------------------------------------------------------------
     val env: StreamExecutionEnvironment =
       StreamExecutionEnvironment.getExecutionEnvironment
-    env.setParallelism(4)
+    env.setParallelism(1)
 
     println(
       s"[MAIN] action=env parallelism=${env.getParallelism}"

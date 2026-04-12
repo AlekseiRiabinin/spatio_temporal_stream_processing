@@ -9,12 +9,14 @@ import phd.spatialmethods.model.{GeoEvent, SpatialRegion}
  * SpatialOperations provides core spatial primitives
  * used across the streaming pipeline.
  *
- * NOTE: Uses JTS (Java Topology Suite) for geometry processing.
+ * NOTE: Uses JTS for geometry parsing, but distance is computed in meters.
  */
 object SpatialOperations {
 
   private val geometryFactory = new GeometryFactory()
   private val wktReader = new WKTReader(geometryFactory)
+
+  private val EarthRadiusMeters = 6371000.0
 
   /**
    * Parse WKT into Geometry
@@ -38,17 +40,29 @@ object SpatialOperations {
   }
 
   /**
-   * Distance between two GeoEvents (meters)
-   * Uses JTS Euclidean distance (approximate)
+   * Haversine distance between two GeoEvents (meters)
    */
   def distance(e1: GeoEvent, e2: GeoEvent): Double = {
-    val p1 = toPoint(e1)
-    val p2 = toPoint(e2)
-    p1.distance(p2)
+    val lat1 = math.toRadians(e1.lat)
+    val lon1 = math.toRadians(e1.lon)
+    val lat2 = math.toRadians(e2.lat)
+    val lon2 = math.toRadians(e2.lon)
+
+    val dLat = lat2 - lat1
+    val dLon = lon2 - lon1
+
+    val a =
+      math.sin(dLat / 2) * math.sin(dLat / 2) +
+      math.cos(lat1) * math.cos(lat2) *
+      math.sin(dLon / 2) * math.sin(dLon / 2)
+
+    val c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    EarthRadiusMeters * c
   }
 
   /**
-   * Check if two events are within a threshold distance
+   * Check if two events are within a threshold distance (meters)
    */
   def withinDistance(
     e1: GeoEvent,
@@ -96,5 +110,4 @@ object SpatialOperations {
       if contains(e, r)
     } yield (e, r)
   }
-
 }

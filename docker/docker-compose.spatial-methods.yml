@@ -36,15 +36,18 @@ services:
   geo_producer_spatial_methods:
     build:
       context: ../data-generators/article-03-geo-producer
-      dockerfile: Dockerfile
     container_name: geo_producer_spatial_methods
+
     depends_on:
       - kafka-1
+
     environment:
       KAFKA_BOOTSTRAP_SERVERS: "kafka-1:19092"
       KAFKA_TOPIC: "spatial-events"
 
-      # --- Rate patterns ---
+      # ---------------------------
+      # Rate patterns
+      # ---------------------------
       EVENT_RATE_PATTERN: ${EVENT_RATE_PATTERN:-constant}
       EVENT_RATE: ${EVENT_RATE:-50}
       BURST_RATE: ${BURST_RATE:-100}
@@ -54,22 +57,31 @@ services:
       WAVE_MAX: ${WAVE_MAX:-100}
       WAVE_PERIOD_MS: ${WAVE_PERIOD_MS:-10000}
 
-      # --- Geometry patterns ---
+      # ---------------------------
+      # Geometry
+      # ---------------------------
       GEOMETRY_PATTERN: ${GEOMETRY_PATTERN:-random}
 
-      # --- Timestamp patterns ---
+      # ---------------------------
+      # Timestamp behavior
+      # ---------------------------
       TIMESTAMP_PATTERN: ${TIMESTAMP_PATTERN:-realtime}
       MAX_SKEW_MS: ${MAX_SKEW_MS:-2000}
       MAX_DELAY_MS: ${MAX_DELAY_MS:-5000}
 
-      # --- Motion modes ---
+      # ---------------------------
+      # Motion model
+      # ---------------------------
       MOTION_MODE: ${MOTION_MODE:-straight}
 
-      # --- Number of objects ---
+      # ---------------------------
+      # Object count
+      # ---------------------------
       KEYS: ${KEYS:-50}
 
     networks: [kafka-net]
-    restart: unless-stopped
+
+    restart: "no"
 
 
   # ============================================================
@@ -102,6 +114,12 @@ services:
       - ./flink/flink-metrics-prometheus-1.17.1.jar:/opt/flink/lib/flink-metrics-prometheus-1.17.1.jar
       - ./flink/kafka-clients-3.7.0.jar:/opt/flink/lib/kafka-clients-3.7.0.jar
     networks: [kafka-net]
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
 
   # ============================================================

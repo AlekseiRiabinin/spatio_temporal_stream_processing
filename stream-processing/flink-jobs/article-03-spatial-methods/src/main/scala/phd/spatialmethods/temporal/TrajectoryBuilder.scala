@@ -1,6 +1,5 @@
 package phd.spatialmethods.temporal
 
-import java.time.Duration
 import scala.collection.mutable
 import phd.spatialmethods.model.{GeoEvent, Trajectory}
 
@@ -9,18 +8,14 @@ import phd.spatialmethods.model.{GeoEvent, Trajectory}
  * TrajectoryBuilder incrementally constructs trajectories
  * from incoming GeoEvents grouped by objectId.
  *
- * This class simulates stateful stream processing logic.
+ * Stateless version compatible with epoch-millis time model.
  */
 class TrajectoryBuilder(
-  maxGap: Duration // max allowed gap between events (trajectory segmentation)
+  maxGapMs: Long // max allowed gap between events (milliseconds)
 ) {
 
   /**
    * Update trajectory with a new incoming event.
-   *
-   * @param current Optional existing trajectory
-   * @param event   New incoming GeoEvent
-   * @return Updated or new trajectory
    */
   def updateTrajectory(
     current: Option[Trajectory],
@@ -30,15 +25,13 @@ class TrajectoryBuilder(
     current match {
 
       case None =>
-        // Start new trajectory
         val newTraj = Trajectory(
           objectId = event.objectId,
           events = Seq(event)
         )
 
         println(
-          s"[TRAJECTORY] start objectId=${event.objectId} " +
-          s"events=1 timestamp=${event.timestamp.toEpochMilli}"
+          s"[TRAJECTORY] start objectId=${event.objectId} events=1 ts=${event.timestamp}"
         )
 
         newTraj
@@ -49,32 +42,26 @@ class TrajectoryBuilder(
         lastEventOpt match {
 
           case Some(lastEvent) =>
-            val timeGap =
-              event.timestamp.toEpochMilli - lastEvent.timestamp.toEpochMilli
+            val timeGap = event.timestamp - lastEvent.timestamp
 
-            if (timeGap <= maxGap.toMillis && timeGap >= 0) {
+            if (timeGap <= maxGapMs && timeGap >= 0) {
 
-              // Continue trajectory
               val updated = traj.addEvent(event)
 
               println(
                 s"[TRAJECTORY] update objectId=${event.objectId} " +
                 s"length=${updated.events.size} " +
-                s"timeGap=$timeGap " +
-                s"lastTs=${lastEvent.timestamp.toEpochMilli} " +
-                s"newTs=${event.timestamp.toEpochMilli}"
+                s"timeGap=$timeGap lastTs=${lastEvent.timestamp} newTs=${event.timestamp}"
               )
 
               updated
 
             } else {
 
-              // Gap too large OR out-of-order → start new trajectory
               println(
                 s"[TRAJECTORY] reset objectId=${event.objectId} " +
-                s"reason=gap_exceeded gap=$timeGap maxGap=${maxGap.toMillis} " +
-                s"lastTs=${lastEvent.timestamp.toEpochMilli} " +
-                s"newTs=${event.timestamp.toEpochMilli}"
+                s"reason=gap_exceeded gap=$timeGap maxGap=$maxGapMs " +
+                s"lastTs=${lastEvent.timestamp} newTs=${event.timestamp}"
               )
 
               Trajectory(
@@ -84,15 +71,13 @@ class TrajectoryBuilder(
             }
 
           case None =>
-            // Edge case: empty trajectory
             val newTraj = Trajectory(
               objectId = event.objectId,
               events = Seq(event)
             )
 
             println(
-              s"[TRAJECTORY] start-empty objectId=${event.objectId} " +
-              s"events=1 timestamp=${event.timestamp.toEpochMilli}"
+              s"[TRAJECTORY] start-empty objectId=${event.objectId} events=1 ts=${event.timestamp}"
             )
 
             newTraj
@@ -101,7 +86,7 @@ class TrajectoryBuilder(
   }
 
   /**
-   * Merge trajectories (useful for windowed or distributed processing)
+   * Merge trajectories (same object only)
    */
   def mergeTrajectories(
     t1: Trajectory,
@@ -116,13 +101,12 @@ class TrajectoryBuilder(
     val merged = Trajectory(
       objectId = t1.objectId,
       events = (t1.events ++ t2.events)
-        .sortBy(_.timestamp.toEpochMilli)
+        .sortBy(_.timestamp)
     )
 
     println(
       s"[TRAJECTORY] merge objectId=${t1.objectId} " +
-      s"len1=${t1.events.size} len2=${t2.events.size} " +
-      s"merged=${merged.events.size}"
+      s"len1=${t1.events.size} len2=${t2.events.size} merged=${merged.events.size}"
     )
 
     merged
@@ -134,7 +118,6 @@ class TrajectoryBuilder(
   def segmentTrajectory(traj: Trajectory): Seq[Trajectory] = {
 
     val sorted = traj.sortedEvents
-
     if (sorted.isEmpty) return Seq.empty
 
     val segments = mutable.ListBuffer[List[GeoEvent]]()
@@ -142,9 +125,9 @@ class TrajectoryBuilder(
 
     sorted.sliding(2).foreach {
       case Seq(prev, next) =>
-        val gap = next.timestamp.toEpochMilli - prev.timestamp.toEpochMilli
+        val gap = next.timestamp - prev.timestamp
 
-        if (gap <= maxGap.toMillis) {
+        if (gap <= maxGapMs) {
           currentSegment = currentSegment :+ next
         } else {
           segments += currentSegment
@@ -169,5 +152,4 @@ class TrajectoryBuilder(
       Trajectory(traj.objectId, events)
     ).toSeq
   }
-
 }

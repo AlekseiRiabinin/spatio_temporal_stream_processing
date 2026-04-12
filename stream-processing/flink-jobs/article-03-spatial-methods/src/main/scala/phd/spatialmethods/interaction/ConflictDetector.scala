@@ -1,47 +1,48 @@
 package phd.spatialmethods.interaction
 
-import java.time.{Duration, Instant}
 import scala.collection.mutable
-
 import phd.spatialmethods.model.{GeoEvent, Interaction, InteractionType, Trajectory}
-import phd.spatialmethods.temporal.{TrajectoryBuilder, TimeAggregation}
 import phd.spatialmethods.spatial.SpatialOperations
+import phd.spatialmethods.temporal.TrajectoryBuilder
 
 
 /**
  * ConflictDetector
  *
- * Detects potential conflicts using:
- *  - TrajectoryBuilder (object trajectories)
- *  - TimeAggregation (temporal activity / rate)
- *  - SpatialOperations (distance checks)
+ * Predicts future conflicts by projecting object motion forward
+ * using linear velocity (meters/sec) and checking whether objects
+ * will come within a threshold distance within a prediction horizon.
  *
  * Scientific model:
- *  - future trajectory convergence (prediction horizon)
- *  - but NOT immediate collision (TTC > threshold implicitly)
+ *  - distance threshold (meters)
+ *  - prediction horizon (seconds)
+ *  - linear motion model using velocity from trajectory
  */
 class ConflictDetector(
-  maxGap: Duration = Duration.ofSeconds(5),
-  minEventRate: Double = 0.1 // filter noise / inactive objects
+  maxGapMs: Long = 5000L
 ) {
 
-  private val trajectoryBuilder = new TrajectoryBuilder(maxGap)
+  private val trajectoryBuilder = new TrajectoryBuilder(maxGapMs)
 
+  /**
+   * Predictive conflict detection
+   *
+   * @param events incoming events for the current window
+   * @param horizonSec prediction horizon (seconds)
+   * @param thresholdMeters conflict threshold (meters)
+   */
   def detect(
     events: Seq[GeoEvent],
-    predictionHorizonSec: Double,
+    horizonSec: Double,
     thresholdMeters: Double
   ): Seq[Interaction] = {
 
     val start = System.nanoTime()
-
     val interactions = mutable.ArrayBuffer.empty[Interaction]
 
     if (events.isEmpty) {
       println(
-        s"[CONFLICT] action=emptyInput " +
-        s"horizon=$predictionHorizonSec " +
-        s"threshold=$thresholdMeters"
+        s"[CONFLICT] action=emptyInput threshold=$thresholdMeters horizon=$horizonSec"
       )
       return Seq.empty
     }
@@ -49,18 +50,20 @@ class ConflictDetector(
     println(
       s"[CONFLICT] action=start " +
       s"events=${events.size} " +
-      s"horizon=$predictionHorizonSec " +
-      s"threshold=$thresholdMeters"
+      s"threshold=$thresholdMeters " +
+      s"horizon=$horizonSec"
     )
 
-    // ------------------------------------------------------------------
-    // 1. Build trajectories per object
-    // ------------------------------------------------------------------
+    // ------------------------------------------------------------
+    // 1. Build trajectories
+    // ------------------------------------------------------------
     val trajectories = mutable.Map[String, Trajectory]()
 
     events.foreach { e =>
-      val current = trajectories.get(e.objectId)
-      val updated = trajectoryBuilder.updateTrajectory(current, e)
+      val updated = trajectoryBuilder.updateTrajectory(
+        trajectories.get(e.objectId),
+        e
+      )
       trajectories.update(e.objectId, updated)
     }
 
@@ -68,160 +71,154 @@ class ConflictDetector(
       s"[CONFLICT] action=trajectoriesBuilt count=${trajectories.size}"
     )
 
-    val trajList = trajectories.values.toSeq
-
-    // ------------------------------------------------------------------
-    // 2. Temporal filtering (remove inactive / noisy objects)
-    // ------------------------------------------------------------------
-    val windowStart = events.map(_.timestamp).min
-    val windowEnd   = events.map(_.timestamp).max
-
-    val activeObjects = trajectories.filter { case (_, traj) =>
-      val rate = TimeAggregation.eventRate(traj.events, windowStart, windowEnd)
-      rate >= minEventRate
-    }
-
-    val activeTrajectories = activeObjects.values.toSeq
-
-    println(
-      s"[CONFLICT] action=temporalFilter " +
-      s"active=${activeTrajectories.size} " +
-      s"minRate=$minEventRate"
-    )
-
-    // ------------------------------------------------------------------
-    // 3. Pairwise trajectory conflict detection
-    // ------------------------------------------------------------------
-    var distanceComputations = 0
-    var conflictPairs = 0
+    // ------------------------------------------------------------
+    // 2. Pairwise predictive conflict detection
+    // ------------------------------------------------------------
+    val objects = trajectories.keys.toSeq
 
     for {
-      i <- activeTrajectories.indices
-      j <- i + 1 until activeTrajectories.length
+      i <- objects.indices
+      j <- (i + 1) until objects.length
     } {
+      val id1 = objects(i)
+      val id2 = objects(j)
 
-      val t1 = activeTrajectories(i)
-      val t2 = activeTrajectories(j)
+      val traj1 = trajectories(id1)
+      val traj2 = trajectories(id2)
 
-      val e1Opt = t1.sortedEvents.lastOption
-      val e2Opt = t2.sortedEvents.lastOption
+      val e1 = traj1.sortedEvents.last
+      val e2 = traj2.sortedEvents.last
 
-      if (e1Opt.isDefined && e2Opt.isDefined) {
+      // ----------------------------------------------------------
+      // Compute velocities (m/s)
+      // ----------------------------------------------------------
+      val v1 = computeVelocity(traj1)
+      val v2 = computeVelocity(traj2)
 
-        val e1 = e1Opt.get
-        val e2 = e2Opt.get
+      val relativeSpeed =
+        math.sqrt(math.pow(v1._1 - v2._1, 2) + math.pow(v1._2 - v2._2, 2))
 
-        // ------------------------------------------------------------------
-        // 4. Predict future positions using trajectory velocity
-        // ------------------------------------------------------------------
-        val (lat1Future, lon1Future) =
-          predictFromTrajectory(t1, predictionHorizonSec)
-
-        val (lat2Future, lon2Future) =
-          predictFromTrajectory(t2, predictionHorizonSec)
-
-        val futureE1 = e1.copy(lat = lat1Future, lon = lon1Future)
-        val futureE2 = e2.copy(lat = lat2Future, lon = lon2Future)
-
-        val futureDistance = SpatialOperations.distance(futureE1, futureE2)
-        distanceComputations += 1
-
+      if (relativeSpeed <= 1e-6) {
         println(
-          s"[CONFLICT] pair=(${t1.objectId},${t2.objectId}) " +
-          s"predictedDistance=$futureDistance " +
-          s"horizon=$predictionHorizonSec"
+          s"[CONFLICT] skipZeroSpeed pair=($id1,$id2)"
         )
+      } else {
 
-        // ------------------------------------------------------------------
-        // 5. Conflict condition (future convergence)
-        // ------------------------------------------------------------------
-        if (futureDistance <= thresholdMeters) {
+        // --------------------------------------------------------
+        // Predict future positions using linear motion
+        // --------------------------------------------------------
+        val futurePositions: Seq[(Double, Double)] = (0 to 20).map { step =>
+          val t = step * (horizonSec / 20.0)
 
-          conflictPairs += 1
+          // Predict lat/lon using local tangent-plane approximation
+          val lat1 = e1.lat + (v1._2 * t) / 6371000.0 * (180.0 / math.Pi)
+          val lon1 = e1.lon + (v1._1 * t) /
+            (6371000.0 * math.cos(math.toRadians(e1.lat))) * (180.0 / math.Pi)
 
-          val lat = (lat1Future + lat2Future) / 2.0
-          val lon = (lon1Future + lon2Future) / 2.0
+          val lat2 = e2.lat + (v2._2 * t) / 6371000.0 * (180.0 / math.Pi)
+          val lon2 = e2.lon + (v2._1 * t) /
+            (6371000.0 * math.cos(math.toRadians(e2.lat))) * (180.0 / math.Pi)
 
-          val timestamp: Instant =
-            if (e1.timestamp.isAfter(e2.timestamp)) e1.timestamp else e2.timestamp
+          val d = SpatialOperations.distance(
+            GeoEvent(
+              id = s"pred-$id1",
+              objectId = id1,
+              timestamp = e1.timestamp,
+              lon = lon1,
+              lat = lat1,
+              wkt = "",
+              speed = None,
+              heading = None
+            ),
+            GeoEvent(
+              id = s"pred-$id2",
+              objectId = id2,
+              timestamp = e2.timestamp,
+              lon = lon2,
+              lat = lat2,
+              wkt = "",
+              speed = None,
+              heading = None
+            )
+          )
+
+          (t, d)
+        }
+
+        // --------------------------------------------------------
+        // Check if any predicted distance is below threshold
+        // --------------------------------------------------------
+        val conflict = futurePositions.find { case (_, d) =>
+          d <= thresholdMeters
+        }
+
+        conflict.foreach { case (t, d) =>
+          val ts = math.max(e1.timestamp, e2.timestamp)
 
           interactions += Interaction(
-            id = s"conf-${t1.objectId}-${t2.objectId}-${timestamp.toEpochMilli}",
+            id = s"conf-$id1-$id2-$ts",
             interactionType = InteractionType.Conflict,
-            objectIds = Seq(t1.objectId, t2.objectId),
-            timestamp = timestamp,
-            lat = lat,
-            lon = lon,
-            severity = Some(1.0 / (futureDistance + 1e-6)),
+            objectIds = Seq(id1, id2),
+            timestamp = ts,
+            lat = (e1.lat + e2.lat) / 2.0,
+            lon = (e1.lon + e2.lon) / 2.0,
+            severity = Some(1.0 / (t + 1e-6)),
             attributes = Map(
-              "predictedDistance" -> futureDistance.toString,
-              "horizonSec" -> predictionHorizonSec.toString
+              "predicted_distance" -> d.toString,
+              "time_to_conflict" -> t.toString,
+              "relative_speed" -> relativeSpeed.toString
             )
           )
 
           println(
-            s"[CONFLICT] detected " +
-            s"pair=(${t1.objectId},${t2.objectId}) " +
-            s"distance=$futureDistance"
+            s"[CONFLICT] detected pair=($id1,$id2) t=$t distance=$d"
           )
         }
       }
     }
 
-    // ------------------------------------------------------------------
-    // 6. Deduplicate interactions
-    // ------------------------------------------------------------------
-    val deduped =
-      interactions
-        .groupBy(i => i.objectIds.toSet)
-        .map(_._2.head)
-        .toSeq
-
-    val end = System.nanoTime()
-    val elapsedMs = (end - start) / 1e6
+    val elapsedMs = (System.nanoTime() - start) / 1e6
 
     println(
-      s"[CONFLICT] action=summary trajectories=${trajectories.size} " +
-      s"active=${activeTrajectories.size} distanceComputations=$distanceComputations " +
-      s"conflictsRaw=${interactions.size} conflictsFinal=${deduped.size} " +
+      s"[CONFLICT] summary " +
+      s"events=${events.size} " +
+      s"conflicts=${interactions.size} " +
       s"timeMs=$elapsedMs"
     )
 
-    deduped
+    interactions.toSeq
   }
 
   /**
-   * Predict future position using trajectory-derived velocity
+   * Compute velocity (meters/sec) from trajectory
    */
-  private def predictFromTrajectory(
-    traj: Trajectory,
-    horizonSec: Double
-  ): (Double, Double) = {
-
+  private def computeVelocity(traj: Trajectory): (Double, Double) = {
     val events = traj.sortedEvents
-
-    if (events.length < 2) {
-      val last = events.last
-      return (last.lat, last.lon)
-    }
+    if (events.length < 2) return (0.0, 0.0)
 
     val e1 = events(events.length - 2)
     val e2 = events.last
 
-    val dt =
-      (e2.timestamp.toEpochMilli - e1.timestamp.toEpochMilli) / 1000.0
+    val dt = (e2.timestamp - e1.timestamp) / 1000.0
+    if (dt <= 0) return (0.0, 0.0)
 
-    if (dt <= 0) return (e2.lat, e2.lon)
+    val lat1 = math.toRadians(e1.lat)
+    val lon1 = math.toRadians(e1.lon)
+    val lat2 = math.toRadians(e2.lat)
+    val lon2 = math.toRadians(e2.lon)
 
-    val dx = e2.lon - e1.lon
-    val dy = e2.lat - e1.lat
+    val dLat = lat2 - lat1
+    val dLon = lon2 - lon1
 
-    val vx = dx / dt
-    val vy = dy / dt
+    val R = 6371000.0
+    val meanLat = (lat1 + lat2) / 2.0
 
-    val futureLat = e2.lat + vy * horizonSec
-    val futureLon = e2.lon + vx * horizonSec
+    val metersPerLat = R
+    val metersPerLon = R * math.cos(meanLat)
 
-    (futureLat, futureLon)
+    val dx = dLon * metersPerLon
+    val dy = dLat * metersPerLat
+
+    (dx / dt, dy / dt)
   }
 }

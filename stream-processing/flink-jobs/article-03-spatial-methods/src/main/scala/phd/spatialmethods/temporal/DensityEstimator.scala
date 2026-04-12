@@ -1,37 +1,38 @@
 package phd.spatialmethods.temporal
 
-import java.time.Instant
 import phd.spatialmethods.model.{GeoEvent, SpatialRegion}
 
 
 /**
  * DensityEstimator computes spatial-temporal density metrics
  * for GeoEvents, supporting swarm analysis and hotspot detection.
+ *
+ * All timestamps are epoch milliseconds (Long).
  */
 object DensityEstimator {
 
   /**
-   * Count number of events per region within a time window
+   * Count number of events per region within a time window.
    *
-   * NOTE: Spatial predicate is abstracted via `isInside`
+   * @param windowStartMs inclusive
+   * @param windowEndMs   inclusive
    */
   def countPerRegion(
     events: Seq[GeoEvent],
     regions: Seq[SpatialRegion],
-    windowStart: Instant,
-    windowEnd: Instant,
+    windowStartMs: Long,
+    windowEndMs: Long,
     isInside: (GeoEvent, SpatialRegion) => Boolean
   ): Map[String, Int] = {
 
     val filtered = events.filter(e =>
-      !e.timestamp.isBefore(windowStart) &&
-      !e.timestamp.isAfter(windowEnd)
+      e.timestamp >= windowStartMs &&
+      e.timestamp <= windowEndMs
     )
 
     println(
-      s"[DENSITY] windowStart=${windowStart.toEpochMilli} " +
-      s"windowEnd=${windowEnd.toEpochMilli} " +
-      s"eventsInWindow=${filtered.size}"
+      s"[DENSITY] windowStart=$windowStartMs " +
+      s"windowEnd=$windowEndMs eventsInWindow=${filtered.size}"
     )
 
     regions.map { region =>
@@ -92,13 +93,13 @@ object DensityEstimator {
   def globalDensity(
     events: Seq[GeoEvent],
     totalArea: Double,
-    windowStart: Instant,
-    windowEnd: Instant
+    windowStartMs: Long,
+    windowEndMs: Long
   ): Double = {
 
     val count = events.count(e =>
-      !e.timestamp.isBefore(windowStart) &&
-      !e.timestamp.isAfter(windowEnd)
+      e.timestamp >= windowStartMs &&
+      e.timestamp <= windowEndMs
     )
 
     val density =
@@ -114,29 +115,28 @@ object DensityEstimator {
   /**
    * Density trend over time (windowed)
    *
-   * Returns: windowStart -> density
+   * Returns: windowStartMs -> density
    */
   def densityOverTime(
     events: Seq[GeoEvent],
-    windowSizeMillis: Long
+    windowSizeMs: Long
   ): Map[Long, Double] = {
 
     val windows = events.groupBy { e =>
-      val ts = e.timestamp.toEpochMilli
-      ts - (ts % windowSizeMillis)
+      val ts = e.timestamp
+      ts - (ts % windowSizeMs)
     }
 
     windows.map { case (windowStart, evs) =>
-      val durationSec = windowSizeMillis / 1000.0
+      val durationSec = windowSizeMs / 1000.0
       val density = if (durationSec == 0) 0.0 else evs.size / durationSec
 
       println(
         s"[DENSITY] windowStart=$windowStart events=${evs.size} " +
-        s"windowSizeMs=$windowSizeMillis density=$density"
+        s"windowSizeMs=$windowSizeMs density=$density"
       )
 
       windowStart -> density
     }
   }
-
 }

@@ -1,6 +1,5 @@
 package phd.spatialmethods.interaction
 
-import java.time.Instant
 import scala.collection.mutable.ArrayBuffer
 
 import phd.spatialmethods.model.{GeoEvent, Interaction, InteractionType}
@@ -12,10 +11,7 @@ import phd.spatialmethods.spatial.{SpatialIndex, SpatialOperations}
  *
  * Detects proximity interactions using:
  *  - SpatialIndex (fast neighborhood queries)
- *  - SpatialOperations (distance computation)
- *
- * Scientific model:
- *  - ε-neighborhood (DBSCAN-style)
+ *  - SpatialOperations (distance computation in meters)
  *
  * Proximity represents spatial closeness without risk.
  */
@@ -27,7 +23,6 @@ class ProximityDetector {
   ): Seq[Interaction] = {
 
     val start = System.nanoTime()
-
     val interactions = ArrayBuffer.empty[Interaction]
 
     if (events.isEmpty) {
@@ -39,15 +34,15 @@ class ProximityDetector {
       s"[PROXIMITY] action=start events=${events.size} threshold=$thresholdMeters"
     )
 
-    // ------------------------------------------------------------------
+    // ------------------------------------------------------------
     // 1. Build spatial index
-    // ------------------------------------------------------------------
+    // ------------------------------------------------------------
     val spatialIndex = SpatialIndex()
     events.foreach(spatialIndex.insert)
 
-    // ------------------------------------------------------------------
-    // 2. For each event → query neighbors within threshold
-    // ------------------------------------------------------------------
+    // ------------------------------------------------------------
+    // 2. For each event → query neighbors
+    // ------------------------------------------------------------
     var totalNeighbors = 0
     var distanceComputations = 0
 
@@ -56,19 +51,19 @@ class ProximityDetector {
       val neighbors =
         spatialIndex
           .queryRadius(e1.lat, e1.lon, thresholdMeters)
-          .filter(_.id != e1.id)
+          .filter(_.objectId != e1.objectId) // correct self-filter
 
       totalNeighbors += neighbors.size
 
       neighbors.foreach { e2 =>
 
-        // ------------------------------------------------------------------
-        // 3. Distance check (SpatialOperations)
-        // ------------------------------------------------------------------
+        // --------------------------------------------------------
+        // 3. Metric distance check
+        // --------------------------------------------------------
         val distance = SpatialOperations.distance(e1, e2)
         distanceComputations += 1
 
-        if (distance <= thresholdMeters) {
+        if (distance <= thresholdMeters && distance > 1e-6) {
 
           println(
             s"[PROXIMITY] pair=(${e1.objectId},${e2.objectId}) " +
@@ -77,15 +72,13 @@ class ProximityDetector {
 
           val lat = (e1.lat + e2.lat) / 2.0
           val lon = (e1.lon + e2.lon) / 2.0
-
-          val timestamp: Instant =
-            if (e1.timestamp.isAfter(e2.timestamp)) e1.timestamp else e2.timestamp
+          val ts = math.max(e1.timestamp, e2.timestamp)
 
           interactions += Interaction(
-            id = s"prox-${e1.id}-${e2.id}-${timestamp.toEpochMilli}",
+            id = s"prox-${e1.id}-${e2.id}-$ts",
             interactionType = InteractionType.Proximity,
             objectIds = Seq(e1.objectId, e2.objectId),
-            timestamp = timestamp,
+            timestamp = ts,
             lat = lat,
             lon = lon,
             severity = None,
@@ -97,17 +90,16 @@ class ProximityDetector {
       }
     }
 
-    // ------------------------------------------------------------------
-    // 4. Deduplicate interactions (A-B == B-A)
-    // ------------------------------------------------------------------
+    // ------------------------------------------------------------
+    // 4. Deduplicate (A-B == B-A)
+    // ------------------------------------------------------------
     val deduped =
       interactions
         .groupBy(i => i.objectIds.toSet)
         .map(_._2.head)
         .toSeq
 
-    val end = System.nanoTime()
-    val elapsedMs = (end - start) / 1e6
+    val elapsedMs = (System.nanoTime() - start) / 1e6
 
     println(
       s"[PROXIMITY] action=summary events=${events.size} " +

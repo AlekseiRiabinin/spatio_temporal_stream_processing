@@ -1,7 +1,5 @@
 package phd.spatialmethods.model
 
-import java.time.Instant
-
 
 /**
  * Trajectory represents an ordered sequence of GeoEvents
@@ -19,18 +17,18 @@ case class Trajectory(
    * Ensures events are sorted by event-time
    */
   lazy val sortedEvents: Seq[GeoEvent] =
-    events.sortBy(_.timestamp.toEpochMilli)
+    events.sortBy(_.timestamp)
 
   /**
-   * Start time of trajectory
+   * Start time of trajectory (epoch millis)
    */
-  def startTime: Option[Instant] =
+  def startTime: Option[Long] =
     sortedEvents.headOption.map(_.timestamp)
 
   /**
-   * End time of trajectory
+   * End time of trajectory (epoch millis)
    */
-  def endTime: Option[Instant] =
+  def endTime: Option[Long] =
     sortedEvents.lastOption.map(_.timestamp)
 
   /**
@@ -40,7 +38,7 @@ case class Trajectory(
     (for {
       start <- startTime
       end   <- endTime
-    } yield end.toEpochMilli - start.toEpochMilli).getOrElse(0L)
+    } yield end - start).getOrElse(0L)
 
   /**
    * Number of points in trajectory
@@ -55,7 +53,7 @@ case class Trajectory(
 
   /**
    * Compute total traveled distance (approximate, in meters)
-   * Uses simple Haversine formula
+   * Uses Haversine formula
    */
   def totalDistanceMeters: Double = {
     val pts = sortedEvents
@@ -109,7 +107,7 @@ case class Trajectory(
     lat1: Double, lon1: Double,
     lat2: Double, lon2: Double
   ): Double = {
-    val R = 6371000.0 // Earth radius in meters
+    val R = 6371000.0
     val dLat = math.toRadians(lat2 - lat1)
     val dLon = math.toRadians(lon2 - lon1)
 

@@ -1,12 +1,10 @@
 package phd.spatialmethods.producer
 
-import java.time.Instant
-
 
 case class GeoEvent(
   id: String,
   objectId: String,
-  timestamp: Instant,
+  timestamp: Long,     // epoch millis
   lon: Double,
   lat: Double,
   wkt: String,
@@ -23,7 +21,7 @@ case class GeoEvent(
     s"""{
        |  "id": "$id",
        |  "objectId": "$objectId",
-       |  "timestamp": "${timestamp.toString}",
+       |  "timestamp": $timestamp,
        |  "lon": $lon,
        |  "lat": $lat,
        |  "wkt": "$wkt",

@@ -1,7 +1,5 @@
 package phd.spatialmethods.model
 
-import java.time.Instant
-
 
 /**
  * Interaction represents a spatio-temporal relation between two or more objects
@@ -10,7 +8,7 @@ import java.time.Instant
  * @param id              Unique interaction identifier
  * @param interactionType Type of interaction (collision, proximity, clustering, conflict)
  * @param objectIds       Participating objects (rover IDs)
- * @param timestamp       Event time of interaction
+ * @param timestamp       Event time in epoch milliseconds
  * @param lat             Latitude of interaction center
  * @param lon             Longitude of interaction center
  * @param severity        Optional severity score (e.g., risk level)
@@ -20,7 +18,7 @@ case class Interaction(
   id: String,
   interactionType: InteractionType,
   objectIds: Seq[String],
-  timestamp: Instant,
+  timestamp: Long,
   lat: Double,
   lon: Double,
   severity: Option[Double] = None,
@@ -45,7 +43,7 @@ case class Interaction(
   /**
    * Event time in millis (for Flink compatibility)
    */
-  def eventTimeMillis: Long = timestamp.toEpochMilli
+  def eventTimeMillis: Long = timestamp
 
   /**
    * Convert to WKT (optional, for storage/export)
@@ -61,7 +59,7 @@ case class Interaction(
     lon >= -180 && lon <= 180
 
   override def toString: String =
-    s"Interaction(id=$id, type=$interactionType, participants=$participantsCount, lat=$lat, lon=$lon)"
+    s"Interaction(id=$id, type=$interactionType, ts=$timestamp, participants=$participantsCount, lat=$lat, lon=$lon)"
 }
 
 
