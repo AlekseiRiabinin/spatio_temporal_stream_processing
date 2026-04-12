@@ -106,7 +106,7 @@ object GeoEventProducer {
   // ------------------------------------------------------------
   def main(args: Array[String]): Unit = {
 
-    val topic = sys.env.getOrElse("KAFKA_TOPIC", "geo-events-topic")
+    val topic = sys.env.getOrElse("KAFKA_TOPIC", "spatial-events")
     val bootstrap = sys.env.getOrElse("KAFKA_BOOTSTRAP_SERVERS", "kafka-1:19092")
     val keys = sys.env.getOrElse("KEYS", "50").toInt.max(1)
 

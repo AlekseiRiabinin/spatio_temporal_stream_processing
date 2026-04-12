@@ -26,7 +26,7 @@ ENV MAX_SKEW_MS=2000
 ENV MAX_DELAY_MS=5000
 
 # Number of keys (vehicles)
-ENV KEYS=10
+ENV KEYS=50
 
 ENTRYPOINT ["java", "-jar", "/app/geo-producer.jar"]
 

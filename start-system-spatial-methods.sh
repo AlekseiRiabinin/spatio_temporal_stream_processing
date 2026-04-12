@@ -140,7 +140,7 @@ create_kafka_topics() {
     sleep 5
 
     docker exec kafka-1 bash -c '
-        topics=("geo-events-topic:4")
+        topics=("spatial-events:4")
 
         for topic in "${topics[@]}"; do
             IFS=":" read -r name partitions <<< "$topic"

@@ -49,7 +49,7 @@ object Article03SpatialMethodsJob {
       sys.env.getOrElse("KAFKA_BOOTSTRAP_SERVERS", "kafka-1:19092")
 
     val topic =
-      sys.env.getOrElse("KAFKA_TOPIC", "geo-events-topic")
+      sys.env.getOrElse("KAFKA_TOPIC", "spatial-events")
 
     println(
       s"[MAIN] action=kafkaConfig bootstrap=$bootstrap topic=$topic"
