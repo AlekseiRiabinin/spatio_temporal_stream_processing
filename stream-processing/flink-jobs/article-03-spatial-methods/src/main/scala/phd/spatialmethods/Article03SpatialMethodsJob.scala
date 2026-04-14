@@ -95,25 +95,8 @@ object Article03SpatialMethodsJob {
     // ------------------------------------------------------------------
     println("[MAIN] action=output status=printing")
 
-    var throughputCounter = 0L
-    var lastReportTime = System.currentTimeMillis()
-
     interactionsStream
       .map { interaction =>
-
-        // Throughput counter
-        throughputCounter += 1
-        val now = System.currentTimeMillis()
-
-        // Emit throughput once per second
-        if (now - lastReportTime >= 1000) {
-          println(
-            s"[THROUGHPUT] interactionsPerSec=$throughputCounter timestamp=$now"
-          )
-          throughputCounter = 0
-          lastReportTime = now
-        }
-
         mapper.writeValueAsString(interaction)
       }
       .print()
