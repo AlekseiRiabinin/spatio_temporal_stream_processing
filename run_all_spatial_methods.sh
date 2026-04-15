@@ -1,10 +1,11 @@
 #!/bin/bash
+set -e
 
-OUTPUT="results_spatial_methods.txt"
-> "$OUTPUT"
+echo "=== Parsing Article 03 Spatial Methods Logs ==="
 
-for f in logs/*.log; do
-  echo "Processing $f" >> "$OUTPUT"
-  ./parse_metrics_spatial_methods.sh "$f" >> "$OUTPUT"
-  echo "----------------------" >> "$OUTPUT"
-done
+cd parser
+source venv/bin/activate
+
+python3 parser_spatial_methods.py
+
+echo "=== Parsing complete ==="

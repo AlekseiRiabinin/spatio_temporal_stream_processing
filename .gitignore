@@ -1,17 +1,54 @@
-# Logs
+# ============================================================
+# LOGS & RUNTIME OUTPUT
+# ============================================================
 *.log
+logs/
+logs/*.log
 
-# Runtime data
-*.pid
-*.seed
+# Experiment outputs
+data/article_3/parsed/
+data/article_3/metadata/
 
-# Compiled Python files
+# ============================================================
+# PYTHON
+# ============================================================
+# Virtual environments
+venv/
+parser/venv/
+*/venv/
+.env/
+.venv/
+
+# Python cache
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
-__pycache__/
+*.pydistutils.cfg
+*.egg-info/
+*.egg
+.eggs/
+.python-version
 
-# Scala specific
+# Jupyter
+*.ipynb
+.ipynb_checkpoints/
+.jupyter/
+.jupyter_cache/
+.jupyterlab/
+
+# Polars / Arrow / Pandas temp files
+*.arrow
+*.parquet
+*.feather
+
+# Matplotlib cache
+~/.cache/matplotlib/
+matplotlibrc
+
+# ============================================================
+# SCALA / SBT / JVM
+# ============================================================
 *.class
 *.jar
 *.war
@@ -20,12 +57,12 @@ __pycache__/
 *.zip
 *.tar.gz
 *.rar
-*.log
 *.tasty
-# *.sbt
 *.scala_dependencies
+
 .project
 .target/
+.scala-build/
 
 # SBT specific
 project/target/
@@ -35,11 +72,33 @@ src_managed/
 .metals/
 .bloop/
 .bsp/
-.scala-build/
 
-# VS Code specific
+# ============================================================
+# IDE / EDITOR
+# ============================================================
 .vscode/
+.idea/
+*.iml
 
-# OS generated files
+# ============================================================
+# OS FILES
+# ============================================================
 .DS_Store
 Thumbs.db
+
+# ============================================================
+# DOCKER
+# ============================================================
+docker/*.pid
+docker/*.log
+docker/data/
+docker/tmp/
+
+# ============================================================
+# MISC
+# ============================================================
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
