@@ -3,16 +3,16 @@
 +-------------------+-------------------+----------------+--------------+--------+
 | realtime          | constant          | random         | straight     | 50     |
 | realtime          | wave              | random         | random_walk  | 50     |
-| realtime          | burst             | clustered      | swarm        | 100    |
-| realtime          | constant          | random         | collision    | 50     |
+| realtime          | burst             | clustered      | swarm        | 300    | re-run!!!
+| realtime          | constant          | clustered      | collision    | 300    | re-run!!!
 +-------------------+-------------------+----------------+--------------+--------+
 | skewed            | constant          | random         | straight     | 50     |
 | skewed            | wave              | random         | random_walk  | 50     |
-| skewed            | burst             | clustered      | swarm        | 100    |
-| skewed            | constant          | random         | collision    | 50     |
+| skewed            | burst             | clustered      | swarm        | 300    | re-run!!!
+| skewed            | constant          | clustered      | collision    | 300    | re-run!!!
 +-------------------+-------------------+----------------+--------------+--------+
 | late              | constant          | random         | straight     | 50     |
 | late              | wave              | random         | random_walk  | 50     |
-| late              | burst             | clustered      | swarm        | 100    |
-| late              | constant          | random         | collision    | 50     |
+| late              | burst             | clustered      | swarm        | 300    | re-run!!!
+| late              | constant          | clustered      | collision    | 300    | re-run!!!
 +-------------------+-------------------+----------------+--------------+--------+

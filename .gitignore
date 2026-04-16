@@ -6,8 +6,7 @@ logs/
 logs/*.log
 
 # Experiment outputs
-data/article_3/parsed/
-data/article_3/metadata/
+data/
 
 # ============================================================
 # PYTHON

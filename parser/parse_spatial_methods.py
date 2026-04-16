@@ -42,7 +42,7 @@ PAT_PROX_SUMMARY = re.compile(
 )
 
 PAT_COLLISION_SUMMARY = re.compile(
-    r"\[COLLISION\]\s+summary\s+events=(\d+)\s+collisions=(\d+)\s+timeMs=([\d\.]+)"
+    r"\[COLLISION\]\s+summary\s+events=(\d+).*?collisions=(\d+).*?timeMs=([\d\.]+)"
 )
 
 PAT_CONFLICT_SUMMARY = re.compile(
