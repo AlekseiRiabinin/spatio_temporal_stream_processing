@@ -110,4 +110,38 @@ object SpatialOperations {
       if contains(e, r)
     } yield (e, r)
   }
+
+  /**
+   * Haversine distance for latitude difference only (meters)
+   * Same longitude, varying latitude.
+   */
+  def distanceLat(lat1: Double, lat2: Double): Double = {
+    val lat1r = math.toRadians(lat1)
+    val lat2r = math.toRadians(lat2)
+    val dLat = lat2r - lat1r
+
+    val a = math.sin(dLat / 2) * math.sin(dLat / 2)
+    val c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    EarthRadiusMeters * c
+  }
+
+  /**
+   * Haversine distance for longitude difference only (meters)
+   * Same latitude, varying longitude.
+   */
+  def distanceLon(lat: Double, lon1: Double, lon2: Double): Double = {
+    val latr = math.toRadians(lat)
+    val lon1r = math.toRadians(lon1)
+    val lon2r = math.toRadians(lon2)
+    val dLon = lon2r - lon1r
+
+    val a =
+      math.cos(latr) * math.cos(latr) *
+      math.sin(dLon / 2) * math.sin(dLon / 2)
+
+    val c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    EarthRadiusMeters * c
+  }
 }

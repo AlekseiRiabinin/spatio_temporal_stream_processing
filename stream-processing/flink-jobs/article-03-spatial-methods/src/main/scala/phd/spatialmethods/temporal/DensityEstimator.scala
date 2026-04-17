@@ -88,14 +88,19 @@ object DensityEstimator {
   }
 
   /**
-   * Global density (events per unit area over all regions)
+   * Global density (events per km² over the fixed service area)
+   *
+   * Uses a realistic delivery radius of 1.2 km around the hub.
    */
   def globalDensity(
     events: Seq[GeoEvent],
-    totalArea: Double,
     windowStartMs: Long,
     windowEndMs: Long
   ): Double = {
+
+    // === Fixed service area: 1.2 km radius ===
+    val serviceRadiusKm = 1.2
+    val totalAreaKm2 = math.Pi * serviceRadiusKm * serviceRadiusKm
 
     val count = events.count(e =>
       e.timestamp >= windowStartMs &&
@@ -103,10 +108,10 @@ object DensityEstimator {
     )
 
     val density =
-      if (totalArea <= 0) 0.0 else count.toDouble / totalArea
+      if (totalAreaKm2 <= 0) 0.0 else count.toDouble / totalAreaKm2
 
     println(
-      s"[DENSITY] global count=$count totalArea=$totalArea density=$density"
+      s"[DENSITY] global count=$count totalAreaKm2=$totalAreaKm2 density=$density"
     )
 
     density

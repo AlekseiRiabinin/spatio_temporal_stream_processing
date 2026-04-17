@@ -34,8 +34,7 @@ services:
   # ============================================================
 
   geo_producer_spatial_methods:
-    build:
-      context: ../data-generators/article-03-geo-producer
+    image: alexflames77/geo_producer_spatial_methods:latest
     container_name: geo_producer_spatial_methods
 
     depends_on:
@@ -82,6 +81,7 @@ services:
     networks: [kafka-net]
 
     restart: "no"
+
 
 
   # ============================================================

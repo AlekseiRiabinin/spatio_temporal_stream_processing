@@ -196,7 +196,13 @@ class CollisionDetector(
     val elapsedMs = (System.nanoTime() - start) / 1e6
 
     println(
-      s"[COLLISION] summary events=${events.size} spatialCandidates=$spatialCandidatesTotal knnCandidates=$knnCandidatesTotal distanceComputations=$distanceComputations collisions=${deduped.size} timeMs=$elapsedMs"
+      s"[COLLISION] summary " +
+        s"events=${events.size} " +
+        s"spatialCandidates=$spatialCandidatesTotal " +
+        s"knnCandidates=$knnCandidatesTotal " +
+        s"distanceComputations=$distanceComputations " +
+        s"collisions=${deduped.size} " +
+        s"timeMs=$elapsedMs"
     )
 
     deduped
@@ -220,10 +226,15 @@ class CollisionDetector(
         val dt = (e2.timestamp - e1.timestamp) / 1000.0
         if (dt <= 0) return (0.0, 0.0)
 
-        val dx = e2.lon - e1.lon
-        val dy = e2.lat - e1.lat
+        // Convert lat/lon deltas to meters
+        val dxMeters = SpatialOperations.distanceLon(e1.lat, e1.lon, e2.lon)
+        val dyMeters = SpatialOperations.distanceLat(e1.lat, e2.lat)
 
-        (dx / dt, dy / dt)
+        // Preserve direction
+        val dxSigned = if (e2.lon > e1.lon) dxMeters else -dxMeters
+        val dySigned = if (e2.lat > e1.lat) dyMeters else -dyMeters
+
+        (dxSigned / dt, dySigned / dt)
 
       case None =>
         (0.0, 0.0)

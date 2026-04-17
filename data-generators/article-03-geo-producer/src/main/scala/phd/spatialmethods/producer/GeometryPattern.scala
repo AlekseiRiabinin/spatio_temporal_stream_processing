@@ -38,22 +38,37 @@ object GeometryPattern {
 
   def fromEnv(): GeometryPattern = {
     sys.env.getOrElse("GEOMETRY_PATTERN", "random").toLowerCase match {
-      case "random" =>
-        RandomPointRegion(30.0, 50.0, 50.0, 60.0)
 
+      // Northwestern Federal District (Saint Petersburg) random region
+      case "random" =>
+        RandomPointRegion(
+          minLon = 29.5,
+          maxLon = 31.5,
+          minLat = 59.7,
+          maxLat = 60.1
+        )
+
+      // Saint Petersburg clustered geometry
       case "clustered" =>
         ClusteredPoints(
           centers = Seq(
-            (55.27, 25.20), // Dubai-ish
-            (37.62, 55.75), // Moscow-ish
-            (30.52, 50.45)  // Kyiv-ish
+            (30.3158, 59.9390),  // Admiralteysky / Nevsky
+            (30.3180, 59.9550),  // Liteyny / Chernyshevskaya
+            (30.2920, 59.9485),  // Vasilievsky Island
+            (30.3200, 59.9700),  // Petrogradsky
+            (30.3800, 59.9300)   // Moskovsky
           ),
-          stdDev = 0.03
+          stdDev = 0.001        // ~110m cluster radius
         )
 
       case other =>
         println(s"[GeometryPattern] Unknown '$other', using random")
-        RandomPointRegion(30.0, 50.0, 50.0, 60.0)
+        RandomPointRegion(
+          minLon = 29.5,
+          maxLon = 31.5,
+          minLat = 59.7,
+          maxLat = 60.1
+        )
     }
   }
 }

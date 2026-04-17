@@ -5,13 +5,11 @@ COMPOSE="docker/docker-compose.spatial-methods.yml"
 
 TIMESTAMP_PATTERN_ARG=${1:-}
 EVENT_RATE_PATTERN_ARG=${2:-}
-GEOMETRY_PATTERN_ARG=${3:-}
-MOTION_MODE_ARG=${4:-}
+MOTION_MODE_ARG=${3:-}
 
 echo "=== Starting Spatial Methods System (Article 03) ==="
 [ -n "$TIMESTAMP_PATTERN_ARG" ] && echo "Timestamp Pattern:   $TIMESTAMP_PATTERN_ARG"
 [ -n "$EVENT_RATE_PATTERN_ARG" ] && echo "Rate Pattern:        $EVENT_RATE_PATTERN_ARG"
-[ -n "$GEOMETRY_PATTERN_ARG" ] && echo "Geometry Pattern:    $GEOMETRY_PATTERN_ARG"
 [ -n "$MOTION_MODE_ARG" ] && echo "Motion Mode:         $MOTION_MODE_ARG"
 
 # ------------------------------------------------------------
@@ -41,11 +39,38 @@ configure_experiment() {
     MAX_SKEW_MS=2000
     MAX_DELAY_MS=5000
 
-    # CLI overrides
+    # CLI overrides (only high-level dimensions)
     [ -n "$TIMESTAMP_PATTERN_ARG" ] && TIMESTAMP_PATTERN="$TIMESTAMP_PATTERN_ARG"
     [ -n "$EVENT_RATE_PATTERN_ARG" ] && EVENT_RATE_PATTERN="$EVENT_RATE_PATTERN_ARG"
-    [ -n "$GEOMETRY_PATTERN_ARG" ] && GEOMETRY_PATTERN="$GEOMETRY_PATTERN_ARG"
     [ -n "$MOTION_MODE_ARG" ] && MOTION_MODE="$MOTION_MODE_ARG"
+
+    # ------------------------------------------------------------
+    # Apply Article 03 experiment matrix rules (realistic rover)
+    # ------------------------------------------------------------
+    case "$MOTION_MODE" in
+        straight)
+            GEOMETRY_PATTERN="random"
+            KEYS=50
+            ;;
+        random_walk)
+            GEOMETRY_PATTERN="random"
+            KEYS=50
+            ;;
+        swarm)
+            GEOMETRY_PATTERN="clustered"
+            KEYS=100
+            ;;
+        collision)
+            GEOMETRY_PATTERN="clustered"
+            KEYS=100
+            ;;
+        *)
+            echo "Unknown MOTION_MODE '$MOTION_MODE', falling back to straight"
+            GEOMETRY_PATTERN="random"
+            KEYS=50
+            MOTION_MODE="straight"
+            ;;
+    esac
 
     # Normalize timestamp-related params
     case "$TIMESTAMP_PATTERN" in
@@ -110,16 +135,12 @@ export_experiment_env() {
     echo "===================================="
 }
 
-# ------------------------------------------------------------
-# Utils
-# ------------------------------------------------------------
 service_exists() {
     docker compose -f "$COMPOSE" config --services | grep -q "^$1$"
 }
 
 wait_for_jobmanager() {
     echo "Waiting for Flink JobManager..."
-
     for i in {1..20}; do
         if curl -s http://localhost:8081 >/dev/null; then
             echo "Flink JobManager ready"
@@ -127,24 +148,17 @@ wait_for_jobmanager() {
         fi
         sleep 3
     done
-
     echo "ERROR: JobManager not ready"
     exit 1
 }
 
-# ------------------------------------------------------------
-# Kafka Topics
-# ------------------------------------------------------------
 create_kafka_topics() {
     echo "=== Creating Kafka topics ==="
     sleep 5
-
     docker exec kafka-1 bash -c '
         topics=("spatial-events:4")
-
         for topic in "${topics[@]}"; do
             IFS=":" read -r name partitions <<< "$topic"
-
             if kafka-topics.sh --bootstrap-server kafka-1:19092 --describe --topic "$name" >/dev/null 2>&1; then
                 echo "Topic exists: $name"
             else
@@ -159,9 +173,6 @@ create_kafka_topics() {
     '
 }
 
-# ------------------------------------------------------------
-# Infrastructure
-# ------------------------------------------------------------
 start_kafka() {
     echo "=== Kafka ==="
     docker compose -f "$COMPOSE" up -d kafka-1
@@ -193,20 +204,13 @@ start_producer() {
     docker compose -f "$COMPOSE" up -d geo_producer_spatial_methods
 }
 
-# ------------------------------------------------------------
-# Start Job
-# ------------------------------------------------------------
 start_job() {
     echo "=== Spatial Methods Job ==="
     export_experiment_env
     docker compose -f "$COMPOSE" up -d geoflink_spatial_methods_job
 }
 
-# ------------------------------------------------------------
-# MAIN
-# ------------------------------------------------------------
 configure_experiment
-
 start_kafka
 create_kafka_topics
 start_flink
@@ -224,9 +228,7 @@ echo "Kafdrop:    http://localhost:9003"
 
 # Examples:
 # ./start-system-spatial-methods.sh
-# ./start-system-spatial-methods.sh skewed burst random random_walk
-# ./start-system-spatial-methods.sh late wave clustered swarm
-# ./start-system-spatial-methods.sh realtime constant random collision
-
+# ./start-system-spatial-methods.sh skewed burst random_walk
+# ./start-system-spatial-methods.sh late wave swarm
+# ./start-system-spatial-methods.sh realtime constant collision
 # MOTION_MODE values: straight | random_walk | swarm | collision
-

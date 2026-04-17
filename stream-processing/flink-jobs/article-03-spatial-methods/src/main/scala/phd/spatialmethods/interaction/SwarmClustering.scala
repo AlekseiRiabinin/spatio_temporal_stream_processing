@@ -58,7 +58,7 @@ class SwarmClustering {
     val windowEndMs   = events.map(_.timestamp).max
 
     val globalDensity =
-      DensityEstimator.globalDensity(events, totalArea = 1.0, windowStartMs, windowEndMs)
+      DensityEstimator.globalDensity(events, windowStartMs, windowEndMs)
 
     println(
       s"[SWARM] action=globalDensity density=$globalDensity"

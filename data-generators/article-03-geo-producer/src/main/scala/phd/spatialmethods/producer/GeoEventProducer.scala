@@ -1,7 +1,6 @@
 package phd.spatialmethods.producer
 
 import java.util.{Properties, UUID}
-import java.time.Instant
 import scala.util.Random
 import scala.collection.mutable
 
@@ -10,6 +9,89 @@ import org.apache.kafka.common.serialization.StringSerializer
 
 
 object GeoEventProducer {
+
+  // ============================================================
+  //  Service Area Configuration (1.2 km radius around a hub)
+  // ============================================================
+
+  private val hubLat = 59.9391     // Example: Nevsky Prospekt (store location)
+  private val hubLon = 30.3158
+  private val serviceRadiusMeters = 1200.0  // 1.2 km realistic delivery radius
+
+  private def metersToLat(m: Double): Double =
+    m / 111320.0
+
+  private def metersToLon(lat: Double, m: Double): Double =
+    m / (111320.0 * math.cos(math.toRadians(lat)))
+
+  // ============================================================
+  //  Geometry Patterns (Realistic Service Area)
+  // ============================================================
+
+  private trait GeometryPattern {
+    def initialPoint(rand: Random): (Double, Double)
+  }
+
+  private case class RandomDiskRegion(
+    hubLat: Double,
+    hubLon: Double,
+    radiusMeters: Double
+  ) extends GeometryPattern {
+
+    override def initialPoint(rand: Random): (Double, Double) = {
+      val u = rand.nextDouble()
+      val v = rand.nextDouble()
+
+      val r = radiusMeters * math.sqrt(u)
+      val theta = 2 * math.Pi * v
+
+      val dx = r * math.cos(theta)
+      val dy = r * math.sin(theta)
+
+      val lat = hubLat + metersToLat(dy)
+      val lon = hubLon + metersToLon(hubLat, dx)
+
+      (lon, lat)
+    }
+  }
+
+  private case class ClusteredAroundHub(
+    hubLat: Double,
+    hubLon: Double,
+    stdDevMeters: Double
+  ) extends GeometryPattern {
+
+    override def initialPoint(rand: Random): (Double, Double) = {
+      val dx = rand.nextGaussian() * stdDevMeters
+      val dy = rand.nextGaussian() * stdDevMeters
+
+      val lat = hubLat + metersToLat(dy)
+      val lon = hubLon + metersToLon(hubLat, dx)
+
+      (lon, lat)
+    }
+  }
+
+  private object GeometryPattern {
+    def fromEnv(): GeometryPattern = {
+      sys.env.getOrElse("GEOMETRY_PATTERN", "random").toLowerCase match {
+
+        case "random" =>
+          RandomDiskRegion(hubLat, hubLon, serviceRadiusMeters)
+
+        case "clustered" =>
+          ClusteredAroundHub(hubLat, hubLon, stdDevMeters = serviceRadiusMeters / 2.0)
+
+        case other =>
+          println(s"[GeometryPattern] Unknown '$other', using random")
+          RandomDiskRegion(hubLat, hubLon, serviceRadiusMeters)
+      }
+    }
+  }
+
+  // ============================================================
+  //  Motion Modes
+  // ============================================================
 
   private sealed trait MotionMode
   private case object Straight extends MotionMode
@@ -36,17 +118,25 @@ object GeoEventProducer {
   ): ObjectState = {
 
     val speed = mode match {
-      case Straight => state.speed
-      case RandomWalk => (state.speed + rand.nextGaussian() * 1.0).max(1.0).min(40.0)
-      case Swarm => (state.speed + rand.nextGaussian() * 0.5).max(2.0).min(15.0)
-      case Collision => state.speed
+      case Straight =>
+        state.speed
+      case RandomWalk =>
+        (state.speed + rand.nextGaussian() * 0.3).max(1.0).min(2.0)
+      case Swarm =>
+        (state.speed + rand.nextGaussian() * 0.2).max(0.7).min(1.5)
+      case Collision =>
+        state.speed
     }
 
     val heading = mode match {
-      case Straight => state.heading
-      case RandomWalk => (state.heading + rand.nextGaussian() * 10.0 + 360.0) % 360.0
-      case Swarm => (state.heading + rand.nextGaussian() * 5.0 + 360.0) % 360.0
-      case Collision => state.heading
+      case Straight =>
+        state.heading
+      case RandomWalk =>
+        (state.heading + rand.nextGaussian() * 10.0 + 360.0) % 360.0
+      case Swarm =>
+        (state.heading + rand.nextGaussian() * 5.0 + 360.0) % 360.0
+      case Collision =>
+        state.heading
     }
 
     val distance = speed * dtSeconds
@@ -73,6 +163,10 @@ object GeoEventProducer {
         Straight
     }
   }
+
+  // ============================================================
+  //  Main Producer Loop
+  // ============================================================
 
   def main(args: Array[String]): Unit = {
 
@@ -112,8 +206,20 @@ object GeoEventProducer {
     val stateByObject = mutable.Map.empty[String, ObjectState]
     var lastTsByObject = mutable.Map.empty[String, Long]
 
-    val swarmCenter = (55.27, 25.20)
-    val collisionPair = ("obj-0", "obj-1")
+    // Collision mode: define multiple head-on pairs
+    val collisionPairs: Seq[(String, String)] =
+      (0 until math.min(20, keys - (keys % 2)) by 2).map(i => (s"obj-$i", s"obj-${i + 1}"))
+
+    def isFirstOfPair(id: String): Boolean =
+      collisionPairs.exists(_._1 == id)
+
+    def isSecondOfPair(id: String): Boolean =
+      collisionPairs.exists(_._2 == id)
+
+    // Collision cluster center (kept inside service area)
+    val collisionCenterLon = hubLon
+    val collisionCenterLat = hubLat
+    val collisionOffsetDeg = 0.00003  // ~2–3m separation
 
     var counter = 0L
     var lastReport = System.currentTimeMillis()
@@ -125,34 +231,46 @@ object GeoEventProducer {
       val prevState = stateByObject.getOrElseUpdate(
         objectId, {
           val (lon0, lat0) = motionMode match {
+
             case Swarm =>
-              val (cx, cy) = swarmCenter
-              (cx + rand.nextGaussian() * 0.01, cy + rand.nextGaussian() * 0.01)
+              geomPattern.initialPoint(rand)
+
             case Collision =>
-              if (objectId == collisionPair._1) (55.26, 25.20)
-              else if (objectId == collisionPair._2) (55.28, 25.20)
-              else geomPattern.initialPoint(rand)
+              if (isFirstOfPair(objectId))
+                (collisionCenterLon, collisionCenterLat)
+              else if (isSecondOfPair(objectId))
+                (collisionCenterLon + collisionOffsetDeg, collisionCenterLat)
+              else
+                geomPattern.initialPoint(rand)
+
             case _ =>
               geomPattern.initialPoint(rand)
           }
 
           val baseSpeed = motionMode match {
-            case Straight   => 15 + rand.nextDouble() * 10
-            case RandomWalk => 10 + rand.nextDouble() * 15
-            case Swarm      => 8 + rand.nextDouble() * 5
-            case Collision  =>
-              if (objectId == collisionPair._1) 20.0
-              else if (objectId == collisionPair._2) 20.0
-              else 10 + rand.nextDouble() * 10
+            case Straight =>
+              1.5 + rand.nextDouble() * 1.0
+            case RandomWalk =>
+              1.0 + rand.nextDouble() * 1.0
+            case Swarm =>
+              0.7 + rand.nextDouble() * 0.8
+            case Collision =>
+              if (isFirstOfPair(objectId) || isSecondOfPair(objectId))
+                1.5 + rand.nextDouble() * 0.7
+              else
+                1.0 + rand.nextDouble() * 1.0
           }
 
           val baseHeading = motionMode match {
-            case Straight   => rand.nextDouble() * 360
-            case RandomWalk => rand.nextDouble() * 360
-            case Swarm      => 90 + rand.nextGaussian() * 20
-            case Collision  =>
-              if (objectId == collisionPair._1) 90.0
-              else if (objectId == collisionPair._2) 270.0
+            case Straight =>
+              rand.nextDouble() * 360
+            case RandomWalk =>
+              rand.nextDouble() * 360
+            case Swarm =>
+              90 + rand.nextGaussian() * 20
+            case Collision =>
+              if (isFirstOfPair(objectId)) 0.0
+              else if (isSecondOfPair(objectId)) 180.0
               else rand.nextDouble() * 360
           }
 
@@ -167,11 +285,7 @@ object GeoEventProducer {
       stateByObject.update(objectId, newState)
       lastTsByObject.update(objectId, now)
 
-      // ------------------------------------------------------------
-      // Correct timestamp: epoch millis
-      // ------------------------------------------------------------
       val tsMillis: Long = tsPattern.nextInstant(now, rand).toEpochMilli
-
       val wkt = f"POINT(${newState.lon}%.6f ${newState.lat}%.6f)"
 
       val event = GeoEvent(
