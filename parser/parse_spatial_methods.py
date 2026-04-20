@@ -14,7 +14,7 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 META_DIR.mkdir(parents=True, exist_ok=True)
 
 PAT_EXPERIMENT_FILE = re.compile(
-    r"^(realtime|skewed|late)_(constant|constant1|wave|burst)_[0-9]{8}_[0-9]{6}\.log$"
+    r"^(realtime|skewed|late)_(constant|wave|burst)_.+_[0-9]{8}_[0-9]{6}\.log$"
 )
 
 # ---------------------------------------------------------
@@ -50,7 +50,7 @@ PAT_CONFLICT_SUMMARY = re.compile(
 )
 
 PAT_DENSITY = re.compile(
-    r"\[DENSITY\]\s+global\s+count=(\d+)\s+totalArea=([\d\.]+)\s+density=([\d\.]+)"
+    r"\[DENSITY\]\s+global\s+count=(\d+)\s+totalAreaKm2=([\d\.]+)\s+density=([\d\.]+)"
 )
 
 PAT_TRAJ_START = re.compile(
@@ -61,45 +61,90 @@ PAT_TRAJ_UPDATE = re.compile(
     r"\[TRAJECTORY\]\s+update\s+objectId=(\S+)\s+length=(\d+)\s+timeGap=(\d+)\s+lastTs=(\d+)\s+newTs=(\d+)"
 )
 
+PAT_COLLISION_PAIR = re.compile(
+    r"\[COLLISION\]\s+pair=\((\S+),(\S+)\)\s+distance=([\d\.]+).*?ttc=([\d\.]+).*?relativeSpeed=([\d\.]+)"
+)
+
+PAT_COLLISION_DETECTED = re.compile(
+    r"\[COLLISION\]\s+detected\s+pair=\((\S+),(\S+)\)\s+distance=([\d\.]+).*?ttc=([\d\.]+)"
+)
+
+PAT_COLLISION_START = re.compile(
+    r"\[COLLISION\]\s+action=start\s+events=(\d+)"
+)
+
+PAT_COLLISION_SIB = re.compile(
+    r"\[COLLISION\]\s+action=spatialIndexBuilt\s+size=(\d+)"
+)
+
+PAT_CONFLICT_PAIR = re.compile(
+    r"\[CONFLICT\]\s+(detected|skipZeroSpeed)\s+pair=\((\S+),(\S+)\).*?t=([\d\.]+).*?distance=([\d\.]+)"
+)
+
+PAT_SWARM_START = re.compile(
+    r"\[SWARM\]\s+action=start\s+events=(\d+).*?eps=([\d\.]+).*?minPoints=(\d+)"
+)
+
+PAT_SWARM_SIB = re.compile(
+    r"\[SWARM\]\s+action=spatialIndexBuilt\s+size=(\d+)"
+)
+
+PAT_SWARM_SEED = re.compile(
+    r"\[SWARM\]\s+seed=(\S+)\s+neighbors=(\d+)"
+)
+
+PAT_SWARM_EXPAND = re.compile(
+    r"\[SWARM\]\s+expand\s+current=(\S+)\s+neighbors=(\d+)"
+)
+
+PAT_PROX_PAIR = re.compile(
+    r"\[PROXIMITY\]\s+pair=\((\S+),(\S+)\)\s+distance=([\d\.]+)\s+threshold=([\d\.]+)"
+)
+
+PAT_KNN = re.compile(
+    r"\[KNN\]\s+action=findKNN\s+k=(\d+)\s+candidates=(\d+)\s+distanceComputations=(\d+)\s+returned=(\d+)\s+timeMs=([\d\.]+)\s+queryLat=([\d\.\-]+)\s+queryLon=([\d\.\-]+)"
+)
+
+
 # ---------------------------------------------------------
 # HELPERS
 # ---------------------------------------------------------
 
 def parse_metadata_from_filename(fname):
     """
-    Example filename:
-    realtime_burst_20260415_225424.log
-    realtime_constant1_20260415_230617.log  (constant1 = collision)
+    Supports filenames like:
+      realtime_constant_straight_20260419_133425.log
+      realtime_constant_collision_20260419_140945.log
+      realtime_wave_random_walk_20260419_134609.log
+      realtime_burst_swarm_20260419_135812.log
+      realtime_burst_swarm_clustered_20260419_135812.log
     """
+
     base = fname.replace(".log", "")
     parts = base.split("_")
 
+    # Required fields
     TP = parts[0]            # realtime | skewed | late
-    RP = parts[1]            # constant | wave | burst | constant1
-    date = parts[2]
-    time = parts[3]
+    RP = parts[1]            # constant | wave | burst
 
-    # Motion mode encoded in filename:
-    # constant  -> straight
-    # constant1 -> collision
-    # wave      -> random_walk
-    # burst     -> swarm (clustered in 3,7,11)
-    if RP == "constant":
-        MM = "straight"
-    elif RP == "constant1":
-        MM = "collision"
-    elif RP == "wave":
-        MM = "random_walk"
-    elif RP == "burst":
-        MM = "swarm"
+    # Motion mode is now explicit in filename
+    MM = parts[2]            # straight | collision | random_walk | swarm
+
+    # Optional geometry field
+    if parts[3].isdigit():
+        GEO = "random"       # default if not provided
+        date = parts[3]
+        time = parts[4]
     else:
-        MM = "unknown"
+        GEO = parts[3]       # random | clustered
+        date = parts[4]
+        time = parts[5]
 
-    # Geometry: clustered only in burst scenarios
-    GEO = "clustered" if RP == "burst" else "random"
-
-    # KEYS: 100 only in burst scenarios
-    KEYS = 100 if RP == "burst" else 50
+    # KEYS: 100 for swarm or collision, else 50
+    if MM in ("swarm", "collision"):
+        KEYS = 100
+    else:
+        KEYS = 50
 
     return {
         "timestamp_pattern": TP,
@@ -110,6 +155,7 @@ def parse_metadata_from_filename(fname):
         "date": date,
         "time": time
     }
+
 
 # ---------------------------------------------------------
 # MAIN PARSER
@@ -187,7 +233,7 @@ def parse_log_file(path):
             # DENSITY
             m = PAT_DENSITY.search(line)
             if m:
-                w = get_writer("density", ["count","totalArea","density"])
+                w = get_writer("density", ["count","totalAreaKm2","density"])
                 w.writerow(list(m.groups()) + list(meta.values()))
                 continue
 
@@ -202,6 +248,90 @@ def parse_log_file(path):
             m = PAT_TRAJ_UPDATE.search(line)
             if m:
                 w = get_writer("trajectory_update", ["objectId","length","timeGap","lastTs","newTs"])
+                w.writerow(list(m.groups()) + list(meta.values()))
+                continue
+
+            # COLLISION PAIR
+            m = PAT_COLLISION_PAIR.search(line)
+            if m:
+                w = get_writer("collision_pair",
+                            ["objA","objB","distance","ttc","relativeSpeed"])
+                w.writerow(list(m.groups()) + list(meta.values()))
+                continue
+
+            # COLLISION DETECTED (explicit)
+            m = PAT_COLLISION_DETECTED.search(line)
+            if m:
+                w = get_writer("collision_detected",
+                            ["objA","objB","distance","ttc"])
+                w.writerow(list(m.groups()) + list(meta.values()))
+                continue
+
+            # COLLISION START
+            m = PAT_COLLISION_START.search(line)
+            if m:
+                w = get_writer("collision_start", ["events"])
+                w.writerow(list(m.groups()) + list(meta.values()))
+                continue
+
+            # COLLISION SPATIAL INDEX BUILT
+            m = PAT_COLLISION_SIB.search(line)
+            if m:
+                w = get_writer("collision_spatial_index_built", ["size"])
+                w.writerow(list(m.groups()) + list(meta.values()))
+                continue
+
+            # CONFLICT PAIR
+            m = PAT_CONFLICT_PAIR.search(line)
+            if m:
+                w = get_writer("conflict_pair",
+                            ["type","objA","objB","t","distance"])
+                w.writerow(list(m.groups()) + list(meta.values()))
+                continue
+
+            # SWARM START
+            m = PAT_SWARM_START.search(line)
+            if m:
+                w = get_writer("swarm_start", ["events","eps","minPoints"])
+                w.writerow(list(m.groups()) + list(meta.values()))
+                continue
+
+            # SWARM SPATIAL INDEX BUILT
+            m = PAT_SWARM_SIB.search(line)
+            if m:
+                w = get_writer("swarm_spatial_index_built", ["size"])
+                w.writerow(list(m.groups()) + list(meta.values()))
+                continue
+
+            # SWARM SEED
+            m = PAT_SWARM_SEED.search(line)
+            if m:
+                w = get_writer("swarm_seed", ["objectId","neighbors"])
+                w.writerow(list(m.groups()) + list(meta.values()))
+                continue
+
+            # SWARM EXPAND
+            m = PAT_SWARM_EXPAND.search(line)
+            if m:
+                w = get_writer("swarm_expand", ["objectId","neighbors"])
+                w.writerow(list(m.groups()) + list(meta.values()))
+                continue
+
+            # PROXIMITY PAIR
+            m = PAT_PROX_PAIR.search(line)
+            if m:
+                w = get_writer("proximity_pair",
+                            ["objA","objB","distance","threshold"])
+                w.writerow(list(m.groups()) + list(meta.values()))
+                continue
+
+            # KNN
+            m = PAT_KNN.search(line)
+            if m:
+                w = get_writer("knn", [
+                    "k", "candidates", "distanceComputations", "returned",
+                    "timeMs", "queryLat", "queryLon"
+                ])
                 w.writerow(list(m.groups()) + list(meta.values()))
                 continue
 
