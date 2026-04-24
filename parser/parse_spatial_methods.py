@@ -262,9 +262,13 @@ def parse_log_file(path):
             # COLLISION DETECTED (explicit)
             m = PAT_COLLISION_DETECTED.search(line)
             if m:
-                w = get_writer("collision_detected",
-                            ["objA","objB","distance","ttc"])
-                w.writerow(list(m.groups()) + list(meta.values()))
+                # Write into collision_pair to unify with TTC analysis
+                w = get_writer("collision_pair",
+                            ["objA","objB","distance","ttc","relativeSpeed"])
+                objA, objB, distance, ttc = m.groups()
+                # relativeSpeed is unknown for detected collisions → set NaN
+                relativeSpeed = ""
+                w.writerow([objA, objB, distance, ttc, relativeSpeed] + list(meta.values()))
                 continue
 
             # COLLISION START
