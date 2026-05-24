@@ -22,28 +22,26 @@ import phd.adaptivecontrol.producer.util.GeoUtils
 object GeoEventProducer {
 
   // ============================================================
-  //  Service Area Configuration
+  // Service Area Configuration
   // ============================================================
   private val hubLat = 59.9391
   private val hubLon = 30.3158
   private val serviceRadiusMeters = 1200.0
 
-
   // ============================================================
-  //  Collision Configuration
+  // Collision Configuration
   // ============================================================
   private val collisionOffsetMeters = 3.0
 
-
   // ============================================================
-  //  Main Producer
+  // Main Producer
   // ============================================================
   def main(args: Array[String]): Unit = {
 
     val topic =
       sys.env.getOrElse(
         "KAFKA_TOPIC",
-        "spatio-temporal-events"
+        "spatial-events"
       )
 
     val bootstrapServers =
@@ -73,7 +71,7 @@ object GeoEventProducer {
     val rand = new Random()
 
     // ============================================================
-    //  Kafka Producer
+    // Kafka Producer
     // ============================================================
     val kafkaProps = new Properties()
 
@@ -96,7 +94,7 @@ object GeoEventProducer {
     )
 
     // ============================================================
-    //  Runtime State
+    // Runtime State
     // ============================================================
     val stateByObject =
       mutable.Map.empty[String, ObjectState]
@@ -105,32 +103,43 @@ object GeoEventProducer {
       buildCollisionPairs(numberOfObjects)
 
     // ============================================================
-    //  Startup Log
+    // Startup Log
     // ============================================================
-
     println(
       s"""
          |==================================================
          | article-04 GeoEventProducer started
          |==================================================
-         | topic              = $topic
-         | bootstrapServers   = $bootstrapServers
-         | objects            = $numberOfObjects
-         | motionMode         = ${motionMode.name}
-         | geometryPattern    = ${sys.env.getOrElse("GEOMETRY_PATTERN", "random")}
-         | timestampPattern   = ${sys.env.getOrElse("TIMESTAMP_PATTERN", "realtime")}
+         | topic                    = $topic
+         | bootstrapServers         = $bootstrapServers
+         | objects                  = $numberOfObjects
+         | motionMode               = ${motionMode.name}
+         | geometryPattern          = ${sys.env.getOrElse("GEOMETRY_PATTERN", "random")}
+         | eventRatePattern         = ${sys.env.getOrElse("EVENT_RATE_PATTERN", "constant")}
+         | timestampPattern         = ${sys.env.getOrElse("TIMESTAMP_PATTERN", "realtime")}
+         |
+         | ENABLE_TIMESTAMP_SKEW    = ${sys.env.getOrElse("ENABLE_TIMESTAMP_SKEW", "false")}
+         | ENABLE_DISORDER          = ${sys.env.getOrElse("ENABLE_DISORDER", "false")}
+         | ENABLE_JITTER            = ${sys.env.getOrElse("ENABLE_JITTER", "false")}
+         | ENABLE_BURST_DELAY       = ${sys.env.getOrElse("ENABLE_BURST_DELAY", "false")}
+         | ENABLE_GPS_DROPOUT       = ${sys.env.getOrElse("ENABLE_GPS_DROPOUT", "false")}
+         |
+         | MAX_SKEW_MS              = ${sys.env.getOrElse("MAX_SKEW_MS", "0")}
+         | MAX_DELAY_MS             = ${sys.env.getOrElse("MAX_DELAY_MS", "0")}
+         | MAX_DISORDER_MS          = ${sys.env.getOrElse("MAX_DISORDER_MS", "0")}
+         | MAX_JITTER_MS            = ${sys.env.getOrElse("MAX_JITTER_MS", "0")}
          |==================================================
          |""".stripMargin
     )
 
     // ============================================================
-    //  Throughput Monitoring
+    // Throughput Monitoring
     // ============================================================
     var eventCounter = 0L
     var lastReportTimestamp = System.currentTimeMillis()
 
     // ============================================================
-    //  Main Loop
+    // Main Loop
     // ============================================================
     while (true) {
 
@@ -153,7 +162,7 @@ object GeoEventProducer {
         )
 
       // ============================================================
-      //  Motion Simulation
+      // Motion Simulation
       // ============================================================
       val updatedState =
         MotionSimulator.move(
@@ -166,21 +175,21 @@ object GeoEventProducer {
       stateByObject.update(objectId, updatedState)
 
       // ============================================================
-      //  Event-Time Generation
+      // Base Event-Time Generation
       // ============================================================
-      val eventTimestamp =
+      val baseTimestamp =
         timestampPattern
           .nextTimestamp(now, rand)
           .toEpochMilli
 
       // ============================================================
-      //  GeoEvent Creation
+      // GeoEvent Creation
       // ============================================================
-      val event =
+      val baseEvent =
         GeoEvent(
           id = UUID.randomUUID().toString,
           objectId = objectId,
-          timestamp = eventTimestamp,
+          timestamp = baseTimestamp,
           lon = updatedState.lon,
           lat = updatedState.lat,
           wkt = f"POINT(${updatedState.lon}%.6f ${updatedState.lat}%.6f)",
@@ -188,26 +197,49 @@ object GeoEventProducer {
           heading = updatedState.heading,
           attributes = Map(
             "motionMode" -> motionMode.name,
+            "eventRatePattern" ->
+              sys.env.getOrElse("EVENT_RATE_PATTERN", "constant"),
+            "timestampPattern" ->
+              sys.env.getOrElse("TIMESTAMP_PATTERN", "realtime"),
             "source" -> "article-04-producer"
           )
         )
 
       // ============================================================
-      //  Temporal Disorder Injection
+      // Additional Disorder Injection Pipeline
       // ============================================================
-      val disorderedEventOpt =
-        DisorderSimulator.applyCompositeDisorder(event, rand)
+      val disorderEnabled =
+        sys.env
+          .getOrElse("ENABLE_DISORDER", "false")
+          .toBoolean
 
-      disorderedEventOpt.foreach { disorderedEvent =>
+      val eventAfterDisorderOpt =
+        if (disorderEnabled) {
+          DisorderSimulator.applyCompositeDisorder(baseEvent, rand)
+        } else {
+          Some(baseEvent)
+        }
 
-        val finalEvent =
-          TimestampSkewInjector.applySkew(disorderedEvent, rand)
+      eventAfterDisorderOpt.foreach { eventAfterDisorder =>
 
         // ============================================================
-        //  Kafka Publish
+        // Additional Timestamp Skew Injection
+        // ============================================================
+        val finalEvent =
+          TimestampSkewInjector.applySkew(
+            eventAfterDisorder,
+            rand
+          )
+
+        // ============================================================
+        // Kafka Publish
         // ============================================================
         val record =
-          new ProducerRecord[String, String](topic, objectId, finalEvent.toJson)
+          new ProducerRecord[String, String](
+            topic,
+            objectId,
+            finalEvent.toJson
+          )
 
         producer.send(record)
 
@@ -215,21 +247,23 @@ object GeoEventProducer {
       }
 
       // ============================================================
-      //  Throughput Logging
+      // Throughput Logging
       // ============================================================
       val currentTime =
         System.currentTimeMillis()
 
       if (currentTime - lastReportTimestamp >= 1000) {
 
-        println(s"[producer-throughput] eps=$eventCounter")
+        println(
+          s"[producer-throughput] eps=$eventCounter"
+        )
 
         eventCounter = 0
         lastReportTimestamp = currentTime
       }
 
       // ============================================================
-      //  Dynamic Rate Control
+      // Dynamic Rate Control
       // ============================================================
       val sleepMs =
         ratePattern.nextIntervalMs(currentTime)
@@ -238,9 +272,8 @@ object GeoEventProducer {
     }
   }
 
-
   // ============================================================
-  //  Initial Object State
+  // Initial Object State
   // ============================================================
   private def initializeState(
     objectId: String,
@@ -266,7 +299,10 @@ object GeoEventProducer {
           } else if (collisionPairs.exists(_._2 == objectId)) {
 
             (
-              hubLon + GeoUtils.metersToLongitudeDegrees(hubLat, collisionOffsetMeters),
+              hubLon + GeoUtils.metersToLongitudeDegrees(
+                hubLat,
+                collisionOffsetMeters
+              ),
               hubLat
             )
 
@@ -324,11 +360,12 @@ object GeoEventProducer {
     )
   }
 
-
   // ============================================================
-  //  Collision Pair Builder
+  // Collision Pair Builder
   // ============================================================
-  private def buildCollisionPairs(numberOfObjects: Int): Seq[(String, String)] = {
+  private def buildCollisionPairs(
+    numberOfObjects: Int
+  ): Seq[(String, String)] = {
 
     (0 until math.min(20, numberOfObjects - (numberOfObjects % 2)) by 2)
       .map(i => (s"obj-$i", s"obj-${i + 1}"))

@@ -6,7 +6,14 @@ import phd.adaptivecontrol.producer.model.GeoEvent
 
 object TimestampSkewInjector {
 
-  def injectPositiveSkew(event: GeoEvent, rand: Random, maxSkewMs: Long): GeoEvent = {
+  // ==========================================================
+  // Positive clock skew
+  // ==========================================================
+  def injectPositiveSkew(
+    event: GeoEvent,
+    rand: Random,
+    maxSkewMs: Long
+  ): GeoEvent = {
 
     val skew =
       (rand.nextDouble() * maxSkewMs).toLong
@@ -14,13 +21,22 @@ object TimestampSkewInjector {
     event.copy(
       timestamp = event.timestamp + skew,
       attributes = event.attributes ++ Map(
-        "positiveSkewMs" -> skew.toString
+        "timestampSkewApplied" -> "true",
+        "timestampSkewType" -> "positive",
+        "timestampSkewMs" -> skew.toString
       )
     )
   }
 
 
-  def injectNegativeSkew(event: GeoEvent, rand: Random, maxSkewMs: Long): GeoEvent = {
+  // ==========================================================
+  // Negative clock skew
+  // ==========================================================
+  def injectNegativeSkew(
+    event: GeoEvent,
+    rand: Random,
+    maxSkewMs: Long
+  ): GeoEvent = {
 
     val skew =
       (rand.nextDouble() * maxSkewMs).toLong
@@ -28,13 +44,22 @@ object TimestampSkewInjector {
     event.copy(
       timestamp = event.timestamp - skew,
       attributes = event.attributes ++ Map(
-        "negativeSkewMs" -> skew.toString
+        "timestampSkewApplied" -> "true",
+        "timestampSkewType" -> "negative",
+        "timestampSkewMs" -> skew.toString
       )
     )
   }
 
 
-  def injectBidirectionalSkew(event: GeoEvent, rand: Random, maxSkewMs: Long): GeoEvent = {
+  // ==========================================================
+  // Bidirectional skew
+  // ==========================================================
+  def injectBidirectionalSkew(
+    event: GeoEvent,
+    rand: Random,
+    maxSkewMs: Long
+  ): GeoEvent = {
 
     val skew =
       (((rand.nextDouble() * 2.0) - 1.0) * maxSkewMs).toLong
@@ -42,14 +67,25 @@ object TimestampSkewInjector {
     event.copy(
       timestamp = event.timestamp + skew,
       attributes = event.attributes ++ Map(
-        "bidirectionalSkewMs" -> skew.toString
+        "timestampSkewApplied" -> "true",
+        "timestampSkewType" -> "bidirectional",
+        "timestampSkewMs" -> skew.toString
       )
     )
   }
 
 
-  def applySkew(event: GeoEvent, rand: Random): GeoEvent = {
+  // ==========================================================
+  // Main skew injection pipeline
+  // ==========================================================
+  def applySkew(
+    event: GeoEvent,
+    rand: Random
+  ): GeoEvent = {
 
+    // --------------------------------------------------------
+    // Global skew switch
+    // --------------------------------------------------------
     val enabled =
       sys.env
         .getOrElse("ENABLE_TIMESTAMP_SKEW", "true")
@@ -59,6 +95,9 @@ object TimestampSkewInjector {
       return event
     }
 
+    // --------------------------------------------------------
+    // Configuration
+    // --------------------------------------------------------
     val skewMode =
       sys.env
         .getOrElse("TIMESTAMP_SKEW_MODE", "bidirectional")
@@ -74,6 +113,9 @@ object TimestampSkewInjector {
         .getOrElse("MAX_SKEW_MS", "2000")
         .toLong
 
+    // --------------------------------------------------------
+    // Probabilistic skew activation
+    // --------------------------------------------------------
     val shouldApply =
       rand.nextDouble() < skewProbability
 
@@ -81,33 +123,25 @@ object TimestampSkewInjector {
       event
     } else {
 
-      val skewedEvent =
-        skewMode match {
+      skewMode match {
 
-          case "positive" =>
-            injectPositiveSkew(event, rand, maxSkewMs)
+        case "positive" =>
+          injectPositiveSkew(event, rand, maxSkewMs)
 
-          case "negative" =>
-            injectNegativeSkew(event, rand, maxSkewMs)
+        case "negative" =>
+          injectNegativeSkew(event, rand, maxSkewMs)
 
-          case "bidirectional" =>
-            injectBidirectionalSkew(event, rand, maxSkewMs)
+        case "bidirectional" =>
+          injectBidirectionalSkew(event, rand, maxSkewMs)
 
-          case other =>
+        case other =>
 
-            println(
-              s"[TimestampSkewInjector] Unknown skew mode '$other', using bidirectional"
-            )
+          println(
+            s"[TimestampSkewInjector] Unknown skew mode '$other', using bidirectional"
+          )
 
-            injectBidirectionalSkew(event, rand, maxSkewMs)
-        }
-
-      skewedEvent.copy(
-        attributes = skewedEvent.attributes ++ Map(
-          "timestampSkewApplied" -> "true",
-          "timestampSkewMode" -> skewMode
-        )
-      )
+          injectBidirectionalSkew(event, rand, maxSkewMs)
+      }
     }
   }
 }

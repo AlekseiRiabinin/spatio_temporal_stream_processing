@@ -25,9 +25,11 @@ final case class BurstThenPause(
 
   override def nextIntervalMs(now: Long): Long = {
     val elapsed = now - phaseStart
+
     if (inBurst && elapsed >= burstDurationMs) {
       inBurst = false
       phaseStart = now
+
     } else if (!inBurst && elapsed >= pauseMs) {
       inBurst = true
       phaseStart = now
@@ -36,6 +38,7 @@ final case class BurstThenPause(
     if (inBurst) {
       val interval = math.max(1.0, 1000.0 / burstRate)
       interval.toLong
+
     } else {
       pauseMs
     }

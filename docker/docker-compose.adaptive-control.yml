@@ -10,7 +10,6 @@ services:
   # ============================================================
   # 1. KAFKA BROKER
   # ============================================================
-
   kafka-1:
     image: bitnami/kafka:3.8.0
     container_name: kafka-1
@@ -27,9 +26,8 @@ services:
 
 
   # ============================================================
-  # 2. ARTICLE-04 GEO PRODUCER (unchanged but reused)
+  # 2. ARTICLE-04 GEO PRODUCER
   # ============================================================
-
   geo_producer_adaptive_control:
     image: alexflames77/geo_producer_adaptive_control:latest
     container_name: geo_producer_adaptive_control
@@ -38,51 +36,98 @@ services:
       - kafka-1
 
     environment:
+      # ========================================================
+      # Kafka
+      # ========================================================
       KAFKA_BOOTSTRAP_SERVERS: "kafka-1:19092"
-      KAFKA_TOPIC: "adaptive-events"
+      KAFKA_TOPIC: "spatial-events"
 
-      # ---------------------------
-      # Rate control
-      # ---------------------------
+      # ========================================================
+      # Rate Control
+      # ========================================================
       EVENT_RATE_PATTERN: ${EVENT_RATE_PATTERN:-constant}
+
       EVENT_RATE: ${EVENT_RATE:-50}
+
       BURST_RATE: ${BURST_RATE:-100}
       BURST_DURATION_MS: ${BURST_DURATION_MS:-10000}
       PAUSE_MS: ${PAUSE_MS:-5000}
+
       WAVE_MIN: ${WAVE_MIN:-5}
       WAVE_MAX: ${WAVE_MAX:-100}
       WAVE_PERIOD_MS: ${WAVE_PERIOD_MS:-10000}
 
-      # ---------------------------
-      # Geometry
-      # ---------------------------
+      # ========================================================
+      # Geometry / Spatial Distribution
+      # ========================================================
       GEOMETRY_PATTERN: ${GEOMETRY_PATTERN:-clustered}
 
-      # ---------------------------
-      # Timestamp disorder
-      # ---------------------------
-      TIMESTAMP_PATTERN: ${TIMESTAMP_PATTERN:-skewed}
-      MAX_SKEW_MS: ${MAX_SKEW_MS:-3000}
-      MAX_DELAY_MS: ${MAX_DELAY_MS:-5000}
-
-      # ---------------------------
-      # Motion model
-      # ---------------------------
+      # ========================================================
+      # Motion Model
+      # ========================================================
       MOTION_MODE: ${MOTION_MODE:-swarm}
 
-      # ---------------------------
-      # Stream scale
-      # ---------------------------
+      # ========================================================
+      # Stream Scale
+      # ========================================================
       KEYS: ${KEYS:-100}
 
+      # ========================================================
+      # Base Timestamp Pattern
+      # ========================================================
+      TIMESTAMP_PATTERN: ${TIMESTAMP_PATTERN:-realtime}
+
+      MAX_SKEW_MS: ${MAX_SKEW_MS:-2000}
+      MAX_DELAY_MS: ${MAX_DELAY_MS:-5000}
+
+      DISORDER_PROBABILITY: ${DISORDER_PROBABILITY:-0.20}
+      MAX_DISORDER_MS: ${MAX_DISORDER_MS:-3000}
+
+      # ========================================================
+      # Additional Timestamp Skew Injection
+      # ========================================================
+      ENABLE_TIMESTAMP_SKEW: ${ENABLE_TIMESTAMP_SKEW:-false}
+
+      TIMESTAMP_SKEW_MODE: ${TIMESTAMP_SKEW_MODE:-bidirectional}
+      SKEW_PROBABILITY: ${SKEW_PROBABILITY:-0.20}
+
+      # ========================================================
+      # Composite Disorder Pipeline
+      # ========================================================
+      ENABLE_DISORDER: ${ENABLE_DISORDER:-false}
+
+      ENABLE_JITTER: ${ENABLE_JITTER:-false}
+      MAX_JITTER_MS: ${MAX_JITTER_MS:-500}
+
+      ENABLE_BURST_DELAY: ${ENABLE_BURST_DELAY:-false}
+      BURST_DELAY_PROBABILITY: ${BURST_DELAY_PROBABILITY:-0.05}
+      BURST_DELAY_MS: ${BURST_DELAY_MS:-10000}
+
+      ENABLE_GPS_DROPOUT: ${ENABLE_GPS_DROPOUT:-false}
+      GPS_DROPOUT_PROBABILITY: ${GPS_DROPOUT_PROBABILITY:-0.00}
+
+      # ========================================================
+      # Article 04 Adaptive Layer
+      # ========================================================
+      WINDOW_STRATEGY: ${WINDOW_STRATEGY:-fixed}
+      WINDOW_SIZE_MS: ${WINDOW_SIZE_MS:-5000}
+
+      WATERMARK_STRATEGY: ${WATERMARK_STRATEGY:-fixed}
+      WATERMARK_DELAY_MS: ${WATERMARK_DELAY_MS:-3000}
+
+      ML_INFERENCE: ${ML_INFERENCE:-disabled}
+      MODEL_UPDATE_INTERVAL: ${MODEL_UPDATE_INTERVAL:-5000}
+
+      ADAPTATION_INTERVAL_MS: ${ADAPTATION_INTERVAL_MS:-2000}
+
     networks: [kafka-net]
+
     restart: "no"
 
 
   # ============================================================
   # 3. FLINK JOBMANAGER
   # ============================================================
-
   jobmanager:
     image: flink:1.17.1
     container_name: jobmanager
@@ -107,7 +152,6 @@ services:
   # ============================================================
   # 4. FLINK TASKMANAGER
   # ============================================================
-
   taskmanager:
     image: flink:1.17.1
     container_name: taskmanager
@@ -130,7 +174,6 @@ services:
   # ============================================================
   # 5. FLINK JOB (ARTICLE 04 - ADAPTIVE CONTROL)
   # ============================================================
-
   geoflink_adaptive_control_job:
     image: flink:1.17.1
     container_name: geoflink_adaptive_control_job
@@ -153,7 +196,6 @@ services:
   # ============================================================
   # 6. MONITORING
   # ============================================================
-
   prometheus:
     image: prom/prometheus
     container_name: prometheus
