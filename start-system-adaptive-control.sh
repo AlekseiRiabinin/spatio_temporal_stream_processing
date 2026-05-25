@@ -290,6 +290,9 @@ service_exists() {
     docker compose -f "$COMPOSE" config --services | grep -q "^$1$"
 }
 
+# ============================================================
+# WAIT FOR FLINK
+# ============================================================
 wait_for_jobmanager() {
 
     echo "Waiting for Flink JobManager..."
@@ -315,6 +318,9 @@ create_kafka_topics() {
 
     echo "=== Creating Kafka topics ==="
 
+    # IMPORTANT:
+    # Keep the same stabilization delay as Article 03.
+    # This setup is already experimentally validated.
     sleep 5
 
     docker exec kafka-1 bash -c '
@@ -408,13 +414,14 @@ echo "./start-system-adaptive-control.sh skewed swarm"
 echo "./start-system-adaptive-control.sh late collision"
 echo "./start-system-adaptive-control.sh mixed corridor cpu"
 echo "./start-system-adaptive-control.sh out_of_order random_walk"
-echo ""
 
+echo ""
 echo "Motion modes:"
 echo "  straight | random_walk | swarm | collision | corridor"
-echo ""
 
+echo ""
 echo "Experiment profiles (TIMESTAMP_PATTERN):"
 echo "  realtime | skewed | late | out_of_order | mixed"
+
 echo ""
 echo "Note: These are EXPERIMENT PROFILES, not timestamp semantics."
