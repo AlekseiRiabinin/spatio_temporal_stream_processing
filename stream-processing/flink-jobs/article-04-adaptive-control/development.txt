@@ -1,0 +1,44 @@
++----+--------------------------------------+-----------------------------------------------+------------------------------+------------------------------+
+| #  | Module / Component                   | Purpose                                       | Action                       | Source                       |
++----+--------------------------------------+-----------------------------------------------+------------------------------+------------------------------+
+| 1  | build.sbt                            | SBT dependencies and assembly                 | Create                       | New                          |
+| 2  | Dockerfile                           | Flink job container                           | Create                       | New                          |
+| 3  | Article04AdaptiveControlJob.scala    | Main Flink streaming job                      | Create                       | New                          |
+| 4  | GeoEvent.scala                       | Core event model                              | Copy                         | Article 03                   |
+| 5  | Interaction.scala                    | Interaction output model                      | Copy                         | Article 03                   |
+| 6  | EventParser.scala                    | JSON → GeoEvent parsing                       | Create                       | New                          |
+| 7  | Kafka Source                         | Kafka ingestion                               | Create                       | New                          |
+| 8  | WatermarkStrategy                    | Event-time watermarking                       | Create                       | New                          |
+| 9  | Tumbling Event-Time Windows          | Baseline window processing                    | Create                       | New                          |
+| 10 | ThroughputMonitor.scala              | EPS / throughput metrics                      | Create                       | New                          |
+| 11 | LatencyMonitor.scala                 | Event latency metrics                         | Create                       | New                          |
+| 12 | DisorderMonitor.scala                | Disorder / lateness metrics                   | Create                       | New                          |
+| 13 | GeometryUtils.scala                  | Spatial utility methods                       | Copy                         | Article 03                   |
+| 14 | SpatialOperations.scala              | Distance / geometry operations                | Copy                         | Article 03                   |
+| 15 | KNN.scala                            | Nearest-neighbor spatial search               | Copy                         | Article 03                   |
+| 16 | CollisionDetector.scala              | Collision detection                           | Copy                         | Article 03                   |
+| 17 | ProximityDetector.scala              | Proximity detection                           | Copy                         | Article 03                   |
+| 18 | ConflictDetector.scala               | Conflict prediction                           | Copy                         | Article 03                   |
+| 19 | TrajectoryBuilder.scala              | Trajectory construction                       | Copy                         | Article 03                   |
+| 20 | AdaptivePipeline.scala               | Main processing graph                         | Create                       | New                          |
+| 21 | StreamProfiler.scala                 | Runtime stream profiling                      | Create                       | New                          |
+| 22 | StreamFeatures.scala                 | ML feature vector                             | Create                       | New                          |
+| 23 | FeatureExtractor.scala               | Metrics → ML features                         | Create                       | New                          |
+| 24 | CSV Dataset Export                   | Save training dataset                         | Create                       | New                          |
+| 25 | Experiment Runner Scripts            | Run experiment matrix                         | Extend                       | Current Article 04 scripts   |
+| 26 | train_lightgbm.py                    | ML model training                             | Create                       | New                          |
+| 27 | feature_pipeline.py                  | Dataset preprocessing                         | Create                       | New                          |
+| 28 | export_onnx.py                       | Export trained model to ONNX                  | Create                       | New                          |
+| 29 | adaptive-window-watermark.onnx       | Trained adaptive model                        | Generate                     | ML pipeline                  |
+| 30 | ONNXInference.scala                  | ONNX runtime inference inside Flink           | Create                       | New                          |
+| 31 | AdaptiveDecision.scala               | Predicted adaptive parameters                 | Create                       | New                          |
+| 32 | AdaptiveController.scala             | Runtime adaptation logic                      | Create                       | New                          |
+| 33 | Adaptive Watermark Logic             | Dynamic watermark delay updates               | Create                       | New                          |
+| 34 | Adaptive Window Logic                | Dynamic window selection                      | Create                       | New                          |
+| 35 | Runtime Feedback Loop                | Continuous adaptation cycle                   | Create                       | New                          |
+| 36 | Evaluation Metrics Pipeline          | Benchmarking and result aggregation           | Create                       | New                          |
+| 37 | Result CSV Export                    | Save experiment outputs                       | Create                       | New                          |
+| 38 | Plotting / Visualization Scripts     | Generate paper graphs                         | Create                       | New                          |
+| 39 | Docker Compose Integration           | Deploy adaptive pipeline                      | Extend                       | Current Docker setup         |
+| 40 | README.md                            | System documentation                          | Create                       | New                          |
++----+--------------------------------------+-----------------------------------------------+------------------------------+------------------------------+
