@@ -2,103 +2,46 @@ package phd.adaptivecontrol.model
 
 
 /**
-  * GeoEvent
-  *
-  * Core spatio-temporal event model used by:
-  *   - Kafka ingestion
-  *   - Flink event-time processing
-  *   - adaptive watermarking
-  *   - adaptive window control
-  *   - spatial interaction analysis
-  *
-  * IMPORTANT:
-  * timestamp = EVENT TIME (not processing time)
-  */
+ * GeoEvent represents a single spatio-temporal event in the stream.
+ *
+ * @param id         Unique event identifier
+ * @param objectId   Identifier of the moving object (e.g., rover/drone)
+ * @param timestamp  Event time in epoch milliseconds (event-time semantics)
+ * @param lon        Longitude
+ * @param lat        Latitude
+ * @param wkt        Geometry in WKT format (Point/LineString/Polygon)
+ * @param speed      Optional speed attribute (m/s)
+ * @param heading    Optional direction (degrees)
+ * @param attributes Additional dynamic attributes
+ */
 case class GeoEvent(
-
-  // ============================================================
-  // Event Identity
-  // ============================================================
   id: String,
-
-  // Moving object identifier
   objectId: String,
-
-  // ============================================================
-  // Temporal Attributes
-  // ============================================================
-  // Event-time timestamp (epoch millis)
   timestamp: Long,
-
-  // ============================================================
-  // Spatial Attributes
-  // ============================================================
   lon: Double,
   lat: Double,
-
-  // WKT geometry representation
   wkt: String,
-
-  // ============================================================
-  // Motion Attributes
-  // ============================================================
-  speed: Double,
-  heading: Double,
-
-  // ============================================================
-  // Additional Metadata
-  // ============================================================
+  speed: Option[Double] = None,
+  heading: Option[Double] = None,
   attributes: Map[String, String] = Map.empty
 ) {
 
   /**
-    * Basic validation used during stream ingestion.
-    */
-    def isValid: Boolean = {
-
-      (
-        id.nonEmpty &&
-        objectId.nonEmpty &&
-
-        lon >= -180.0 &&
-        lon <= 180.0 &&
-
-        lat >= -90.0 &&
-        lat <= 90.0 &&
-
-        timestamp > 0
-      )
-    }
+   * Returns event time in epoch milliseconds (for Flink compatibility)
+   */
+  def eventTimeMillis: Long = timestamp
 
   /**
-    * Convert event to JSON string.
-    *
-    * Useful for:
-    *   - debugging
-    *   - console output
-    *   - Kafka sinks
-    */
-  def toJson: String = {
+   * Simple validation (can be extended for experiments)
+   */
+  def isValid: Boolean =
+    lon >= -180 && lon <= 180 &&
+    lat >= -90 && lat <= 90 &&
+    wkt != null && wkt.nonEmpty
 
-    val attrsJson =
-      if (attributes.isEmpty) {
-        ""
-      } else {
-        attributes
-          .map { case (k, v) => s""""$k": "$v"""" }
-          .mkString(", ")
-      }
-
-    s"""{
-       |  "id": "$id",
-       |  "objectId": "$objectId",
-       |  "timestamp": $timestamp,
-       |  "lon": $lon,
-       |  "lat": $lat,
-       |  "wkt": "$wkt",
-       |  "speed": $speed,
-       |  "heading": $heading,
-       |  "attributes": { $attrsJson }
-       |}""".stripMargin
-  }
+  /**
+   * Lightweight representation for logging/debugging
+   */
+  override def toString: String =
+    s"GeoEvent(id=$id, objectId=$objectId, ts=$timestamp, lon=$lon, lat=$lat)"
 }

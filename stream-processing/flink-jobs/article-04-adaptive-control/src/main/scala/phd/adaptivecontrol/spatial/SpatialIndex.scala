@@ -64,20 +64,10 @@ class SpatialIndex(cellSizeMeters: Double = 100.0) {
   def queryRadius(lat: Double, lon: Double, radiusMeters: Double): Seq[GeoEvent] = {
 
     val start = System.nanoTime()
+
     val (gx, gy) = toGrid(lat, lon)
 
-    val queryEvent = GeoEvent(
-      id = "query",
-      objectId = "query",
-      timestamp = 0L,
-      lon = lon,
-      lat = lat,
-      wkt = "",
-      speed = 0.0,
-      heading = 0.0
-    )
-
-    // Check 3×3 neighborhood
+    // Check 3×3 neighborhood (safe for all radii <= cellSizeMeters)
     val cellsToCheck =
       for {
         dx <- -1 to 1
@@ -88,8 +78,12 @@ class SpatialIndex(cellSizeMeters: Double = 100.0) {
       grid.getOrElse(key, Seq.empty)
     }
 
+    // Filter by actual metric distance
     val filtered = candidates.filter { e =>
-      SpatialOperations.distance(queryEvent, e) <= radiusMeters
+      SpatialOperations.distance(
+        GeoEvent("query", "query", 0L, lon, lat, "", None, None),
+        e
+      ) <= radiusMeters
     }
 
     val elapsedMs = (System.nanoTime() - start) / 1e6

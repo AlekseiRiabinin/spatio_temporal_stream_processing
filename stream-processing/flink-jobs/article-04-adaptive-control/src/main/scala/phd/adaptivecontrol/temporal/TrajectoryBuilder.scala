@@ -88,7 +88,10 @@ class TrajectoryBuilder(
   /**
    * Merge trajectories (same object only)
    */
-  def mergeTrajectories(t1: Trajectory, t2: Trajectory): Trajectory = {
+  def mergeTrajectories(
+    t1: Trajectory,
+    t2: Trajectory
+  ): Trajectory = {
 
     require(
       t1.objectId == t2.objectId,
@@ -97,7 +100,8 @@ class TrajectoryBuilder(
 
     val merged = Trajectory(
       objectId = t1.objectId,
-      events = (t1.events ++ t2.events).sortBy(_.timestamp)
+      events = (t1.events ++ t2.events)
+        .sortBy(_.timestamp)
     )
 
     println(
@@ -144,8 +148,8 @@ class TrajectoryBuilder(
       s"segmentSize=${currentSegment.size}"
     )
 
-    segments
-      .map(events => Trajectory(traj.objectId, events))
-      .toSeq
+    segments.map(events =>
+      Trajectory(traj.objectId, events)
+    ).toSeq
   }
 }

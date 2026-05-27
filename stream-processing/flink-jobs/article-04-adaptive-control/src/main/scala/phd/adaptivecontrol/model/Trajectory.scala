@@ -8,7 +8,10 @@ package phd.adaptivecontrol.model
  * @param objectId Identifier of the moving object (rover, drone, etc.)
  * @param events   Time-ordered sequence of events
  */
-case class Trajectory(objectId: String, events: Seq[GeoEvent]) {
+case class Trajectory(
+  objectId: String,
+  events: Seq[GeoEvent]
+) {
 
   /**
    * Ensures events are sorted by event-time

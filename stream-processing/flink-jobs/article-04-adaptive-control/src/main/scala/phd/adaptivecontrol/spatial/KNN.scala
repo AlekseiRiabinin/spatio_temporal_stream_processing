@@ -6,14 +6,6 @@ import phd.adaptivecontrol.model.GeoEvent
 
 object KNN {
 
-  /**
-    * Finds K nearest neighbors using max-heap pruning.
-    *
-    * @param queryLat latitude of query point
-    * @param queryLon longitude of query point
-    * @param events   candidate GeoEvents
-    * @param k        number of neighbors
-    */
   def findKNN(
     queryLat: Double,
     queryLon: Double,
@@ -33,36 +25,21 @@ object KNN {
     val start = System.nanoTime()
     var distanceComputations = 0
 
-    // ------------------------------------------------------------
-    // Max-heap (worst candidate at head)
-    // ------------------------------------------------------------
+    // Max-heap: largest distance at head
     val heap = PriorityQueue.empty[(GeoEvent, Double)](
       Ordering.by[(GeoEvent, Double), Double](_._2)
     )
 
-    // ------------------------------------------------------------
-    // Create reusable query point
-    // ------------------------------------------------------------
-    val queryEvent = GeoEvent(
-      id = "query",
-      objectId = "query",
-      timestamp = 0L,
-      lon = queryLon,
-      lat = queryLat,
-      wkt = "",
-      speed = 0.0,
-      heading = 0.0
-    )
-
-    // ------------------------------------------------------------
-    // KNN scan
-    // ------------------------------------------------------------
     events.foreach { e =>
 
-      // skip identical object position (optional safety check)
+      // Skip exact same coordinate (query point)
       if (!(e.lat == queryLat && e.lon == queryLon)) {
 
-        val dist = SpatialOperations.distance(queryEvent, e)
+        val dist = SpatialOperations.distance(
+          GeoEvent("query", "query", 0L, queryLon, queryLat, "", None, None),
+          e
+        )
+
         distanceComputations += 1
 
         if (heap.size < k) {
@@ -79,12 +56,9 @@ object KNN {
     val elapsedMs = (System.nanoTime() - start) / 1e6
 
     println(
-      s"[KNN] action=findKNN k=$k " +
-      s"candidates=${events.size} " +
-      s"distanceComputations=$distanceComputations " +
-      s"returned=${result.size} " +
-      s"timeMs=$elapsedMs " +
-      s"queryLat=$queryLat queryLon=$queryLon"
+      s"[KNN] action=findKNN k=$k candidates=${events.size} " +
+      s"distanceComputations=$distanceComputations returned=${result.size} " +
+      s"timeMs=$elapsedMs queryLat=$queryLat queryLon=$queryLon"
     )
 
     result

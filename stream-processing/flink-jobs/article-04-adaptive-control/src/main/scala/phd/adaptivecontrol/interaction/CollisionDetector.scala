@@ -2,10 +2,9 @@ package phd.adaptivecontrol.interaction
 
 import scala.collection.mutable
 
-import phd.adaptivecontrol.model.{GeoEvent, Interaction, InteractionType}
+import phd.adaptivecontrol.model.{GeoEvent, Interaction, InteractionType, Trajectory}
 import phd.adaptivecontrol.spatial.{KNN, SpatialIndex, SpatialOperations}
 import phd.adaptivecontrol.temporal.TrajectoryBuilder
-import phd.adaptivecontrol.model.Trajectory
 
 
 /**
@@ -15,10 +14,11 @@ import phd.adaptivecontrol.model.Trajectory
  *  - SpatialIndex (fast radius queries)
  *  - KNN (local neighbor refinement)
  *  - SpatialOperations (distance computation)
- *  - TrajectoryBuilder (velocity estimation)
+ *  - TrajectoryBuilder (velocity + prediction)
  *
- * Article 04 role:
- *  → baseline interaction detector (pre-adaptation layer)
+ * Scientific model:
+ *  - distance threshold (meters)
+ *  - time-to-collision (TTC)
  */
 class CollisionDetector(
   kNeighbors: Int = 5,
@@ -37,15 +37,30 @@ class CollisionDetector(
     val interactions = mutable.ArrayBuffer.empty[Interaction]
 
     if (events.isEmpty) {
-      println(s"[COLLISION] emptyInput threshold=$thresholdMeters")
+      println(
+        s"[COLLISION] action=emptyInput " +
+        s"threshold=$thresholdMeters " +
+        s"k=$kNeighbors " +
+        s"ttcThreshold=$ttcThresholdSec"
+      )
       return Seq.empty
     }
+
+    println(
+      s"[COLLISION] action=start " +
+      s"events=${events.size} " +
+      s"threshold=$thresholdMeters " +
+      s"k=$kNeighbors " +
+      s"ttcThreshold=$ttcThresholdSec"
+    )
 
     // ------------------------------------------------------------
     // 1. Spatial index
     // ------------------------------------------------------------
-    val spatialIndex = new SpatialIndex()
+    val spatialIndex = SpatialIndex()
     events.foreach(spatialIndex.insert)
+
+    println(s"[COLLISION] action=spatialIndexBuilt size=${events.size}")
 
     // ------------------------------------------------------------
     // 2. Trajectories
@@ -60,6 +75,8 @@ class CollisionDetector(
       trajectories.update(e.objectId, updated)
     }
 
+    println(s"[COLLISION] action=trajectoriesBuilt count=${trajectories.size}")
+
     // ------------------------------------------------------------
     // 3. Pairwise detection
     // ------------------------------------------------------------
@@ -69,15 +86,21 @@ class CollisionDetector(
 
     events.foreach { e1 =>
 
+      // ------------------------------------------------------------
+      // Spatial candidates (raw radius search)
+      // ------------------------------------------------------------
       val spatialCandidates =
         spatialIndex
           .queryRadius(e1.lat, e1.lon, thresholdMeters)
-          .filter(_.objectId != e1.objectId)
+          .filter(_.objectId != e1.objectId) // remove self-object events
 
       spatialCandidatesTotal += spatialCandidates.size
 
       if (spatialCandidates.nonEmpty) {
 
+        // ----------------------------------------------------------
+        // KNN refinement (only on non-self candidates)
+        // ----------------------------------------------------------
         val neighbors =
           KNN.findKNN(e1.lat, e1.lon, spatialCandidates, kNeighbors)
             .map(_._1)
@@ -86,11 +109,23 @@ class CollisionDetector(
 
         neighbors.foreach { e2 =>
 
+          // --------------------------------------------------------
+          // Distance (must be meters)
+          // --------------------------------------------------------
           val distance = SpatialOperations.distance(e1, e2)
           distanceComputations += 1
 
+          println(
+            s"[COLLISION] pair=(${e1.objectId},${e2.objectId}) " +
+            s"distance=$distance " +
+            s"threshold=$thresholdMeters"
+          )
+
           if (distance <= thresholdMeters) {
 
+            // ------------------------------------------------------
+            // Velocity computation (epoch millis)
+            // ------------------------------------------------------
             val v1 = computeVelocity(trajectories.get(e1.objectId))
             val v2 = computeVelocity(trajectories.get(e2.objectId))
 
@@ -100,9 +135,16 @@ class CollisionDetector(
                 math.pow(v1._2 - v2._2, 2)
               )
 
+            // Skip zero-relative-speed pairs (TTC = ∞)
             if (relativeSpeed > 1e-6) {
 
               val ttc = distance / relativeSpeed
+
+              println(
+                s"[COLLISION] pair=(${e1.objectId},${e2.objectId}) " +
+                s"ttc=$ttc " +
+                s"relativeSpeed=$relativeSpeed"
+              )
 
               if (ttc <= ttcThresholdSec) {
 
@@ -124,28 +166,50 @@ class CollisionDetector(
                     "relative_speed" -> relativeSpeed.toString
                   )
                 )
+
+                println(
+                  s"[COLLISION] detected " +
+                  s"pair=(${e1.objectId},${e2.objectId}) " +
+                  s"distance=$distance " +
+                  s"ttc=$ttc"
+                )
               }
+            } else {
+              println(
+                s"[COLLISION] skipZeroSpeed pair=(${e1.objectId},${e2.objectId})"
+              )
             }
           }
         }
       }
     }
 
+    // ------------------------------------------------------------
+    // 4. Deduplication
+    // ------------------------------------------------------------
+    val deduped =
+      interactions
+        .groupBy(i => i.objectIds.toSet)
+        .map(_._2.head)
+        .toSeq
+
     val elapsedMs = (System.nanoTime() - start) / 1e6
 
     println(
-      s"[COLLISION] summary events=${events.size} " +
-      s"spatialCandidates=$spatialCandidatesTotal " +
-      s"knnCandidates=$knnCandidatesTotal " +
-      s"distanceComputations=$distanceComputations " +
-      s"collisions=${interactions.size} timeMs=$elapsedMs"
+      s"[COLLISION] summary " +
+        s"events=${events.size} " +
+        s"spatialCandidates=$spatialCandidatesTotal " +
+        s"knnCandidates=$knnCandidatesTotal " +
+        s"distanceComputations=$distanceComputations " +
+        s"collisions=${deduped.size} " +
+        s"timeMs=$elapsedMs"
     )
 
-    interactions.toSeq
+    deduped
   }
 
   /**
-   * Velocity estimation from trajectory
+   * Velocity from trajectory (epoch millis)
    */
   private def computeVelocity(
     trajOpt: Option[Trajectory]
@@ -162,9 +226,11 @@ class CollisionDetector(
         val dt = (e2.timestamp - e1.timestamp) / 1000.0
         if (dt <= 0) return (0.0, 0.0)
 
+        // Convert lat/lon deltas to meters
         val dxMeters = SpatialOperations.distanceLon(e1.lat, e1.lon, e2.lon)
         val dyMeters = SpatialOperations.distanceLat(e1.lat, e2.lat)
 
+        // Preserve direction
         val dxSigned = if (e2.lon > e1.lon) dxMeters else -dxMeters
         val dySigned = if (e2.lat > e1.lat) dyMeters else -dyMeters
 

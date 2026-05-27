@@ -258,18 +258,16 @@ wait_for_jobmanager() {
 create_kafka_topics() {
     echo "=== Creating Kafka topics ==="
     sleep 5
-
     docker exec kafka-1 bash -c '
         topics=("spatial-events:4")
-
         for topic in "${topics[@]}"; do
             IFS=":" read -r name partitions <<< "$topic"
 
-            if kafka-topics.sh --bootstrap-server kafka-1:19092 --describe --topic "$name" >/dev/null 2>&1; then
+            if /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --describe --topic "$name" >/dev/null 2>&1; then
                 echo "Topic exists: $name"
             else
                 echo "Creating topic: $name"
-                kafka-topics.sh --create \
+                /opt/kafka/bin/kafka-topics.sh --create \
                     --topic "$name" \
                     --partitions "$partitions" \
                     --replication-factor 1 \

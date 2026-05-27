@@ -50,37 +50,23 @@ wait_for_health() {
 # ------------------------------------------------------------
 create_kafka_topics() {
     echo "=== Creating Kafka topics ==="
-
-    # Give Kafka a moment to fully start
     sleep 5
-
     docker exec kafka-1 bash -c '
-        set -e
-
-        # Define topics as: name:partitions
-        topics=(
-            "spatial-events:20"
-        )
-
+        topics=("spatial-events:4")
         for topic in "${topics[@]}"; do
             IFS=":" read -r name partitions <<< "$topic"
 
-            echo "Checking topic: $name"
-
-            if kafka-topics.sh --bootstrap-server kafka-1:19092 --describe --topic "$name" >/dev/null 2>&1; then
-                echo "  → Topic $name already exists"
+            if /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --describe --topic "$name" >/dev/null 2>&1; then
+                echo "Topic exists: $name"
             else
-                echo "  → Creating topic: $name"
-                kafka-topics.sh --create \
+                echo "Creating topic: $name"
+                /opt/kafka/bin/kafka-topics.sh --create \
                     --topic "$name" \
                     --partitions "$partitions" \
                     --replication-factor 1 \
                     --bootstrap-server kafka-1:19092
-                echo "  → Topic $name created"
             fi
         done
-
-        echo "✅ Kafka topics ready"
     '
 }
 

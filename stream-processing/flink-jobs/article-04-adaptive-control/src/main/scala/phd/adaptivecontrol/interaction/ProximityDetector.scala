@@ -9,8 +9,11 @@ import phd.adaptivecontrol.spatial.{SpatialIndex, SpatialOperations}
 /**
  * ProximityDetector
  *
- * Detects non-critical spatial proximity interactions
- * using spatial indexing + metric validation.
+ * Detects proximity interactions using:
+ *  - SpatialIndex (fast neighborhood queries)
+ *  - SpatialOperations (distance computation in meters)
+ *
+ * Proximity represents spatial closeness without risk.
  */
 class ProximityDetector {
 
@@ -38,7 +41,7 @@ class ProximityDetector {
     events.foreach(spatialIndex.insert)
 
     // ------------------------------------------------------------
-    // 2. Neighbor search
+    // 2. For each event → query neighbors
     // ------------------------------------------------------------
     var totalNeighbors = 0
     var distanceComputations = 0
@@ -48,21 +51,27 @@ class ProximityDetector {
       val neighbors =
         spatialIndex
           .queryRadius(e1.lat, e1.lon, thresholdMeters)
-          .filter(_.objectId != e1.objectId)
+          .filter(_.objectId != e1.objectId) // correct self-filter
 
       totalNeighbors += neighbors.size
 
       neighbors.foreach { e2 =>
 
+        // --------------------------------------------------------
+        // 3. Metric distance check
+        // --------------------------------------------------------
         val distance = SpatialOperations.distance(e1, e2)
         distanceComputations += 1
 
         if (distance <= thresholdMeters && distance > 1e-6) {
 
           println(
-            s"[PROXIMITY] pair=(${e1.objectId},${e2.objectId}) distance=$distance"
+            s"[PROXIMITY] pair=(${e1.objectId},${e2.objectId}) " +
+            s"distance=$distance threshold=$thresholdMeters"
           )
 
+          val lat = (e1.lat + e2.lat) / 2.0
+          val lon = (e1.lon + e2.lon) / 2.0
           val ts = math.max(e1.timestamp, e2.timestamp)
 
           interactions += Interaction(
@@ -70,8 +79,8 @@ class ProximityDetector {
             interactionType = InteractionType.Proximity,
             objectIds = Seq(e1.objectId, e2.objectId),
             timestamp = ts,
-            lat = (e1.lat + e2.lat) / 2.0,
-            lon = (e1.lon + e2.lon) / 2.0,
+            lat = lat,
+            lon = lon,
             severity = None,
             attributes = Map(
               "distance" -> distance.toString
@@ -82,18 +91,18 @@ class ProximityDetector {
     }
 
     // ------------------------------------------------------------
-    // 3. Deduplication (A-B == B-A)
+    // 4. Deduplicate (A-B == B-A)
     // ------------------------------------------------------------
     val deduped =
       interactions
-        .groupBy(_.objectIds.toSet)
+        .groupBy(i => i.objectIds.toSet)
         .map(_._2.head)
         .toSeq
 
     val elapsedMs = (System.nanoTime() - start) / 1e6
 
     println(
-      s"[PROXIMITY] summary events=${events.size} " +
+      s"[PROXIMITY] action=summary events=${events.size} " +
       s"neighbors=$totalNeighbors distanceComputations=$distanceComputations " +
       s"interactionsRaw=${interactions.size} interactionsFinal=${deduped.size} " +
       s"timeMs=$elapsedMs"

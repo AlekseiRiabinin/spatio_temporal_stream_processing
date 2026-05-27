@@ -1,4 +1,4 @@
-package phd.spatialmethods.pipeline
+package phd.adaptivecontrol.pipeline
 
 import org.apache.flink.streaming.api.scala._
 import org.apache.flink.streaming.api.windowing.time.Time
@@ -15,7 +15,7 @@ import org.apache.flink.api.common.eventtime.{
 import java.time.Duration
 import scala.collection.JavaConverters._
 
-import phd.spatialmethods.model.{GeoEvent, Interaction}
+import phd.adaptivecontrol.model.{GeoEvent, Interaction}
 
 object SpatialStreamPipeline {
 
