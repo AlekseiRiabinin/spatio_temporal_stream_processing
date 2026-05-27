@@ -35,7 +35,6 @@ case class StreamFeatures(
    * suitable for ONNX inference.
    */
   def toVector: Array[Float] = {
-
     Array(
       eventRate.toFloat,
       outOfOrderRatio.toFloat,
@@ -60,7 +59,6 @@ case class StreamFeatures(
    * Human-readable representation.
    */
   override def toString: String = {
-
     s"StreamFeatures(" +
       s"eventRate=$eventRate, " +
       s"outOfOrderRatio=$outOfOrderRatio, " +

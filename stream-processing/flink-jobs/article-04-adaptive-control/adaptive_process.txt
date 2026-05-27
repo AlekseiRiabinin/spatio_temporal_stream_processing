@@ -1,0 +1,32 @@
++-----------------------------+-----------------------------+----------------------------------------------+--------------------------------------------+
+| Phase                       | Component / Module         | Input                                        | Output                                      |
++-----------------------------+-----------------------------+----------------------------------------------+--------------------------------------------+
+| 1. Stream Execution         | AdaptivePipeline / Flink   | GeoEvent stream (Kafka)                      | Timed GeoEvent stream                       |
+|                             | SpatialStreamPipeline      |                                              | Interaction stream (baseline system)        |
++-----------------------------+----------------------------+----------------------------------------------+---------------------------------------------+
+| 2. Runtime Profiling        | StreamProfiler             | Timed GeoEvent stream                        | Stream metrics (latency, lag, density, etc) |
++-----------------------------+----------------------------+----------------------------------------------+---------------------------------------------+
+| 3. Feature Extraction       | FeatureExtractor           | StreamProfiler metrics                       | Feature vector φ(S)                         |
+|                             |                            |                                              | (state representation)                      |
++-----------------------------+----------------------------+----------------------------------------------+---------------------------------------------+
+| 4. Dataset Construction     | Offline experiment runner  | Multiple configs:                            | Training dataset                            |
+|                             | (grid search / simulation) | - window sizes                               | X: features                                 |
+|                             |                            | - watermark delays                           | Y1: optimal window size                     |
+|                             |                            |                                              | Y2: optimal watermark delay                 |
++-----------------------------+----------------------------+----------------------------------------------+---------------------------------------------+
+| 5. Model Training           | ML pipeline (Python/Scala) | (X → Y1, Y2) dataset                         | Trained control model                       |
+|                             |                            |                                              | (regression / policy model)                 |
++-----------------------------+----------------------------+----------------------------------------------+---------------------------------------------+
+| 6. Model Export             | ONNX conversion            | Trained model                                | adaptive-control.onnx                       |
++-----------------------------+----------------------------+----------------------------------------------+---------------------------------------------+
+| 7. Runtime Inference        | ONNXInference              | Feature vector φ(S)                          | AdaptiveDecision                            |
+|                             |                            |                                              | {window, watermark}                         |
++-----------------------------+----------------------------+----------------------------------------------+---------------------------------------------+
+| 8. Control Application      | AdaptiveController         | AdaptiveDecision                             | Updated pipeline parameters                 |
+|                             |                            |                                              | (future stream behavior changes)            |
++-----------------------------+----------------------------+----------------------------------------------+---------------------------------------------+
+| 9. Interaction Processing   | InteractionEngine          | Windowed GeoEvent batches                    | Interaction results                         |
+|                             | Collision/Proximity/etc    |                                              | (collision, swarm, conflict, etc.)          |
++-----------------------------+----------------------------+----------------------------------------------+---------------------------------------------+
+| 10. Output Layer            | Sink / Kafka / Console     | Interaction stream                           | External system / visualization             |
++-----------------------------+----------------------------+----------------------------------------------+---------------------------------------------+

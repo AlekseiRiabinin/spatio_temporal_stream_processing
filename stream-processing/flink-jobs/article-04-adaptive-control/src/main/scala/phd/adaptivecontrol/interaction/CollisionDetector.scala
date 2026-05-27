@@ -2,9 +2,9 @@ package phd.adaptivecontrol.interaction
 
 import scala.collection.mutable
 
-import phd.adaptivecontrol.model.{GeoEvent, Interaction, InteractionType, Trajectory}
-import phd.adaptivecontrol.spatial.{KNN, SpatialIndex, SpatialOperations}
-import phd.adaptivecontrol.temporal.TrajectoryBuilder
+import phd.adaptivecontrol.model._
+import phd.adaptivecontrol.spatial._
+import phd.adaptivecontrol.temporal._
 
 
 /**

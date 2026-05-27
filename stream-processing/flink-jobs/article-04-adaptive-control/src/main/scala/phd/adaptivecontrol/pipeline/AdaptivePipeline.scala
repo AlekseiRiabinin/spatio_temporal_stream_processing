@@ -1,7 +1,11 @@
 package phd.adaptivecontrol.pipeline
 
 import org.apache.flink.streaming.api.scala._
+import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.api.scala.createTypeInformation
+
 import phd.adaptivecontrol.model.{GeoEvent, Interaction}
+import phd.adaptivecontrol.interaction.InteractionEngine
 
 
 /**
@@ -14,12 +18,13 @@ import phd.adaptivecontrol.model.{GeoEvent, Interaction}
  *   - adaptive window control
  *   - runtime stream profiling
  *   - ML-based adaptive decision support
- *   - delegation to deterministic spatial pipeline
+ *   - interaction analysis
  *
  * IMPORTANT:
- * Current implementation delegates processing
- * to the deterministic spatial-temporal pipeline
- * inherited from Article 03.
+ * Current implementation uses:
+ *   - static watermarking
+ *   - fixed event-time windows
+ *   - deterministic interaction analysis
  *
  * Future adaptive versions will dynamically control:
  *   - watermark delay
@@ -49,14 +54,41 @@ object AdaptivePipeline {
       WatermarkManager.fromEnv()
 
     val timedStream =
-      inputStream.assignTimestampsAndWatermarks(watermarkStrategy)
+      inputStream.assignTimestampsAndWatermarks(
+        watermarkStrategy
+      )
 
     println(
       "[ADAPTIVE PIPELINE] action=watermarks status=initialized"
     )
 
     // ------------------------------------------------------------
-    // 2. Future adaptive-control hooks
+    // 2. Window processing
+    // ------------------------------------------------------------
+    val windowedStream: DataStream[List[GeoEvent]] =
+      WindowProcessor.applyWindow(timedStream)
+
+    println(
+      "[ADAPTIVE PIPELINE] action=windowing status=initialized"
+    )
+
+    // ------------------------------------------------------------
+    // 3. Interaction analysis
+    // ------------------------------------------------------------
+    val engine = new InteractionEngine()
+
+    implicit val interactionTypeInfo: TypeInformation[Interaction] =
+      createTypeInformation[Interaction]
+
+    val interactions =
+      windowedStream.flatMap(batch => engine.process(batch))
+
+    println(
+      "[ADAPTIVE PIPELINE] action=interactionAnalysis status=ready"
+    )
+
+    // ------------------------------------------------------------
+    // 4. Future adaptive-control hooks
     // ------------------------------------------------------------
     println(
       "[ADAPTIVE PIPELINE] action=adaptiveControl status=disabled"
@@ -65,7 +97,7 @@ object AdaptivePipeline {
     // Future adaptive workflow:
     //
     // val profile =
-    //   StreamProfiler.profile(streamMetrics)
+    //   StreamProfiler.profile(...)
     //
     // val features =
     //   FeatureExtractor.extract(profile)
@@ -78,16 +110,6 @@ object AdaptivePipeline {
     //   env
     // )
     //
-
-    // ------------------------------------------------------------
-    // 3. Delegate to deterministic spatial pipeline
-    // ------------------------------------------------------------
-    val interactions =
-      SpatialStreamPipeline.buildPipeline(env, timedStream)
-
-    println(
-      "[ADAPTIVE PIPELINE] action=delegate status=ready"
-    )
 
     interactions
   }
