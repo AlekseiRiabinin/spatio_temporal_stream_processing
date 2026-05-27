@@ -1,0 +1,60 @@
+Core Experimental Dimensions
++----------------------+-----------------------------------------------------+
+| Dimension            | Values                                              |
++----------------------+-----------------------------------------------------+
+| Experiment Profile   | realtime, skewed, late, out_of_order, mixed         |
+| Event Rate Pattern   | constant, burst, wave                               |
+| Motion Mode          | straight, random_walk, swarm, collision, corridor   |
+| Window Size          | 1000, 3000, 5000, 10000 ms                          |
+| Watermark Delay      | 500, 1000, 3000, 5000, 10000 ms                     |
++----------------------+-----------------------------------------------------+
+
+A. Baseline Clean Stream
++----+----------+----------+-------------+--------+-----------+
+| ID | Profile  | Rate     | Motion      | Window | Watermark |
++----+----------+----------+-------------+--------+-----------+
+| A1 | realtime | constant | straight    | 1000   | 500       |
+| A2 | realtime | constant | random_walk | 3000   | 1000      |
+| A3 | realtime | constant | swarm       | 5000   | 3000      |
+| A4 | realtime | constant | corridor    | 10000  | 5000      |
++----+----------+----------+-------------+--------+-----------+
+
+B. Timestamp Skew Experiments
++----+---------+----------+-------------+--------+-----------+
+| ID | Profile | Rate     | Motion      | Window | Watermark |
++----+---------+----------+-------------+--------+-----------+
+| B1 | skewed  | constant | straight    | 1000   | 500       |
+| B2 | skewed  | constant | random_walk | 3000   | 1000      |
+| B3 | skewed  | burst    | swarm       | 5000   | 3000      |
+| B4 | skewed  | wave     | corridor    | 10000  | 5000      |
++----+---------+----------+-------------+--------+-----------+
+
+C. Late Event Experiments
++----+---------+----------+-------------+--------+-----------+
+| ID | Profile | Rate     | Motion      | Window | Watermark |
++----+---------+----------+-------------+--------+-----------+
+| C1 | late    | constant | straight    | 1000   | 500       |
+| C2 | late    | burst    | random_walk | 3000   | 1000      |
+| C3 | late    | burst    | collision   | 5000   | 3000      |
+| C4 | late    | wave     | swarm       | 10000  | 5000      |
++----+---------+----------+-------------+--------+-----------+
+
+D. Out-of-Order Stream Experiments
++----+--------------+----------+-------------+--------+-----------+
+| ID | Profile      | Rate     | Motion      | Window | Watermark |
++----+--------------+----------+-------------+--------+-----------+
+| D1 | out_of_order | constant | straight    | 1000   | 500       |
+| D2 | out_of_order | burst    | random_walk | 3000   | 1000      |
+| D3 | out_of_order | wave     | collision   | 5000   | 3000      |
+| D4 | out_of_order | wave     | corridor    | 10000  | 5000      |
++----+--------------+----------+-------------+--------+-----------+
+
+E. Mixed Distortion Experiments
++----+---------+----------+-------------+--------+-----------+
+| ID | Profile | Rate     | Motion      | Window | Watermark |
++----+---------+----------+-------------+--------+-----------+
+| E1 | mixed   | constant | straight    | 1000   | 500       |
+| E2 | mixed   | burst    | random_walk | 3000   | 1000      |
+| E3 | mixed   | burst    | collision   | 5000   | 3000      |
+| E4 | mixed   | wave     | swarm       | 10000  | 5000      |
++----+---------+----------+-------------+--------+-----------+
