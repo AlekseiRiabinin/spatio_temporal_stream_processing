@@ -1,74 +1,95 @@
 package phd.adaptivecontrol.model
 
-
 /**
  * StreamFeatures
  *
- * Runtime stream characteristics extracted from
- * incoming spatio-temporal event streams.
- *
- * Used for:
- *   - adaptive watermark control
- *   - adaptive window sizing
- *   - disorder analysis
- *   - ML inference
- *   - runtime optimization
- *
- * IMPORTANT:
- * Features are computed continuously during stream execution.
+ * Clean ML feature vector for:
+ *   - ONNX inference
+ *   - adaptive window control
+ *   - watermark tuning
+ *   - spatio-temporal behavior modeling
  */
 case class StreamFeatures(
-  eventRate: Double,              // events/sec
-  outOfOrderRatio: Double,        // 0.0 .. 1.0
-  averageDelayMs: Double,
-  maxDelayMs: Long,
-  averageSpeed: Double,
-  density: Double,
-  windowEventCount: Long,
+
+  // ============================================================
+  // Temporal stream behavior
+  // ============================================================
+  eventRate: Double,
+  disorderRatio: Double,
+  lateEventRatio: Double,
+  averageLatencyMs: Double,
+
+  // ============================================================
+  // Window behavior
+  // ============================================================
+  windowFillRatio: Double,
+
+  // ============================================================
+  // Interaction dynamics
+  // ============================================================
+  interactionRate: Double,
+  collisionRate: Double,
+  proximityRate: Double,
+  swarmRate: Double,
+  conflictRate: Double,
+
+  // ============================================================
+  // System state
+  // ============================================================
   watermarkLagMs: Long,
   processingLatencyMs: Double,
+
+  // ============================================================
+  // Metadata
+  // ============================================================
   timestamp: Long
 ) {
 
-  /**
-   * Convert features into vector representation
-   * suitable for ONNX inference.
-   */
+  // ============================================================
+  // ONNX input vector
+  // ============================================================
   def toVector: Array[Float] = {
     Array(
       eventRate.toFloat,
-      outOfOrderRatio.toFloat,
-      averageDelayMs.toFloat,
-      maxDelayMs.toFloat,
-      averageSpeed.toFloat,
-      density.toFloat,
-      windowEventCount.toFloat,
+      disorderRatio.toFloat,
+      lateEventRatio.toFloat,
+      averageLatencyMs.toFloat,
+
+      windowFillRatio.toFloat,
+
+      interactionRate.toFloat,
+      collisionRate.toFloat,
+      proximityRate.toFloat,
+      swarmRate.toFloat,
+      conflictRate.toFloat,
+
       watermarkLagMs.toFloat,
       processingLatencyMs.toFloat
     )
   }
 
-  /**
-   * Simple diagnostics.
-   */
-  def isHighlyDisordered: Boolean = {
-    outOfOrderRatio > 0.3 || averageDelayMs > 5000
-  }
+  // ============================================================
+  // Simple ML heuristics
+  // ============================================================
+  def isHighlyDisordered: Boolean =
+    disorderRatio > 0.3 || lateEventRatio > 0.2
 
-  /**
-   * Human-readable representation.
-   */
-  override def toString: String = {
+  def isHighLoad: Boolean =
+    eventRate > 100.0 || processingLatencyMs > 1000.0
+
+  override def toString: String =
     s"StreamFeatures(" +
       s"eventRate=$eventRate, " +
-      s"outOfOrderRatio=$outOfOrderRatio, " +
-      s"averageDelayMs=$averageDelayMs, " +
-      s"maxDelayMs=$maxDelayMs, " +
-      s"averageSpeed=$averageSpeed, " +
-      s"density=$density, " +
-      s"windowEventCount=$windowEventCount, " +
+      s"disorderRatio=$disorderRatio, " +
+      s"lateEventRatio=$lateEventRatio, " +
+      s"avgLatencyMs=$averageLatencyMs, " +
+      s"windowFillRatio=$windowFillRatio, " +
+      s"interactionRate=$interactionRate, " +
+      s"collisionRate=$collisionRate, " +
+      s"proximityRate=$proximityRate, " +
+      s"swarmRate=$swarmRate, " +
+      s"conflictRate=$conflictRate, " +
       s"watermarkLagMs=$watermarkLagMs, " +
       s"processingLatencyMs=$processingLatencyMs, " +
       s"timestamp=$timestamp)"
   }
-}
