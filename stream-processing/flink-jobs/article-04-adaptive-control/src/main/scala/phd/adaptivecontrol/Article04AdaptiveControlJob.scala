@@ -1,20 +1,19 @@
 package phd.adaptivecontrol
 
 import org.apache.flink.streaming.api.scala._
-import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer
-
-import org.apache.flink.api.common.serialization.SimpleStringSchema
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.scala.createTypeInformation
 
 import java.time.Duration
-import java.util.Properties
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
 import org.apache.flink.api.common.eventtime.SerializableTimestampAssigner
+import org.apache.flink.api.common.serialization.SimpleStringSchema
+import org.apache.flink.connector.kafka.source.KafkaSource
+import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer
 
 import phd.adaptivecontrol.model.GeoEvent
 import phd.adaptivecontrol.pipeline.AdaptivePipeline
@@ -24,12 +23,12 @@ import phd.adaptivecontrol.pipeline.AdaptivePipeline
   * Article04AdaptiveControlJob
   *
   * Main Flink entry point for:
-  *   - adaptive window control (pipeline layer)
+  *   - adaptive window control (ML-configurable)
   *   - adaptive watermark control
   *   - spatio-temporal stream processing
   *
-  * Article 04:
-  * Adaptive Window and Watermark Control
+  * All experiment parameters are now centralized here
+  * for ML dataset generation and reproducibility.
   */
 object Article04AdaptiveControlJob {
 
@@ -52,7 +51,7 @@ object Article04AdaptiveControlJob {
     println(s"[MAIN] action=env parallelism=${env.getParallelism}")
 
     // ============================================================
-    // 2. Kafka Configuration
+    // 2. Experiment Configuration (ML-ready control layer)
     // ============================================================
     val bootstrap =
       sys.env.getOrElse("KAFKA_BOOTSTRAP_SERVERS", "kafka-1:19092")
@@ -60,65 +59,77 @@ object Article04AdaptiveControlJob {
     val topic =
       sys.env.getOrElse("KAFKA_TOPIC", "spatial-events")
 
-    println(s"[MAIN] action=kafkaConfig bootstrap=$bootstrap topic=$topic")
+    val watermarkDelayMs =
+      sys.env.getOrElse("WATERMARK_DELAY_MS", "3000").toLong
 
-    val kafkaProps = new Properties()
-    kafkaProps.setProperty("bootstrap.servers", bootstrap)
-    kafkaProps.setProperty("group.id", "article04-adaptive-control")
+    val windowSizeMs =
+      sys.env.getOrElse("WINDOW_SIZE_MS", "5000").toLong
 
-    val kafkaConsumer =
-      new FlinkKafkaConsumer[String](
-        topic,
-        new SimpleStringSchema(),
-        kafkaProps
-      )
+    println(
+      s"[MAIN] action=config bootstrap=$bootstrap topic=$topic " +
+      s"watermarkDelayMs=$watermarkDelayMs windowSizeMs=$windowSizeMs"
+    )
 
     // ============================================================
-    // 3. Deserialize GeoEvents
+    // 3. Kafka Source
     // ============================================================
+    val kafkaSource =
+      KafkaSource.builder[String]()
+        .setBootstrapServers(bootstrap)
+        .setTopics(topic)
+        .setGroupId("article04-adaptive-control")
+        .setStartingOffsets(OffsetsInitializer.latest())
+        .setValueOnlyDeserializer(new SimpleStringSchema())
+        .build()
+
     println("[MAIN] action=deserialization status=starting")
 
     implicit val geoEventTypeInfo: TypeInformation[GeoEvent] =
       createTypeInformation[GeoEvent]
 
+    val rawStream: DataStream[String] =
+      env.fromSource(
+        kafkaSource,
+        WatermarkStrategy.noWatermarks(),
+        "KafkaSource"
+      )
+
     val geoEventStream: DataStream[GeoEvent] =
-      env
-        .addSource(kafkaConsumer)
+      rawStream
         .map(json => mapper.readValue(json, classOf[GeoEvent]))
         .filter(_.isValid)
 
     println("[MAIN] action=deserialization status=ready")
 
     // ============================================================
-    // 4. Watermark Strategy (basic fallback; pipeline can override)
+    // 4. Watermark Strategy (event-time semantics)
     // ============================================================
-    val watermarkDelayMs =
-      sys.env.getOrElse("WATERMARK_DELAY_MS", "3000").toLong
+    object GeoEventTimestampAssigner
+      extends SerializableTimestampAssigner[GeoEvent] {
 
-    println(s"[MAIN] action=watermarkStrategy delayMs=$watermarkDelayMs")
+      override def extractTimestamp(
+        event: GeoEvent,
+        recordTimestamp: Long
+      ): Long = event.timestamp
+    }
 
     val watermarkStrategy =
       WatermarkStrategy
         .forBoundedOutOfOrderness[GeoEvent](Duration.ofMillis(watermarkDelayMs))
-        .withTimestampAssigner(
-          new SerializableTimestampAssigner[GeoEvent] {
-            override def extractTimestamp(
-              event: GeoEvent,
-              recordTimestamp: Long
-            ): Long = event.timestamp
-          }
-        )
+        .withTimestampAssigner(GeoEventTimestampAssigner)
 
     val timedGeoEventStream =
       geoEventStream.assignTimestampsAndWatermarks(watermarkStrategy)
 
+    println("[MAIN] action=watermarkStrategy status=initialized")
+
     // ============================================================
-    // 5. Adaptive Pipeline
+    // 5. Adaptive Pipeline (window size injected)
     // ============================================================
     println("[MAIN] action=pipelineInit status=starting")
 
     val processedStream =
-      AdaptivePipeline.build(env, timedGeoEventStream)
+      AdaptivePipeline.build(env, timedGeoEventStream, windowSizeMs)
 
     println("[MAIN] action=pipelineInit status=ready")
 

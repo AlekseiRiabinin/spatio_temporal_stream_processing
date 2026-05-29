@@ -3,6 +3,8 @@ package phd.adaptivecontrol.pipeline
 import org.apache.flink.streaming.api.scala._
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.scala.createTypeInformation
+import org.apache.flink.util.Collector
+import org.apache.flink.api.common.functions.FlatMapFunction
 
 import phd.adaptivecontrol.model.{GeoEvent, Interaction}
 import phd.adaptivecontrol.interaction.InteractionEngine
@@ -14,81 +16,72 @@ import phd.adaptivecontrol.interaction.InteractionEngine
  * High-level orchestration layer for Article 04.
  *
  * Responsibilities:
- *   - adaptive watermark integration
- *   - adaptive window control
- *   - runtime stream profiling
- *   - ML-based adaptive decision support
+ *   - window control
  *   - interaction analysis
+ *   - runtime stream processing
  *
- * IMPORTANT:
- * Current implementation uses:
- *   - static watermarking
- *   - fixed event-time windows
- *   - deterministic interaction analysis
- *
- * Future adaptive versions will dynamically control:
- *   - watermark delay
- *   - window size
- *   - disorder tolerance
- *   - interaction thresholds
- *   - prediction horizon
+ * NOTE:
+ * Watermarking is intentionally NOT handled here.
+ * It is managed at job level (Article04AdaptiveControlJob).
  */
 object AdaptivePipeline {
 
-  /**
-   * Build full adaptive pipeline
-   */
-  def build(
-    env: StreamExecutionEnvironment,
-    inputStream: DataStream[GeoEvent]
-  ): DataStream[Interaction] = {
+  // ============================================================
+  // FlatMap Function (Flink-safe, lazy initialization)
+  // ============================================================
+  class InteractionFlatMap
+    extends FlatMapFunction[List[GeoEvent], Interaction]
+    with Serializable {
 
-    println(
-      "[ADAPTIVE PIPELINE] action=start"
-    )
+    @transient private var engine: InteractionEngine = _
+
+    private def getEngine: InteractionEngine = {
+      if (engine == null) { engine = new InteractionEngine() }
+      engine
+    }
+
+    override def flatMap(
+      batch: List[GeoEvent],
+      out: Collector[Interaction]
+    ): Unit = {
+
+      val results = getEngine.process(batch)
+      results.foreach(out.collect)
+    }
+  }
+
+  // ============================================================
+  // Pipeline
+  // ============================================================
+    def build(
+      env: StreamExecutionEnvironment,
+      inputStream: DataStream[GeoEvent],
+      windowSizeMs: Long
+    ): DataStream[Interaction] = {
+
+    println("[ADAPTIVE PIPELINE] action=start")
 
     // ------------------------------------------------------------
-    // 1. Watermark management
-    // ------------------------------------------------------------
-    val watermarkStrategy =
-      WatermarkManager.fromEnv()
-
-    val timedStream =
-      inputStream.assignTimestampsAndWatermarks(
-        watermarkStrategy
-      )
-
-    println(
-      "[ADAPTIVE PIPELINE] action=watermarks status=initialized"
-    )
-
-    // ------------------------------------------------------------
-    // 2. Window processing
+    // 1. Window processing (already event-time aware stream)
     // ------------------------------------------------------------
     val windowedStream: DataStream[List[GeoEvent]] =
-      WindowProcessor.applyWindow(timedStream)
+      WindowProcessor.applyWindow(inputStream)
 
-    println(
-      "[ADAPTIVE PIPELINE] action=windowing status=initialized"
-    )
+    println("[ADAPTIVE PIPELINE] action=windowing status=initialized")
 
     // ------------------------------------------------------------
-    // 3. Interaction analysis
+    // 2. Interaction analysis
     // ------------------------------------------------------------
-    val engine = new InteractionEngine()
-
     implicit val interactionTypeInfo: TypeInformation[Interaction] =
       createTypeInformation[Interaction]
 
     val interactions =
-      windowedStream.flatMap(batch => engine.process(batch))
+      windowedStream.flatMap(new InteractionFlatMap)
 
-    println(
-      "[ADAPTIVE PIPELINE] action=interactionAnalysis status=ready"
-    )
+    println("[ADAPTIVE PIPELINE] action=interactionAnalysis status=ready")
 
     // ------------------------------------------------------------
-    // 4. Future adaptive-control hooks
+    // 3. Future adaptive-control hooks
     // ------------------------------------------------------------
     println(
       "[ADAPTIVE PIPELINE] action=adaptiveControl status=disabled"

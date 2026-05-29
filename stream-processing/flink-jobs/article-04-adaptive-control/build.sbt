@@ -3,9 +3,7 @@ ThisBuild / organization := "phd.spatio.temporal"
 ThisBuild / version := "0.1.0"
 
 lazy val root = (project in file("."))
-  .dependsOn(
-    ProjectRef(file("../core"), "core")
-  )
+  .dependsOn(ProjectRef(file("../core"), "core"))
   .settings(
     name := "article-04-adaptive-control",
 
@@ -14,9 +12,9 @@ lazy val root = (project in file("."))
       "org.apache.flink" %% "flink-streaming-scala" % "1.17.1" % Provided,
       "org.apache.flink" %  "flink-clients" % "1.17.1" % Provided,
 
-      // Kafka (provided by cluster)
-      "org.apache.flink" % "flink-connector-kafka" % "3.0.0-1.17" % Provided,
-      "org.apache.kafka" % "kafka-clients" % "3.7.0" % Provided,
+      // Kafka
+      "org.apache.flink" % "flink-connector-kafka" % "3.0.0-1.17",
+      "org.apache.kafka" % "kafka-clients" % "3.7.0",
 
       // Logging
       "org.slf4j" % "slf4j-simple" % "1.7.36",
@@ -38,17 +36,6 @@ lazy val root = (project in file("."))
       // Dropwizard Metrics library
       "io.dropwizard.metrics" % "metrics-core" % "4.2.19"
     ),
-
-    // Exclude Flink, Kafka, and commons-collections from fat JAR
-    assembly / assemblyExcludedJars := {
-      val cp = (assembly / fullClasspath).value
-      cp.filter { jar =>
-        val name = jar.data.getName
-        name.startsWith("flink-") ||
-        name.startsWith("kafka-") ||
-        name.startsWith("commons-collections")
-      }
-    },
 
     // Fat-jar for deployment
     assembly / assemblyJarName := "article-04-adaptive-control.jar",

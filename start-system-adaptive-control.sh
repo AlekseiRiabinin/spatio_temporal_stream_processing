@@ -369,7 +369,7 @@ start_job() {
 
     export_experiment_env
 
-    docker compose -f "$COMPOSE" up -d flink_adaptive_control_job
+    docker compose -f "$COMPOSE" up -d geoflink_adaptive_control_job
 }
 
 # ============================================================
