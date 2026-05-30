@@ -38,7 +38,7 @@ object WindowProcessor {
         .toLong
 
     println(
-      s"[WindowProcessor] windowSizeMs=$windowSizeMs"
+      s"[WINDOW PROCESSOR] windowSizeMs=$windowSizeMs"
     )
 
     stream

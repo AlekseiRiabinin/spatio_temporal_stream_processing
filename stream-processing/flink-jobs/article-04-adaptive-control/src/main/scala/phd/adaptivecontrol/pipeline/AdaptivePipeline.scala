@@ -14,7 +14,7 @@ import phd.adaptivecontrol.adaptive.StreamProfiler
 object AdaptivePipeline {
 
   // ============================================================
-  // Interaction processing (Flink-safe)
+  // Interaction processing + profiling (Flink-safe)
   // ============================================================
   class InteractionFlatMap
     extends FlatMapFunction[List[GeoEvent], Interaction]
@@ -23,7 +23,9 @@ object AdaptivePipeline {
     @transient private var engine: InteractionEngine = _
 
     private def getEngine: InteractionEngine = {
-      if (engine == null) engine = new InteractionEngine()
+      if (engine == null) {
+        engine = new InteractionEngine()
+      }
       engine
     }
 
@@ -32,10 +34,14 @@ object AdaptivePipeline {
       out: Collector[Interaction]
     ): Unit = {
 
-      val results = getEngine.process(batch)
+      StreamProfiler.updateEvents(batch)
+      StreamProfiler.updateWindow(batch.size)
 
-      // ✅ interaction-level profiling
+      val results =
+        getEngine.process(batch)
+
       StreamProfiler.updateInteractions(results)
+      StreamProfiler.logSnapshot()
 
       results.foreach(out.collect)
     }
@@ -53,52 +59,35 @@ object AdaptivePipeline {
     println("[ADAPTIVE PIPELINE] action=start")
 
     // ------------------------------------------------------------
-    // 1. Event-level profiling
-    // ------------------------------------------------------------
-    val profiledEvents =
-      inputStream.map { event =>
-        StreamProfiler.updateEvents(Seq(event))
-        event
-      }
-
-    // ------------------------------------------------------------
-    // 2. Window processing
+    // 1. Window processing
     // ------------------------------------------------------------
     val windowedStream: DataStream[List[GeoEvent]] =
-      WindowProcessor.applyWindow(profiledEvents)
+      WindowProcessor.applyWindow(inputStream)
 
-    println("[ADAPTIVE PIPELINE] action=windowing status=initialized")
-
-    // ------------------------------------------------------------
-    // 3. Window-level profiling (IMPORTANT FOR ML FEATURES)
-    // ------------------------------------------------------------
-    val profiledWindows =
-      windowedStream.map { batch =>
-        StreamProfiler.updateEvents(batch)
-        StreamProfiler.updateWindow(batch.size)
-        batch
-      }
+    println(
+      "[ADAPTIVE PIPELINE] action=windowing status=initialized"
+    )
 
     // ------------------------------------------------------------
-    // 4. Interaction processing
+    // 2. Interaction analysis + profiling
     // ------------------------------------------------------------
     implicit val interactionTypeInfo: TypeInformation[Interaction] =
       createTypeInformation[Interaction]
 
-    val interactions =
-      profiledWindows.flatMap(new InteractionFlatMap)
+    val interactions: DataStream[Interaction] =
+      windowedStream.flatMap(new InteractionFlatMap)
 
-    println("[ADAPTIVE PIPELINE] action=interactionAnalysis status=ready")
+    println(
+      "[ADAPTIVE PIPELINE] action=interactionAnalysis status=ready"
+    )
 
     // ------------------------------------------------------------
-    // 5. Snapshot emission (ML dataset hook)
+    // 3. Future adaptive-control hooks
     // ------------------------------------------------------------
-    val profiledInteractions =
-      interactions.map { i =>
-        StreamProfiler.logSnapshot()
-        i
-      }
+    println(
+      "[ADAPTIVE PIPELINE] action=adaptiveControl status=disabled"
+    )
 
-    profiledInteractions
+    interactions
   }
 }
