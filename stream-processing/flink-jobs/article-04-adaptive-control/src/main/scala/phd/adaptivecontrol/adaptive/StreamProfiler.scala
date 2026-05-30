@@ -3,14 +3,9 @@ package phd.adaptivecontrol.adaptive
 import scala.collection.mutable
 import phd.adaptivecontrol.model.{GeoEvent, Interaction}
 import phd.adaptivecontrol.model.InteractionType._
+import phd.adaptivecontrol.model.StreamFeatures
 
 
-/**
- * StreamProfiler
- *
- * Runtime telemetry + ML feature extraction layer
- * for adaptive watermark/window control.
- */
 object StreamProfiler extends Serializable {
 
   // ============================================================
@@ -23,7 +18,6 @@ object StreamProfiler extends Serializable {
   private var lastEventTimestamp: Long = Long.MinValue
   private var accumulatedLatencyMs: Double = 0.0
 
-  // sliding window for event rate
   private val recentEventTimes = mutable.Queue[Long]()
   private val EventRateWindowMs = 5000L
 
@@ -44,45 +38,50 @@ object StreamProfiler extends Serializable {
   private var totalWindowEvents: Long = 0L
 
   // ============================================================
-  // EVENTS (batch API used by pipeline)
+  // PUBLIC READ ACCESS (IMPORTANT FIX)
   // ============================================================
-  def updateEvents(events: Seq[GeoEvent]): Unit = {
+
+  def getTotalEvents: Long = totalEvents
+  def getTotalInteractions: Long = totalInteractions
+
+  def getCollisionCount: Long = collisionCount
+  def getProximityCount: Long = proximityCount
+  def getSwarmCount: Long = swarmCount
+  def getConflictCount: Long = conflictCount
+
+  def getTotalWindows: Long = totalWindows
+  def getTotalWindowEvents: Long = totalWindowEvents
+
+  // ============================================================
+  // EVENTS
+  // ============================================================
+  def updateEvents(events: Seq[GeoEvent]): Unit =
     events.foreach(observeEvent)
-  }
 
   private def observeEvent(event: GeoEvent): Unit = {
 
     val now = System.currentTimeMillis()
     totalEvents += 1
 
-    // event rate tracking
     recentEventTimes.enqueue(now)
 
     while (
       recentEventTimes.nonEmpty &&
       now - recentEventTimes.front > EventRateWindowMs
-    ) {
-      recentEventTimes.dequeue()
-    }
+    ) recentEventTimes.dequeue()
 
-    // disorder
-    if (event.timestamp < lastEventTimestamp) {
+    if (event.timestamp < lastEventTimestamp)
       outOfOrderEvents += 1
-    }
 
-    // lateness heuristic
-    if (event.timestamp < now - 1000) {
+    if (event.timestamp < now - 1000)
       lateEvents += 1
-    }
 
     lastEventTimestamp =
       math.max(lastEventTimestamp, event.timestamp)
 
-    // latency
     val latency = now - event.timestamp
-    if (latency > 0) {
+    if (latency > 0)
       accumulatedLatencyMs += latency
-    }
   }
 
   // ============================================================
@@ -140,7 +139,6 @@ object StreamProfiler extends Serializable {
   // SNAPSHOT
   // ============================================================
   def logSnapshot(): Unit = {
-
     println(
       "[METRIC] " +
         s"event_rate=${eventRate.formatted("%.2f")} " +
@@ -153,6 +151,44 @@ object StreamProfiler extends Serializable {
         s"proximity_count=$proximityCount " +
         s"swarm_count=$swarmCount " +
         s"conflict_count=$conflictCount"
+    )
+  }
+
+  def snapshot(processingLatencyMs: Double = 0.0): StreamFeatures = {
+
+    val safeTotalEvents = math.max(totalEvents, 1L)
+    val safeTotalInteractions = math.max(totalInteractions, 1L)
+
+    val collisionRate =
+      collisionCount.toDouble / safeTotalInteractions
+
+    val proximityRate =
+      proximityCount.toDouble / safeTotalInteractions
+
+    val swarmRate =
+      swarmCount.toDouble / safeTotalInteractions
+
+    val conflictRate =
+      conflictCount.toDouble / safeTotalInteractions
+
+    StreamFeatures(
+      eventRate = eventRate,
+      disorderRatio = disorderRatio,
+      lateEventRatio = lateEventRatio,
+      averageLatencyMs = averageLatencyMs,
+
+      windowFillRatio = averageWindowFill,
+
+      interactionRate = interactionRate,
+      collisionRate = collisionRate,
+      proximityRate = proximityRate,
+      swarmRate = swarmRate,
+      conflictRate = conflictRate,
+
+      watermarkLagMs = 0L, // placeholder until watermark module
+      processingLatencyMs = processingLatencyMs,
+
+      timestamp = System.currentTimeMillis()
     )
   }
 }

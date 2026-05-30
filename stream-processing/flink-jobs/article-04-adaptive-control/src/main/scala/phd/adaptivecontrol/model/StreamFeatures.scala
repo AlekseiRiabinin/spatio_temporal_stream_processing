@@ -93,3 +93,27 @@ case class StreamFeatures(
       s"processingLatencyMs=$processingLatencyMs, " +
       s"timestamp=$timestamp)"
   }
+
+
+object StreamFeatures {
+  def empty(timestamp: Long = System.currentTimeMillis()): StreamFeatures =
+    StreamFeatures(
+      eventRate = 0.0,
+      disorderRatio = 0.0,
+      lateEventRatio = 0.0,
+      averageLatencyMs = 0.0,
+
+      windowFillRatio = 0.0,
+
+      interactionRate = 0.0,
+      collisionRate = 0.0,
+      proximityRate = 0.0,
+      swarmRate = 0.0,
+      conflictRate = 0.0,
+
+      watermarkLagMs = 0L,
+      processingLatencyMs = 0.0,
+
+      timestamp = timestamp
+    )
+}
