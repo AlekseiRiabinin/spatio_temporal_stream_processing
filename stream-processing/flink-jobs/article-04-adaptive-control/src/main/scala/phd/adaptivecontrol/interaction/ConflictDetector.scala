@@ -64,7 +64,7 @@ class ConflictDetector(
     )
 
     // ------------------------------------------------------------
-    // 2. Pairwise TTC-based detection (UNIFIED MODEL)
+    // 2. Pairwise CPA-based conflict detection
     // ------------------------------------------------------------
     val objects = trajectories.keys.toSeq
 
@@ -87,47 +87,85 @@ class ConflictDetector(
       val v1 = computeVelocity(traj1)
       val v2 = computeVelocity(traj2)
 
-      val relSpeed =
-        math.sqrt(
-          math.pow(v1._1 - v2._1, 2) +
-          math.pow(v1._2 - v2._2, 2)
-        )
-
       pairChecks += 1
 
-      if (relSpeed > 1e-6) {
+      // ----------------------------------------------------------
+      // Relative position (meters)
+      // ----------------------------------------------------------
+      val dx =
+        SpatialOperations.distanceLon(
+          e1.lat,
+          e1.lon,
+          e2.lon
+        ) * (if (e2.lon >= e1.lon) 1 else -1)
 
-        val distance =
-          SpatialOperations.distance(e1, e2)
+      val dy =
+        SpatialOperations.distanceLat(
+          e1.lat,
+          e2.lat
+        ) * (if (e2.lat >= e1.lat) 1 else -1)
 
-        val ttc = distance / relSpeed
+      // ----------------------------------------------------------
+      // Relative velocity (m/s)
+      // ----------------------------------------------------------
+      val rvx = v2._1 - v1._1
+      val rvy = v2._2 - v1._2
 
-        if (ttc > 0 && ttc <= horizonSec && distance <= thresholdMeters) {
+      val rv2 = rvx * rvx + rvy * rvy
 
-          val ts = math.max(e1.timestamp, e2.timestamp)
+      if (rv2 > 1e-6) {
 
-          // normalized severity (stable range 0..1)
-          val severityScore =
-            math.max(0.0, math.min(1.0, 1.0 - (ttc / horizonSec)))
+        // --------------------------------------------------------
+        // Time to Closest Point of Approach (CPA)
+        // --------------------------------------------------------
+        val ttc =
+          -((dx * rvx) + (dy * rvy)) / rv2
 
-          interactions += Interaction(
-            id = s"conf-${e1.id}-${e2.id}-$ts",
-            interactionType = InteractionType.Conflict,
-            objectIds = Seq(id1, id2),
-            timestamp = ts,
-            lat = (e1.lat + e2.lat) / 2.0,
-            lon = (e1.lon + e2.lon) / 2.0,
-            severity = Some(severityScore),
-            attributes = Map(
-              "distance" -> distance.toString,
-              "ttc" -> ttc.toString,
-              "relative_speed" -> relSpeed.toString
+        if (ttc >= 0.0 && ttc <= horizonSec) {
+
+          val closestDx = dx + rvx * ttc
+          val closestDy = dy + rvy * ttc
+
+          val closestDistance =
+            math.sqrt(
+              closestDx * closestDx +
+              closestDy * closestDy
             )
-          )
 
-          println(
-            s"[CONFLICT] detected pair=($id1,$id2) ttc=$ttc distance=$distance"
-          )
+          if (closestDistance <= thresholdMeters) {
+
+            val ts =
+              math.max(e1.timestamp, e2.timestamp)
+
+            val severityScore =
+              math.max(
+                0.0,
+                math.min(
+                  1.0,
+                  1.0 - (ttc / horizonSec)
+                )
+              )
+
+            interactions += Interaction(
+              id = s"conf-${e1.id}-${e2.id}-$ts",
+              interactionType = InteractionType.Conflict,
+              objectIds = Seq(id1, id2),
+              timestamp = ts,
+              lat = (e1.lat + e2.lat) / 2.0,
+              lon = (e1.lon + e2.lon) / 2.0,
+              severity = Some(severityScore),
+              attributes = Map(
+                "predicted_distance" -> closestDistance.toString,
+                "time_to_conflict" -> ttc.toString,
+                "relative_speed" -> math.sqrt(rv2).toString
+              )
+            )
+
+            println(
+              s"[CONFLICT] detected pair=($id1,$id2) " +
+              s"ttc=$ttc closestDistance=$closestDistance"
+            )
+          }
         }
 
       } else {
@@ -137,14 +175,9 @@ class ConflictDetector(
       }
     }
 
-    val elapsedMs = (System.nanoTime() - start) / 1e6
-
-    println(
-      s"[CONFLICT] summary events=${events.size} " +
-      s"pairsChecked=$pairChecks conflicts=${interactions.size} " +
-      s"timeMs=$elapsedMs"
-    )
-
+    // ------------------------------------------------------------
+    // Return all detected interactions
+    // ------------------------------------------------------------
     interactions.toSeq
   }
 

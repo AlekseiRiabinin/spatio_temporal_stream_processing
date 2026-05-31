@@ -1,37 +1,28 @@
 package phd.adaptivecontrol.interaction
 
 import phd.adaptivecontrol.model.{GeoEvent, Interaction}
-import phd.adaptivecontrol.spatial.SpatialIndex
 
 
 /**
  * InteractionEngine
  *
- * Pure domain service for spatio-temporal interaction detection.
- *
- * Responsibilities:
- *   - spatial indexing (candidate organization)
- *   - delegating to interaction detectors
- *   - merging interaction results
- *
- * IMPORTANT:
- * This class is intentionally free of Flink dependencies
- * to support:
- *   - unit testing
- *   - ML evaluation
- *   - adaptive control integration (Article 04)
+ * Orchestrates all interaction detectors:
+ *  - Collision detection (physics-based TTC)
+ *  - Proximity detection (distance-based)
+ *  - Conflict detection (CPA-based prediction)
+ *  - Swarm clustering (ST-DBSCAN)
  */
 class InteractionEngine() {
 
   // ------------------------------------------------------------
-  // Default parameters
+  // Tunable parameters (system-wide defaults)
   // ------------------------------------------------------------
-  private val collisionThreshold = 5.0
-  private val proximityThreshold = 20.0
-  private val conflictThreshold = 10.0
-  private val predictionHorizon = 5.0
+  private val collisionThresholdMeters = 5.0
+  private val proximityThresholdMeters = 20.0
+  private val conflictThresholdMeters = 10.0
+  private val predictionHorizonSec = 5.0
 
-  private val swarmEps = 15.0
+  private val swarmEpsMeters = 15.0
   private val swarmMinPoints = 3
 
   // ------------------------------------------------------------
@@ -42,64 +33,67 @@ class InteractionEngine() {
     if (events == null || events.isEmpty)
       return Seq.empty
 
-    // ------------------------------------------------------------
-    // Diagnostics
-    // ------------------------------------------------------------
     val distinctObjects =
       events.map(_.objectId).distinct.size
 
     println(
-      s"[INTERACTION ENGINE] " +
-      s"events=${events.size} " +
-      s"objects=$distinctObjects"
+      s"[INTERACTION ENGINE] events=${events.size} objects=$distinctObjects"
     )
 
     // ------------------------------------------------------------
-    // Local instances per call (no shared state)
+    // Detectors (stateless per batch)
     // ------------------------------------------------------------
-    val spatialIndex = SpatialIndex()
+    val collisionDetector =
+      new CollisionDetector(
+        kNeighbors = 5,
+        maxGapMs = 5000L,
+        ttcThresholdSec = predictionHorizonSec
+      )
 
-    val collisionDetector = new CollisionDetector()
-    val proximityDetector = new ProximityDetector()
-    val conflictDetector = new ConflictDetector()
-    val swarmClustering = new SwarmClustering()
+    val proximityDetector =
+      new ProximityDetector()
+
+    val conflictDetector =
+      new ConflictDetector(
+        maxGapMs = 5000L,
+        defaultHorizonSec = predictionHorizonSec,
+        conflictThresholdMeters = conflictThresholdMeters
+      )
+
+    val swarmClustering =
+      new SwarmClustering()
 
     // ------------------------------------------------------------
-    // 1. Build spatial index
-    // ------------------------------------------------------------
-    events.foreach(spatialIndex.insert)
-
-    // ------------------------------------------------------------
-    // 2. Run detectors
+    // 1. Run detectors
     // ------------------------------------------------------------
     val collisions =
       collisionDetector.detect(
         events,
-        collisionThreshold
+        collisionThresholdMeters
       )
 
     val proximity =
       proximityDetector.detect(
         events,
-        proximityThreshold
+        proximityThresholdMeters
       )
 
     val conflicts =
       conflictDetector.detect(
         events,
-        predictionHorizon,
-        conflictThreshold
+        predictionHorizonSec,
+        conflictThresholdMeters
       )
 
     val swarms =
       swarmClustering.detect(
         events,
-        swarmEps,
+        swarmEpsMeters,
         swarmMinPoints
       )
 
     // ------------------------------------------------------------
-    // 3. Merge results
+    // 2. Merge results
     // ------------------------------------------------------------
     collisions ++ proximity ++ conflicts ++ swarms
   }

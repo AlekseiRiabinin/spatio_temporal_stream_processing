@@ -8,12 +8,13 @@ import phd.adaptivecontrol.temporal.DensityEstimator
 
 
 /**
- * SwarmClustering (FIXED VERSION)
+ * SwarmClustering
  *
  * ST-DBSCAN-style clustering with:
  *  - deduplicated object IDs
  *  - stable visited tracking
- *  - corrected cluster expansion logic
+ *  - DBSCAN-compatible core point logic
+ *  - strict minPoints enforcement
  */
 class SwarmClustering {
 
@@ -26,7 +27,7 @@ class SwarmClustering {
     val start = System.nanoTime()
 
     if (events.isEmpty) {
-      println(s"[SWARM] action=emptyInput")
+      println("[SWARM] action=emptyInput")
       return Seq.empty
     }
 
@@ -40,7 +41,9 @@ class SwarmClustering {
     val spatialIndex = SpatialIndex()
     events.foreach(spatialIndex.insert)
 
-    println(s"[SWARM] action=spatialIndexBuilt size=${events.size}")
+    println(
+      s"[SWARM] action=spatialIndexBuilt size=${events.size}"
+    )
 
     // ------------------------------------------------------------
     // Density filter
@@ -49,26 +52,37 @@ class SwarmClustering {
     val windowEnd   = events.map(_.timestamp).max
 
     val density =
-      DensityEstimator.globalDensity(events, windowStart, windowEnd)
+      DensityEstimator.globalDensity(
+        events,
+        windowStart,
+        windowEnd
+      )
 
-    println(s"[SWARM] action=globalDensity density=$density")
+    println(
+      s"[SWARM] action=globalDensity density=$density"
+    )
 
     if (density <= 0) {
-      println("[SWARM] action=skip reason=lowDensity")
+      println(
+        "[SWARM] action=skip reason=lowDensity"
+      )
       return Seq.empty
     }
 
     // ------------------------------------------------------------
     // Core DBSCAN state
     // ------------------------------------------------------------
-    val visited = mutable.Set.empty[String]
-    val clusters = mutable.ArrayBuffer.empty[Set[GeoEvent]]
+    val visited =
+      mutable.Set.empty[String]
+
+    val clusters =
+      mutable.ArrayBuffer.empty[Set[GeoEvent]]
 
     var neighborChecks = 0
     var clusterCount = 0
 
     // ------------------------------------------------------------
-    // Main loop
+    // Main clustering loop
     // ------------------------------------------------------------
     events.foreach { seed =>
 
@@ -76,10 +90,24 @@ class SwarmClustering {
 
         visited += seed.objectId
 
-        val neighbors = getNeighbors(seed, spatialIndex, epsMeters)
+        val neighbors =
+          getNeighbors(
+            seed,
+            spatialIndex,
+            epsMeters
+          )
+
         neighborChecks += neighbors.size
 
-        if (neighbors.size >= minPoints) {
+        println(
+          s"[SWARM] seed=${seed.objectId} neighbors=${neighbors.size}"
+        )
+
+        // --------------------------------------------------------
+        // DBSCAN core-point condition
+        // seed itself counts as one point
+        // --------------------------------------------------------
+        if (neighbors.size >= (minPoints - 1)) {
 
           val cluster =
             expandCluster(
@@ -91,58 +119,93 @@ class SwarmClustering {
               minPoints
             )
 
-          // enforce uniqueness
           val uniqueCluster =
-            cluster.groupBy(_.objectId).values.map(_.head).toSet
+            cluster
+              .groupBy(_.objectId)
+              .values
+              .map(_.head)
+              .toSet
 
-          clusters += uniqueCluster
-          clusterCount += 1
+          val uniqueObjectCount =
+            uniqueCluster.size
 
-          println(
-            s"[SWARM] clusterFormed id=$clusterCount size=${uniqueCluster.size}"
-          )
+          if (uniqueObjectCount >= minPoints) {
+
+            clusters += uniqueCluster
+            clusterCount += 1
+
+            println(
+              s"[SWARM] clusterFormed id=$clusterCount size=$uniqueObjectCount"
+            )
+
+          } else {
+
+            println(
+              s"[SWARM] clusterRejected size=$uniqueObjectCount minPoints=$minPoints"
+            )
+          }
         }
       }
     }
 
     // ------------------------------------------------------------
-    // Convert to Interaction
+    // Final safety filter
     // ------------------------------------------------------------
-    val interactions = clusters.map { cluster =>
+    val finalClusters =
+      clusters.filter(_.size >= minPoints)
 
-      val objectIds = cluster.map(_.objectId).toList
+    // ------------------------------------------------------------
+    // Convert clusters -> interactions
+    // ------------------------------------------------------------
+    val interactions =
+      finalClusters.map { cluster =>
 
-      val avgLat = cluster.map(_.lat).sum / cluster.size
-      val avgLon = cluster.map(_.lon).sum / cluster.size
-      val ts = cluster.map(_.timestamp).max
+        val objectIds =
+          cluster
+            .map(_.objectId)
+            .toSeq
+            .sorted
 
-      Interaction(
-        id = s"swarm-$ts-${objectIds.hashCode()}",
-        interactionType = InteractionType.Swarm,
-        objectIds = objectIds,
-        timestamp = ts,
-        lat = avgLat,
-        lon = avgLon,
-        severity = Some(cluster.size.toDouble),
-        attributes = Map(
-          "clusterSize" -> cluster.size.toString,
-          "density" -> density.toString
+        val avgLat =
+          cluster.map(_.lat).sum / cluster.size
+
+        val avgLon =
+          cluster.map(_.lon).sum / cluster.size
+
+        val ts =
+          cluster.map(_.timestamp).max
+
+        Interaction(
+          id = s"swarm-$ts-${objectIds.mkString("-").hashCode}",
+          interactionType = InteractionType.Swarm,
+          objectIds = objectIds,
+          timestamp = ts,
+          lat = avgLat,
+          lon = avgLon,
+          severity = Some(cluster.size.toDouble),
+          attributes = Map(
+            "clusterSize" -> cluster.size.toString,
+            "density" -> density.toString
+          )
         )
-      )
-    }.toSeq
+      }.toSeq
 
-    val elapsed = (System.nanoTime() - start) / 1e6
+    val elapsedMs =
+      (System.nanoTime() - start) / 1e6
 
     println(
-      s"[SWARM] action=summary events=${events.size} clusters=${clusters.size} " +
-      s"neighborChecks=$neighborChecks timeMs=$elapsed"
+      s"[SWARM] action=summary " +
+      s"events=${events.size} " +
+      s"clusters=${interactions.size} " +
+      s"neighborChecks=$neighborChecks " +
+      s"timeMs=$elapsedMs"
     )
 
     interactions
   }
 
   // ============================================================
-  // Neighbor query (centralized helper)
+  // Neighbor query helper
   // ============================================================
   private def getNeighbors(
     seed: GeoEvent,
@@ -151,13 +214,20 @@ class SwarmClustering {
   ): Seq[GeoEvent] = {
 
     spatialIndex
-      .queryRadius(seed.lat, seed.lon, epsMeters)
+      .queryRadius(
+        seed.lat,
+        seed.lon,
+        epsMeters
+      )
       .filter(_.objectId != seed.objectId)
-      .filter(e => SpatialOperations.distance(seed, e) <= epsMeters)
+      .filter(
+        e =>
+          SpatialOperations.distance(seed, e) <= epsMeters
+      )
   }
 
   // ============================================================
-  // Cluster expansion (FIXED)
+  // Cluster expansion
   // ============================================================
   private def expandCluster(
     seed: GeoEvent,
@@ -168,23 +238,32 @@ class SwarmClustering {
     minPoints: Int
   ): Seq[GeoEvent] = {
 
-    val cluster = mutable.ArrayBuffer.empty[GeoEvent]
-    val queue = mutable.Queue(neighbors: _*)
+    val cluster =
+      mutable.ArrayBuffer.empty[GeoEvent]
+
+    val queue =
+      mutable.Queue(neighbors: _*)
 
     cluster += seed
-    visited += seed.objectId
 
     while (queue.nonEmpty) {
 
-      val current = queue.dequeue()
+      val current =
+        queue.dequeue()
 
       if (!visited.contains(current.objectId)) {
+
         visited += current.objectId
 
         val currentNeighbors =
-          getNeighbors(current, spatialIndex, epsMeters)
+          getNeighbors(
+            current,
+            spatialIndex,
+            epsMeters
+          )
 
-        if (currentNeighbors.size >= minPoints) {
+        // DBSCAN core-point condition
+        if (currentNeighbors.size >= (minPoints - 1)) {
           queue.enqueue(currentNeighbors: _*)
         }
 
