@@ -2,36 +2,32 @@ package phd.adaptivecontrol.interaction
 
 import scala.collection.mutable
 
-import phd.adaptivecontrol.model._
-import phd.adaptivecontrol.spatial._
-import phd.adaptivecontrol.temporal._
+import phd.adaptivecontrol.model.{GeoEvent, Interaction, InteractionType, Trajectory}
+import phd.adaptivecontrol.spatial.SpatialOperations
+import phd.adaptivecontrol.temporal.TrajectoryBuilder
 
 
 /**
- * ConflictDetector
+ * ConflictDetector (UPDATED)
  *
- * Predicts future conflicts by projecting object motion forward
- * using linear velocity (meters/sec) and checking whether objects
- * will come within a threshold distance within a prediction horizon.
+ * Predicts conflicts using:
+ *  - trajectory-based velocity estimation
+ *  - TTC (time-to-collision) model
+ *  - deterministic pairwise evaluation
  *
- * Scientific model:
- *  - distance threshold (meters)
- *  - prediction horizon (seconds)
- *  - linear motion model using velocity from trajectory
+ * FIXES:
+ *  - removed simulation grid
+ *  - unified with CollisionDetector physics model
+ *  - stabilized severity scaling
  */
 class ConflictDetector(
-  maxGapMs: Long = 5000L
+  maxGapMs: Long = 5000L,
+  defaultHorizonSec: Double = 5.0,
+  conflictThresholdMeters: Double = 10.0
 ) {
 
   private val trajectoryBuilder = new TrajectoryBuilder(maxGapMs)
 
-  /**
-   * Predictive conflict detection
-   *
-   * @param events incoming events for the current window
-   * @param horizonSec prediction horizon (seconds)
-   * @param thresholdMeters conflict threshold (meters)
-   */
   def detect(
     events: Seq[GeoEvent],
     horizonSec: Double,
@@ -42,17 +38,12 @@ class ConflictDetector(
     val interactions = mutable.ArrayBuffer.empty[Interaction]
 
     if (events.isEmpty) {
-      println(
-        s"[CONFLICT] action=emptyInput threshold=$thresholdMeters horizon=$horizonSec"
-      )
+      println("[CONFLICT] action=emptyInput")
       return Seq.empty
     }
 
     println(
-      s"[CONFLICT] action=start " +
-      s"events=${events.size} " +
-      s"threshold=$thresholdMeters " +
-      s"horizon=$horizonSec"
+      s"[CONFLICT] action=start events=${events.size} threshold=$thresholdMeters horizon=$horizonSec"
     )
 
     // ------------------------------------------------------------
@@ -73,14 +64,17 @@ class ConflictDetector(
     )
 
     // ------------------------------------------------------------
-    // 2. Pairwise predictive conflict detection
+    // 2. Pairwise TTC-based detection (UNIFIED MODEL)
     // ------------------------------------------------------------
     val objects = trajectories.keys.toSeq
+
+    var pairChecks = 0
 
     for {
       i <- objects.indices
       j <- (i + 1) until objects.length
     } {
+
       val id1 = objects(i)
       val id2 = objects(j)
 
@@ -90,100 +84,64 @@ class ConflictDetector(
       val e1 = traj1.sortedEvents.last
       val e2 = traj2.sortedEvents.last
 
-      // ----------------------------------------------------------
-      // Compute velocities (m/s)
-      // ----------------------------------------------------------
       val v1 = computeVelocity(traj1)
       val v2 = computeVelocity(traj2)
 
-      val relativeSpeed =
-        math.sqrt(math.pow(v1._1 - v2._1, 2) + math.pow(v1._2 - v2._2, 2))
-
-      if (relativeSpeed <= 1e-6) {
-        println(
-          s"[CONFLICT] skipZeroSpeed pair=($id1,$id2)"
+      val relSpeed =
+        math.sqrt(
+          math.pow(v1._1 - v2._1, 2) +
+          math.pow(v1._2 - v2._2, 2)
         )
-      } else {
 
-        // --------------------------------------------------------
-        // Predict future positions using linear motion
-        // --------------------------------------------------------
-        val futurePositions: Seq[(Double, Double)] = (0 to 20).map { step =>
-          val t = step * (horizonSec / 20.0)
+      pairChecks += 1
 
-          // Predict lat/lon using local tangent-plane approximation
-          val lat1 = e1.lat + (v1._2 * t) / 6371000.0 * (180.0 / math.Pi)
-          val lon1 = e1.lon + (v1._1 * t) /
-            (6371000.0 * math.cos(math.toRadians(e1.lat))) * (180.0 / math.Pi)
+      if (relSpeed > 1e-6) {
 
-          val lat2 = e2.lat + (v2._2 * t) / 6371000.0 * (180.0 / math.Pi)
-          val lon2 = e2.lon + (v2._1 * t) /
-            (6371000.0 * math.cos(math.toRadians(e2.lat))) * (180.0 / math.Pi)
+        val distance =
+          SpatialOperations.distance(e1, e2)
 
-          val d = SpatialOperations.distance(
-            GeoEvent(
-              id = s"pred-$id1",
-              objectId = id1,
-              timestamp = e1.timestamp,
-              lon = lon1,
-              lat = lat1,
-              wkt = "",
-              speed = None,
-              heading = None
-            ),
-            GeoEvent(
-              id = s"pred-$id2",
-              objectId = id2,
-              timestamp = e2.timestamp,
-              lon = lon2,
-              lat = lat2,
-              wkt = "",
-              speed = None,
-              heading = None
-            )
-          )
+        val ttc = distance / relSpeed
 
-          (t, d)
-        }
+        if (ttc > 0 && ttc <= horizonSec && distance <= thresholdMeters) {
 
-        // --------------------------------------------------------
-        // Check if any predicted distance is below threshold
-        // --------------------------------------------------------
-        val conflict = futurePositions.find { case (_, d) =>
-          d <= thresholdMeters
-        }
-
-        conflict.foreach { case (t, d) =>
           val ts = math.max(e1.timestamp, e2.timestamp)
 
+          // normalized severity (stable range 0..1)
+          val severityScore =
+            math.max(0.0, math.min(1.0, 1.0 - (ttc / horizonSec)))
+
           interactions += Interaction(
-            id = s"conf-$id1-$id2-$ts",
+            id = s"conf-${e1.id}-${e2.id}-$ts",
             interactionType = InteractionType.Conflict,
             objectIds = Seq(id1, id2),
             timestamp = ts,
             lat = (e1.lat + e2.lat) / 2.0,
             lon = (e1.lon + e2.lon) / 2.0,
-            severity = Some(1.0 / (t + 1e-6)),
+            severity = Some(severityScore),
             attributes = Map(
-              "predicted_distance" -> d.toString,
-              "time_to_conflict" -> t.toString,
-              "relative_speed" -> relativeSpeed.toString
+              "distance" -> distance.toString,
+              "ttc" -> ttc.toString,
+              "relative_speed" -> relSpeed.toString
             )
           )
 
           println(
-            s"[CONFLICT] detected pair=($id1,$id2) t=$t distance=$d"
+            s"[CONFLICT] detected pair=($id1,$id2) ttc=$ttc distance=$distance"
           )
         }
+
+      } else {
+        println(
+          s"[CONFLICT] skipZeroSpeed pair=($id1,$id2)"
+        )
       }
     }
 
     val elapsedMs = (System.nanoTime() - start) / 1e6
 
     println(
-      s"[CONFLICT] summary " +
-      s"events=${events.size} " +
-      s"conflicts=${interactions.size} " +
+      s"[CONFLICT] summary events=${events.size} " +
+      s"pairsChecked=$pairChecks conflicts=${interactions.size} " +
       s"timeMs=$elapsedMs"
     )
 
@@ -191,9 +149,10 @@ class ConflictDetector(
   }
 
   /**
-   * Compute velocity (meters/sec) from trajectory
+   * Velocity estimation from trajectory (meters/sec)
    */
   private def computeVelocity(traj: Trajectory): (Double, Double) = {
+
     val events = traj.sortedEvents
     if (events.length < 2) return (0.0, 0.0)
 

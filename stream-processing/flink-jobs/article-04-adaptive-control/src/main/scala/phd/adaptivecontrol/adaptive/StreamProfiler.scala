@@ -6,6 +6,16 @@ import phd.adaptivecontrol.model.InteractionType._
 import phd.adaptivecontrol.model.StreamFeatures
 
 
+/**
+ * StreamProfiler
+ *
+ * Runtime telemetry + ML feature extraction layer
+ * for adaptive watermark/window control.
+ *
+ * Now fully self-contained:
+ * - snapshot() computes processing latency internally
+ * - FeatureExtractor does NOT inject external timing
+ */
 object StreamProfiler extends Serializable {
 
   // ============================================================
@@ -38,9 +48,8 @@ object StreamProfiler extends Serializable {
   private var totalWindowEvents: Long = 0L
 
   // ============================================================
-  // PUBLIC READ ACCESS (IMPORTANT FIX)
+  // PUBLIC READ ACCESS (safe aggregation layer)
   // ============================================================
-
   def getTotalEvents: Long = totalEvents
   def getTotalInteractions: Long = totalInteractions
 
@@ -63,22 +72,28 @@ object StreamProfiler extends Serializable {
     val now = System.currentTimeMillis()
     totalEvents += 1
 
+    // event rate window tracking
     recentEventTimes.enqueue(now)
 
     while (
       recentEventTimes.nonEmpty &&
       now - recentEventTimes.front > EventRateWindowMs
-    ) recentEventTimes.dequeue()
+    ) {
+      recentEventTimes.dequeue()
+    }
 
+    // disorder detection
     if (event.timestamp < lastEventTimestamp)
       outOfOrderEvents += 1
 
+    // lateness heuristic
     if (event.timestamp < now - 1000)
       lateEvents += 1
 
     lastEventTimestamp =
       math.max(lastEventTimestamp, event.timestamp)
 
+    // latency accumulation
     val latency = now - event.timestamp
     if (latency > 0)
       accumulatedLatencyMs += latency
@@ -110,7 +125,7 @@ object StreamProfiler extends Serializable {
   }
 
   // ============================================================
-  // FEATURES
+  // FEATURE METRICS
   // ============================================================
   def eventRate: Double =
     recentEventTimes.size.toDouble / (EventRateWindowMs / 1000.0)
@@ -136,40 +151,25 @@ object StreamProfiler extends Serializable {
     else totalInteractions.toDouble / totalEvents
 
   // ============================================================
-  // SNAPSHOT
+  // SNAPSHOT (UPDATED CORE CHANGE)
   // ============================================================
-  def logSnapshot(): Unit = {
-    println(
-      "[METRIC] " +
-        s"event_rate=${eventRate.formatted("%.2f")} " +
-        s"disorder_ratio=${disorderRatio.formatted("%.4f")} " +
-        s"late_event_ratio=${lateEventRatio.formatted("%.4f")} " +
-        s"avg_latency_ms=${averageLatencyMs.formatted("%.2f")} " +
-        s"avg_window_fill=${averageWindowFill.formatted("%.2f")} " +
-        s"interaction_rate=${interactionRate.formatted("%.4f")} " +
-        s"collision_count=$collisionCount " +
-        s"proximity_count=$proximityCount " +
-        s"swarm_count=$swarmCount " +
-        s"conflict_count=$conflictCount"
-    )
-  }
+  def snapshot(): StreamFeatures = {
 
-  def snapshot(processingLatencyMs: Double = 0.0): StreamFeatures = {
-
-    val safeTotalEvents = math.max(totalEvents, 1L)
-    val safeTotalInteractions = math.max(totalInteractions, 1L)
+    val safeInteractions = math.max(totalInteractions, 1L)
 
     val collisionRate =
-      collisionCount.toDouble / safeTotalInteractions
+      collisionCount.toDouble / safeInteractions
 
     val proximityRate =
-      proximityCount.toDouble / safeTotalInteractions
+      proximityCount.toDouble / safeInteractions
 
     val swarmRate =
-      swarmCount.toDouble / safeTotalInteractions
+      swarmCount.toDouble / safeInteractions
 
     val conflictRate =
-      conflictCount.toDouble / safeTotalInteractions
+      conflictCount.toDouble / safeInteractions
+
+    val now = System.currentTimeMillis()
 
     StreamFeatures(
       eventRate = eventRate,
@@ -185,10 +185,32 @@ object StreamProfiler extends Serializable {
       swarmRate = swarmRate,
       conflictRate = conflictRate,
 
-      watermarkLagMs = 0L, // placeholder until watermark module
-      processingLatencyMs = processingLatencyMs,
+      // still placeholder (watermark module comes later)
+      watermarkLagMs = 0L,
 
-      timestamp = System.currentTimeMillis()
+      // internal latency (no external injection anymore)
+      processingLatencyMs = now - lastEventTimestamp,
+
+      timestamp = now
+    )
+  }
+
+  // ============================================================
+  // DEBUG
+  // ============================================================
+  def logSnapshot(): Unit = {
+    println(
+      "[METRIC] " +
+        s"event_rate=${eventRate.formatted("%.2f")} " +
+        s"disorder_ratio=${disorderRatio.formatted("%.4f")} " +
+        s"late_event_ratio=${lateEventRatio.formatted("%.4f")} " +
+        s"avg_latency_ms=${averageLatencyMs.formatted("%.2f")} " +
+        s"avg_window_fill=${averageWindowFill.formatted("%.2f")} " +
+        s"interaction_rate=${interactionRate.formatted("%.4f")} " +
+        s"collision_count=$collisionCount " +
+        s"proximity_count=$proximityCount " +
+        s"swarm_count=$swarmCount " +
+        s"conflict_count=$conflictCount"
     )
   }
 }

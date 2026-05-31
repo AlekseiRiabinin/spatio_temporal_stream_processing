@@ -43,6 +43,18 @@ class InteractionEngine() {
       return Seq.empty
 
     // ------------------------------------------------------------
+    // Diagnostics
+    // ------------------------------------------------------------
+    val distinctObjects =
+      events.map(_.objectId).distinct.size
+
+    println(
+      s"[INTERACTION ENGINE] " +
+      s"events=${events.size} " +
+      s"objects=$distinctObjects"
+    )
+
+    // ------------------------------------------------------------
     // Local instances per call (no shared state)
     // ------------------------------------------------------------
     val spatialIndex = SpatialIndex()
@@ -61,16 +73,30 @@ class InteractionEngine() {
     // 2. Run detectors
     // ------------------------------------------------------------
     val collisions =
-      collisionDetector.detect(events, collisionThreshold)
+      collisionDetector.detect(
+        events,
+        collisionThreshold
+      )
 
     val proximity =
-      proximityDetector.detect(events, proximityThreshold)
+      proximityDetector.detect(
+        events,
+        proximityThreshold
+      )
 
     val conflicts =
-      conflictDetector.detect(events, predictionHorizon, conflictThreshold)
+      conflictDetector.detect(
+        events,
+        predictionHorizon,
+        conflictThreshold
+      )
 
     val swarms =
-      swarmClustering.detect(events, swarmEps, swarmMinPoints)
+      swarmClustering.detect(
+        events,
+        swarmEps,
+        swarmMinPoints
+      )
 
     // ------------------------------------------------------------
     // 3. Merge results

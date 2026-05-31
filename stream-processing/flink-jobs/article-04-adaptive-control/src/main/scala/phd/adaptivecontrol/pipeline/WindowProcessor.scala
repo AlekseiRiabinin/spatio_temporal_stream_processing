@@ -42,7 +42,7 @@ object WindowProcessor {
     )
 
     stream
-      .keyBy(_.objectId)
+      .keyBy(_ => "global")
       .window(TumblingEventTimeWindows.of(Time.milliseconds(windowSizeMs)))
       .process(
         new ProcessWindowFunction[
@@ -63,7 +63,7 @@ object WindowProcessor {
               elements.toList
 
             println(
-              s"[WindowProcessor] key=$key " +
+              s"[WINDOW PROCESSOR] key=$key " +
               s"events=${batch.size} " +
               s"windowStart=${context.window.getStart} " +
               s"windowEnd=${context.window.getEnd}"
