@@ -6,7 +6,8 @@ COMPOSE="docker/docker-compose.adaptive-control.yml"
 TIMESTAMP_PATTERN_ARG=${1:-}
 EVENT_RATE_PATTERN_ARG=${2:-}
 MOTION_MODE_ARG=${3:-}
-ADAPTIVE_MODE_ARG=${4:-}
+FIXED_WINDOW_MS_ARG=${4:-}
+FIXED_WATERMARK_MS_ARG=${5:-}
 
 echo "=== Starting Adaptive Control System (Article 04) ==="
 
@@ -14,6 +15,8 @@ echo "=== Starting Adaptive Control System (Article 04) ==="
 [ -n "$EVENT_RATE_PATTERN_ARG" ] && echo "Rate Pattern:         $EVENT_RATE_PATTERN_ARG"
 [ -n "$MOTION_MODE_ARG" ] && echo "Motion Mode:          $MOTION_MODE_ARG"
 [ -n "$ADAPTIVE_MODE_ARG" ] && echo "Adaptive Mode:        $ADAPTIVE_MODE_ARG"
+[ -n "$FIXED_WINDOW_MS_ARG" ] && echo "Fixed Window:         $FIXED_WINDOW_MS_ARG"
+[ -n "$FIXED_WATERMARK_MS_ARG" ] && echo "Fixed Watermark:      $FIXED_WATERMARK_MS_ARG"
 
 # ============================================================
 # EXPERIMENT CONFIGURATION
@@ -85,6 +88,9 @@ configure_experiment() {
 
     ADAPTATION_INTERVAL_MS=2000
 
+    FIXED_WINDOW_MS=5000
+    FIXED_WATERMARK_MS=3000
+
     # ========================================================
     # CLI Overrides
     # ========================================================
@@ -92,6 +98,8 @@ configure_experiment() {
     [ -n "$EVENT_RATE_PATTERN_ARG" ] && EVENT_RATE_PATTERN="$EVENT_RATE_PATTERN_ARG"
     [ -n "$MOTION_MODE_ARG" ] && MOTION_MODE="$MOTION_MODE_ARG"
     [ -n "$ADAPTIVE_MODE_ARG" ] && ML_INFERENCE="$ADAPTIVE_MODE_ARG"
+    [ -n "$FIXED_WINDOW_MS_ARG" ] && FIXED_WINDOW_MS="$FIXED_WINDOW_MS_ARG"
+    [ -n "$FIXED_WATERMARK_MS_ARG" ] && FIXED_WATERMARK_MS="$FIXED_WATERMARK_MS_ARG"
 
     # ========================================================
     # MOTION MODE CONFIGURATION
@@ -250,6 +258,9 @@ export_experiment_env() {
 
     export ADAPTATION_INTERVAL_MS
 
+    export FIXED_WINDOW_MS
+    export FIXED_WATERMARK_MS
+
     echo ""
     echo "===================================="
     echo "EXPERIMENT CONFIGURATION"
@@ -278,6 +289,9 @@ export_experiment_env() {
     echo "WATERMARK_DELAY_MS      = $WATERMARK_DELAY_MS"
     echo "ML_INFERENCE            = $ML_INFERENCE"
     echo "ADAPTATION_INTERVAL_MS  = $ADAPTATION_INTERVAL_MS"
+
+    echo "FIXED_WINDOW_MS        = $FIXED_WINDOW_MS"
+    echo "FIXED_WATERMARK_MS     = $FIXED_WATERMARK_MS"
 
     echo "===================================="
 }

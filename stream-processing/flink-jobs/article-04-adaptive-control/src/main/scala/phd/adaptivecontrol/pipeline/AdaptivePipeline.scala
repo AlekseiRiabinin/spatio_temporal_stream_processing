@@ -6,6 +6,7 @@ import org.apache.flink.api.scala.createTypeInformation
 import org.apache.flink.util.Collector
 import org.apache.flink.api.common.functions.FlatMapFunction
 
+import phd.adaptivecontrol.config.AdaptiveConfig
 import phd.adaptivecontrol.model.{GeoEvent, Interaction}
 import phd.adaptivecontrol.interaction.InteractionEngine
 import phd.adaptivecontrol.adaptive.StreamProfiler
@@ -53,16 +54,23 @@ object AdaptivePipeline {
   def build(
     env: StreamExecutionEnvironment,
     inputStream: DataStream[GeoEvent],
-    windowSizeMs: Long
+    config: AdaptiveConfig
   ): DataStream[Interaction] = {
 
-    println("[ADAPTIVE PIPELINE] action=start")
+    println(
+      "[ADAPTIVE PIPELINE] action=start " +
+      s"windowSizeMs=${config.windowSizeMs} " +
+      s"watermarkDelayMs=${config.watermarkDelayMs}"
+    )
 
     // ------------------------------------------------------------
     // 1. Window processing
     // ------------------------------------------------------------
     val windowedStream: DataStream[List[GeoEvent]] =
-      WindowProcessor.applyWindow(inputStream)
+      WindowProcessor.applyWindow(
+        inputStream,
+        config
+      )
 
     println(
       "[ADAPTIVE PIPELINE] action=windowing status=initialized"

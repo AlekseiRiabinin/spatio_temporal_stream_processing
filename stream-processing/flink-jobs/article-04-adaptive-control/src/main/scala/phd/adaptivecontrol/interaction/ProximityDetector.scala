@@ -1,19 +1,21 @@
 package phd.adaptivecontrol.interaction
 
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable
 
 import phd.adaptivecontrol.model.{GeoEvent, Interaction, InteractionType}
 import phd.adaptivecontrol.spatial.{SpatialIndex, SpatialOperations}
 
 
 /**
- * ProximityDetector
+ * ProximityDetector (UPDATED)
  *
- * Detects proximity interactions using:
- *  - SpatialIndex (fast neighborhood queries)
- *  - SpatialOperations (distance computation in meters)
+ * Detects spatial proximity interactions with:
+ *  - spatial indexing (radius search)
+ *  - metric distance validation
+ *  - basic temporal consistency filtering
  *
- * Proximity represents spatial closeness without risk.
+ * NOTE:
+ * This is a "soft signal" detector (not risk-based like collision/conflict).
  */
 class ProximityDetector {
 
@@ -23,7 +25,7 @@ class ProximityDetector {
   ): Seq[Interaction] = {
 
     val start = System.nanoTime()
-    val interactions = ArrayBuffer.empty[Interaction]
+    val interactions = mutable.ArrayBuffer.empty[Interaction]
 
     if (events.isEmpty) {
       println(s"[PROXIMITY] action=emptyInput threshold=$thresholdMeters")
@@ -35,14 +37,25 @@ class ProximityDetector {
     )
 
     // ------------------------------------------------------------
-    // 1. Build spatial index
+    // 1. Spatial index
     // ------------------------------------------------------------
     val spatialIndex = SpatialIndex()
     events.foreach(spatialIndex.insert)
 
     // ------------------------------------------------------------
-    // 2. For each event → query neighbors
+    // 2. Temporal window (basic consistency filter)
     // ------------------------------------------------------------
+    val windowStart = events.map(_.timestamp).min
+    val windowEnd   = events.map(_.timestamp).max
+
+    val timeWindowMs = windowEnd - windowStart
+    val maxAllowedTimeGap = math.max(5000L, timeWindowMs / 2)
+
+    // ------------------------------------------------------------
+    // 3. Detection
+    // ------------------------------------------------------------
+    val visitedPairs = mutable.Set[(String, String)]()
+
     var totalNeighbors = 0
     var distanceComputations = 0
 
@@ -51,63 +64,73 @@ class ProximityDetector {
       val neighbors =
         spatialIndex
           .queryRadius(e1.lat, e1.lon, thresholdMeters)
-          .filter(_.objectId != e1.objectId) // correct self-filter
+          .filter(_.objectId != e1.objectId)
 
       totalNeighbors += neighbors.size
 
       neighbors.foreach { e2 =>
 
-        // --------------------------------------------------------
-        // 3. Metric distance check
-        // --------------------------------------------------------
-        val distance = SpatialOperations.distance(e1, e2)
-        distanceComputations += 1
+        // enforce pair uniqueness (A-B == B-A)
+        val pair =
+          if (e1.objectId < e2.objectId)
+            (e1.objectId, e2.objectId)
+          else
+            (e2.objectId, e1.objectId)
 
-        if (distance <= thresholdMeters && distance > 1e-6) {
+        if (!visitedPairs.contains(pair)) {
+          visitedPairs += pair
 
-          println(
-            s"[PROXIMITY] pair=(${e1.objectId},${e2.objectId}) " +
-            s"distance=$distance threshold=$thresholdMeters"
-          )
+          // ------------------------------------------------------
+          // temporal consistency check
+          // ------------------------------------------------------
+          val timeDiff = math.abs(e1.timestamp - e2.timestamp)
 
-          val lat = (e1.lat + e2.lat) / 2.0
-          val lon = (e1.lon + e2.lon) / 2.0
-          val ts = math.max(e1.timestamp, e2.timestamp)
+          if (timeDiff <= maxAllowedTimeGap) {
 
-          interactions += Interaction(
-            id = s"prox-${e1.id}-${e2.id}-$ts",
-            interactionType = InteractionType.Proximity,
-            objectIds = Seq(e1.objectId, e2.objectId),
-            timestamp = ts,
-            lat = lat,
-            lon = lon,
-            severity = None,
-            attributes = Map(
-              "distance" -> distance.toString
-            )
-          )
+            val distance = SpatialOperations.distance(e1, e2)
+            distanceComputations += 1
+
+            if (distance > 1e-6 && distance <= thresholdMeters) {
+
+              println(
+                s"[PROXIMITY] pair=(${e1.objectId},${e2.objectId}) " +
+                s"distance=$distance timeDiff=$timeDiff threshold=$thresholdMeters"
+              )
+
+              val ts = math.max(e1.timestamp, e2.timestamp)
+
+              interactions += Interaction(
+                id = s"prox-${e1.id}-${e2.id}-$ts",
+                interactionType = InteractionType.Proximity,
+                objectIds = Seq(e1.objectId, e2.objectId),
+                timestamp = ts,
+                lat = (e1.lat + e2.lat) / 2.0,
+                lon = (e1.lon + e2.lon) / 2.0,
+                severity = None,
+                attributes = Map(
+                  "distance" -> distance.toString,
+                  "time_gap_ms" -> timeDiff.toString
+                )
+              )
+            }
+          }
         }
       }
     }
 
     // ------------------------------------------------------------
-    // 4. Deduplicate (A-B == B-A)
+    // 4. Summary
     // ------------------------------------------------------------
-    val deduped =
-      interactions
-        .groupBy(i => i.objectIds.toSet)
-        .map(_._2.head)
-        .toSeq
-
     val elapsedMs = (System.nanoTime() - start) / 1e6
 
     println(
       s"[PROXIMITY] action=summary events=${events.size} " +
-      s"neighbors=$totalNeighbors distanceComputations=$distanceComputations " +
-      s"interactionsRaw=${interactions.size} interactionsFinal=${deduped.size} " +
-      s"timeMs=$elapsedMs"
+        s"neighbors=$totalNeighbors " +
+        s"distanceComputations=$distanceComputations " +
+        s"interactions=${interactions.size} " +
+        s"timeMs=$elapsedMs"
     )
 
-    deduped
+    interactions.toSeq
   }
 }

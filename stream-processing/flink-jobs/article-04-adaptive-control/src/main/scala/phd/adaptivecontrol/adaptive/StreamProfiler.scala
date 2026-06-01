@@ -4,18 +4,9 @@ import scala.collection.mutable
 import phd.adaptivecontrol.model.{GeoEvent, Interaction}
 import phd.adaptivecontrol.model.InteractionType._
 import phd.adaptivecontrol.model.StreamFeatures
+import phd.adaptivecontrol.config.AdaptiveConfig
 
 
-/**
- * StreamProfiler
- *
- * Runtime telemetry + ML feature extraction layer
- * for adaptive watermark/window control.
- *
- * Now fully self-contained:
- * - snapshot() computes processing latency internally
- * - FeatureExtractor does NOT inject external timing
- */
 object StreamProfiler extends Serializable {
 
   // ============================================================
@@ -32,10 +23,15 @@ object StreamProfiler extends Serializable {
   private val EventRateWindowMs = 5000L
 
   // ============================================================
+  // Adaptive latency model
+  // ============================================================
+  private var latencyEMA: Double = 0.0
+  private val alpha: Double = 0.1
+
+  // ============================================================
   // Interaction state
   // ============================================================
   private var totalInteractions: Long = 0L
-
   private var collisionCount: Long = 0L
   private var proximityCount: Long = 0L
   private var swarmCount: Long = 0L
@@ -48,18 +44,20 @@ object StreamProfiler extends Serializable {
   private var totalWindowEvents: Long = 0L
 
   // ============================================================
-  // PUBLIC READ ACCESS (safe aggregation layer)
+  // Watermark state
   // ============================================================
-  def getTotalEvents: Long = totalEvents
-  def getTotalInteractions: Long = totalInteractions
+  private var currentWatermark: Long = Long.MinValue
 
-  def getCollisionCount: Long = collisionCount
-  def getProximityCount: Long = proximityCount
-  def getSwarmCount: Long = swarmCount
-  def getConflictCount: Long = conflictCount
+  // ============================================================
+  // Adaptive configuration
+  // ============================================================
+  private var config: Option[AdaptiveConfig] = None
 
-  def getTotalWindows: Long = totalWindows
-  def getTotalWindowEvents: Long = totalWindowEvents
+  def setConfig(cfg: AdaptiveConfig): Unit =
+    config = Some(cfg)
+
+  def updateWatermark(wm: Long): Unit =
+    currentWatermark = wm
 
   // ============================================================
   // EVENTS
@@ -72,7 +70,9 @@ object StreamProfiler extends Serializable {
     val now = System.currentTimeMillis()
     totalEvents += 1
 
-    // event rate window tracking
+    // ------------------------------------------------------------
+    // event rate window
+    // ------------------------------------------------------------
     recentEventTimes.enqueue(now)
 
     while (
@@ -82,28 +82,44 @@ object StreamProfiler extends Serializable {
       recentEventTimes.dequeue()
     }
 
+    // ------------------------------------------------------------
     // disorder detection
+    // ------------------------------------------------------------
     if (event.timestamp < lastEventTimestamp)
       outOfOrderEvents += 1
-
-    // lateness heuristic
-    if (event.timestamp < now - 1000)
-      lateEvents += 1
 
     lastEventTimestamp =
       math.max(lastEventTimestamp, event.timestamp)
 
-    // latency accumulation
+    // ------------------------------------------------------------
+    // latency + EMA model
+    // ------------------------------------------------------------
     val latency = now - event.timestamp
-    if (latency > 0)
+    if (latency > 0) {
       accumulatedLatencyMs += latency
+
+      latencyEMA =
+        if (latencyEMA == 0.0) latency.toDouble
+        else alpha * latency + (1.0 - alpha) * latencyEMA
+    }
+
+    // ------------------------------------------------------------
+    // adaptive watermark fallback
+    // ------------------------------------------------------------
+    val effectiveWatermark: Long =
+      if (currentWatermark != Long.MinValue)
+        currentWatermark
+      else
+        (now - latencyEMA * 1.5).toLong
+
+    if (event.timestamp < effectiveWatermark)
+      lateEvents += 1
   }
 
   // ============================================================
   // INTERACTIONS
   // ============================================================
   def updateInteractions(interactions: Seq[Interaction]): Unit = {
-
     totalInteractions += interactions.size
 
     interactions.foreach { i =>
@@ -125,7 +141,7 @@ object StreamProfiler extends Serializable {
   }
 
   // ============================================================
-  // FEATURE METRICS
+  // BASIC FEATURES
   // ============================================================
   def eventRate: Double =
     recentEventTimes.size.toDouble / (EventRateWindowMs / 1000.0)
@@ -151,25 +167,18 @@ object StreamProfiler extends Serializable {
     else totalInteractions.toDouble / totalEvents
 
   // ============================================================
-  // SNAPSHOT (UPDATED CORE CHANGE)
+  // SNAPSHOT (ML FEATURE VECTOR)
   // ============================================================
   def snapshot(): StreamFeatures = {
 
+    val now = System.currentTimeMillis()
     val safeInteractions = math.max(totalInteractions, 1L)
 
-    val collisionRate =
-      collisionCount.toDouble / safeInteractions
+    val windowSizeMs =
+      config.map(_.windowSizeMs).getOrElse(0L)
 
-    val proximityRate =
-      proximityCount.toDouble / safeInteractions
-
-    val swarmRate =
-      swarmCount.toDouble / safeInteractions
-
-    val conflictRate =
-      conflictCount.toDouble / safeInteractions
-
-    val now = System.currentTimeMillis()
+    val watermarkDelayMs =
+      config.map(_.watermarkDelayMs).getOrElse(0L)
 
     StreamFeatures(
       eventRate = eventRate,
@@ -180,37 +189,65 @@ object StreamProfiler extends Serializable {
       windowFillRatio = averageWindowFill,
 
       interactionRate = interactionRate,
-      collisionRate = collisionRate,
-      proximityRate = proximityRate,
-      swarmRate = swarmRate,
-      conflictRate = conflictRate,
+      collisionRate = collisionCount.toDouble / safeInteractions,
+      proximityRate = proximityCount.toDouble / safeInteractions,
+      swarmRate = swarmCount.toDouble / safeInteractions,
+      conflictRate = conflictCount.toDouble / safeInteractions,
 
-      // still placeholder (watermark module comes later)
-      watermarkLagMs = 0L,
+      watermarkLagMs =
+        if (currentWatermark == Long.MinValue) 0L
+        else now - currentWatermark,
 
-      // internal latency (no external injection anymore)
-      processingLatencyMs = now - lastEventTimestamp,
+      processingLatencyMs =
+        now - lastEventTimestamp,
+
+      windowSizeMsFeature = windowSizeMs,
+      watermarkDelayMsFeature = watermarkDelayMs,
 
       timestamp = now
     )
   }
 
   // ============================================================
-  // DEBUG
+  // LOGGING (FULL FEATURE TRACE FOR ML DATASET)
   // ============================================================
   def logSnapshot(): Unit = {
+
+    val now = System.currentTimeMillis()
+
+    val windowSizeMs =
+      config.map(_.windowSizeMs).getOrElse(0L)
+
+    val watermarkDelayMs =
+      config.map(_.watermarkDelayMs).getOrElse(0L)
+
     println(
       "[METRIC] " +
         s"event_rate=${eventRate.formatted("%.2f")} " +
         s"disorder_ratio=${disorderRatio.formatted("%.4f")} " +
         s"late_event_ratio=${lateEventRatio.formatted("%.4f")} " +
         s"avg_latency_ms=${averageLatencyMs.formatted("%.2f")} " +
-        s"avg_window_fill=${averageWindowFill.formatted("%.2f")} " +
+        s"window_fill_ratio=${averageWindowFill.formatted("%.2f")} " +
+
         s"interaction_rate=${interactionRate.formatted("%.4f")} " +
+        s"collision_rate=${if (totalInteractions == 0) 0.0 else collisionCount.toDouble / totalInteractions} " +
+        s"proximity_rate=${if (totalInteractions == 0) 0.0 else proximityCount.toDouble / totalInteractions} " +
+        s"swarm_rate=${if (totalInteractions == 0) 0.0 else swarmCount.toDouble / totalInteractions} " +
+        s"conflict_rate=${if (totalInteractions == 0) 0.0 else conflictCount.toDouble / totalInteractions} " +
+
+        s"watermark_lag_ms=${if (currentWatermark == Long.MinValue) 0L else now - currentWatermark} " +
+        s"processing_latency_ms=${now - lastEventTimestamp} " +
+
+        s"window_size_ms=$windowSizeMs " +
+        s"watermark_delay_ms=$watermarkDelayMs " +
+
         s"collision_count=$collisionCount " +
         s"proximity_count=$proximityCount " +
         s"swarm_count=$swarmCount " +
-        s"conflict_count=$conflictCount"
+        s"conflict_count=$conflictCount " +
+
+        s"total_events=$totalEvents " +
+        s"total_interactions=$totalInteractions"
     )
   }
 }

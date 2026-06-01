@@ -40,6 +40,12 @@ case class StreamFeatures(
   processingLatencyMs: Double,
 
   // ============================================================
+  // Targets
+  // ============================================================
+  windowSizeMsFeature: Long,
+  watermarkDelayMsFeature: Long,
+
+  // ============================================================
   // Metadata
   // ============================================================
   timestamp: Long
@@ -64,7 +70,10 @@ case class StreamFeatures(
       conflictRate.toFloat,
 
       watermarkLagMs.toFloat,
-      processingLatencyMs.toFloat
+      processingLatencyMs.toFloat,
+
+      windowSizeMsFeature.toFloat,
+      watermarkDelayMsFeature.toFloat
     )
   }
 
@@ -113,6 +122,9 @@ object StreamFeatures {
 
       watermarkLagMs = 0L,
       processingLatencyMs = 0.0,
+
+      windowSizeMsFeature = 0L,
+      watermarkDelayMsFeature = 0L,
 
       timestamp = timestamp
     )
