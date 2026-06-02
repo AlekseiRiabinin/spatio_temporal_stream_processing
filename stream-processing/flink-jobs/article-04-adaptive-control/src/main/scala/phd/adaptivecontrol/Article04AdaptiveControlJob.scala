@@ -4,35 +4,21 @@ import org.apache.flink.streaming.api.scala._
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.scala.createTypeInformation
 
-import java.time.Duration
-
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
-import org.apache.flink.api.common.eventtime.SerializableTimestampAssigner
 import org.apache.flink.api.common.serialization.SimpleStringSchema
 import org.apache.flink.connector.kafka.source.KafkaSource
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer
 
 import phd.adaptivecontrol.config.AdaptiveConfig
 import phd.adaptivecontrol.model.GeoEvent
-import phd.adaptivecontrol.pipeline.AdaptivePipeline
+import phd.adaptivecontrol.pipeline.{AdaptivePipeline, WatermarkManager}
 
 
-/**
-  * Article04AdaptiveControlJob
-  *
-  * Main Flink entry point for:
-  *   - adaptive window control
-  *   - adaptive watermark control
-  *   - spatio-temporal stream processing
-  */
 object Article04AdaptiveControlJob {
 
-  // ============================================================
-  // JSON Mapper
-  // ============================================================
   private val mapper = new ObjectMapper()
   mapper.registerModule(DefaultScalaModule)
 
@@ -49,44 +35,50 @@ object Article04AdaptiveControlJob {
     println(s"[MAIN] action=env parallelism=${env.getParallelism}")
 
     // ============================================================
-    // 2. CLI-based Experiment Configuration
+    // 2. Experiment Configuration
     // ============================================================
-    if (args.length < 5) {
-      throw new IllegalArgumentException(
-        "Usage: <profile> <rate> <motion> <windowSizeMs> <watermarkDelayMs>"
-      )
-    }
-
-    val profile = args(0)
-    val ratePattern = args(1)
-    val motionMode = args(2)
-
-    val windowSizeMs = args(3).toLong
-    val watermarkDelayMs = args(4).toLong
-
     val bootstrap =
       sys.env.getOrElse("KAFKA_BOOTSTRAP_SERVERS", "kafka-1:19092")
 
     val topic =
       sys.env.getOrElse("KAFKA_TOPIC", "spatial-events")
 
+    val windowSizeMs =
+      sys.env.getOrElse("FIXED_WINDOW_MS", "5000").toLong
+
+    val watermarkDelayMs =
+      sys.env.getOrElse("FIXED_WATERMARK_MS", "3000").toLong
+
+    // Strategies (optional env overrides)
+    val windowStrategyMode =
+      sys.env.getOrElse("WINDOW_STRATEGY", "fixed")
+
+    val watermarkStrategyMode =
+      sys.env.getOrElse("WATERMARK_STRATEGY", "fixed")
+
+    val mlInferenceFlag =
+      sys.env.getOrElse("ML_INFERENCE", "false").toBoolean
+
     val adaptiveConfig =
       AdaptiveConfig(
         windowSizeMs = windowSizeMs,
-        watermarkDelayMs = watermarkDelayMs
+        watermarkDelayMs = watermarkDelayMs,
+        adaptiveWindowSizeMs = windowSizeMs,
+        adaptiveWatermarkDelayMs = watermarkDelayMs,
+        windowStrategy = windowStrategyMode,
+        watermarkStrategy = watermarkStrategyMode,
+        mlInference = mlInferenceFlag
       )
 
     println(
-      s"""
-         |[MAIN] action=config
-         | profile=$profile
-         | ratePattern=$ratePattern
-         | motionMode=$motionMode
-         | bootstrap=$bootstrap
-         | topic=$topic
-         | windowSizeMs=$windowSizeMs
-         | watermarkDelayMs=$watermarkDelayMs
-         |""".stripMargin
+      s"[MAIN] action=config " +
+      s"bootstrap=$bootstrap " +
+      s"topic=$topic " +
+      s"windowSizeMs=${adaptiveConfig.windowSizeMs} " +
+      s"watermarkDelayMs=${adaptiveConfig.watermarkDelayMs} " +
+      s"windowStrategy=${adaptiveConfig.windowStrategy} " +
+      s"watermarkStrategy=${adaptiveConfig.watermarkStrategy} " +
+      s"mlInference=${adaptiveConfig.mlInference}"
     )
 
     // ============================================================
@@ -121,31 +113,18 @@ object Article04AdaptiveControlJob {
     println("[MAIN] action=deserialization status=ready")
 
     // ============================================================
-    // 4. Watermark Strategy (uses CLI config)
+    // 4. Watermark Strategy (adaptive-capable)
     // ============================================================
-    object GeoEventTimestampAssigner
-      extends SerializableTimestampAssigner[GeoEvent] {
-
-      override def extractTimestamp(
-        event: GeoEvent,
-        recordTimestamp: Long
-      ): Long = event.timestamp
-    }
-
-    val watermarkStrategy =
-      WatermarkStrategy
-        .forBoundedOutOfOrderness[GeoEvent](
-          Duration.ofMillis(adaptiveConfig.watermarkDelayMs)
-        )
-        .withTimestampAssigner(GeoEventTimestampAssigner)
+    val wmStrategy =
+      WatermarkManager.build(adaptiveConfig)
 
     val timedGeoEventStream =
-      geoEventStream.assignTimestampsAndWatermarks(watermarkStrategy)
+      geoEventStream.assignTimestampsAndWatermarks(wmStrategy)
 
     println("[MAIN] action=watermarkStrategy status=initialized")
 
     // ============================================================
-    // 5. Adaptive Pipeline (config injected)
+    // 5. Adaptive Pipeline
     // ============================================================
     println("[MAIN] action=pipelineInit status=starting")
 

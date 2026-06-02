@@ -12,21 +12,37 @@ package phd.adaptivecontrol.model
  *   - reinforcement learning policies
  *
  * Used for:
- *   - watermark adaptation
+ *   - adaptive watermark tuning
  *   - adaptive window resizing
  *   - disorder tolerance control
  *   - runtime optimization
  */
 case class AdaptiveDecision(
+
+  // ============================================================
+  // Adaptive (dynamic) values
+  // ============================================================
   watermarkDelayMs: Long,
   windowSizeMs: Long,
+
+  // Allowed lateness = watermark delay
   allowedLatenessMs: Long,
+
+  // ============================================================
+  // Interaction thresholds (future adaptive)
+  // ============================================================
   proximityThresholdMeters: Double,
   collisionThresholdMeters: Double,
   conflictThresholdMeters: Double,
+
+  // Prediction horizon for conflict detection
   predictionHorizonSec: Double,
+
+  // ============================================================
+  // Decision metadata
+  // ============================================================
   confidence: Double,
-  strategy: String,
+  strategy: String,     // rule_based | ml | onnx | rl
   timestamp: Long
 ) {
 
@@ -44,9 +60,8 @@ case class AdaptiveDecision(
   /**
    * High-confidence decision.
    */
-  def isReliable: Boolean = {
+  def isReliable: Boolean =
     confidence >= 0.8
-  }
 
   override def toString: String = {
     s"AdaptiveDecision(" +

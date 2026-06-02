@@ -1,9 +1,6 @@
 package phd.adaptivecontrol.adaptive
 
-import phd.adaptivecontrol.model.{
-  StreamFeatures,
-  AdaptiveDecision
-}
+import phd.adaptivecontrol.model.{StreamFeatures, AdaptiveDecision}
 
 
 /**
@@ -16,7 +13,7 @@ import phd.adaptivecontrol.model.{
  *   Rule-based adaptation
  *
  * Phase 2:
- *   ONNX-based adaptation
+ *   ONNX-based adaptation (future)
  */
 object AdaptiveController extends Serializable {
 
@@ -30,13 +27,13 @@ object AdaptiveController extends Serializable {
   private val MaxWatermarkMs = 10000L
 
   // ============================================================
-  // Default Parameters
+  // Default Parameters (baseline)
   // ============================================================
   private val DefaultWindowMs = 5000L
   private val DefaultWatermarkMs = 3000L
 
   // ============================================================
-  // Spatial Interaction Parameters
+  // Interaction thresholds (future adaptive)
   // ============================================================
   private val DefaultProximityThreshold = 50.0
   private val DefaultCollisionThreshold = 10.0
@@ -49,63 +46,75 @@ object AdaptiveController extends Serializable {
 
   /**
    * Main decision entry point.
+   *
+   * Produces adaptive window/watermark values
+   * based on StreamFeatures.
    */
   def decide(features: StreamFeatures): AdaptiveDecision = {
 
-    var windowSizeMs = DefaultWindowMs
-    var watermarkDelayMs = DefaultWatermarkMs
+    // ----------------------------------------------------------
+    // Start from current adaptive values
+    // (these are updated every window by the pipeline)
+    // ----------------------------------------------------------
+    var windowSizeMs =
+      if (features.adaptiveWindowSizeMs > 0)
+        features.adaptiveWindowSizeMs
+      else
+        DefaultWindowMs
+
+    var watermarkDelayMs =
+      if (features.adaptiveWatermarkDelayMs > 0)
+        features.adaptiveWatermarkDelayMs
+      else
+        DefaultWatermarkMs
 
     // ----------------------------------------------------------
     // Disorder handling
     // ----------------------------------------------------------
-    if (
-      features.disorderRatio > 0.20 ||
-      features.lateEventRatio > 0.20
-    ) {
-
+    if (features.disorderRatio > 0.20 || features.lateEventRatio > 0.20) {
       watermarkDelayMs =
-        math.min(DefaultWatermarkMs * 2, MaxWatermarkMs)
+        math.min(watermarkDelayMs * 2, MaxWatermarkMs)
     }
 
     // ----------------------------------------------------------
     // High-load handling
     // ----------------------------------------------------------
-    if (
-      features.eventRate > 100.0 ||
-      features.processingLatencyMs > 1000.0
-    ) {
-
+    if (features.eventRate > 100.0 || features.processingLatencyMs > 1000.0) {
       windowSizeMs =
-        math.min(DefaultWindowMs * 2, MaxWindowMs)
+        math.min(windowSizeMs * 2, MaxWindowMs)
     }
 
     // ----------------------------------------------------------
     // Low-load optimization
     // ----------------------------------------------------------
-    if (
-      features.eventRate < 20.0 &&
-      features.processingLatencyMs < 100.0
-    ) {
-
+    if (features.eventRate < 20.0 && features.processingLatencyMs < 100.0) {
       windowSizeMs =
-        math.max(DefaultWindowMs / 2, MinWindowMs)
+        math.max(windowSizeMs / 2, MinWindowMs)
 
       watermarkDelayMs =
-        math.max(DefaultWatermarkMs / 2, MinWatermarkMs)
+        math.max(watermarkDelayMs / 2, MinWatermarkMs)
     }
 
     // ----------------------------------------------------------
     // Interaction-aware adaptation
     // ----------------------------------------------------------
-    if (
-      features.collisionRate > 0.05 ||
-      features.conflictRate > 0.05
-    ) {
-
+    if (features.collisionRate > 0.05 || features.conflictRate > 0.05) {
       watermarkDelayMs =
         math.min(watermarkDelayMs + 1000L, MaxWatermarkMs)
     }
 
+    // ----------------------------------------------------------
+    // Final clamping
+    // ----------------------------------------------------------
+    windowSizeMs =
+      math.max(MinWindowMs, math.min(windowSizeMs, MaxWindowMs))
+
+    watermarkDelayMs =
+      math.max(MinWatermarkMs, math.min(watermarkDelayMs, MaxWatermarkMs))
+
+    // ----------------------------------------------------------
+    // Build decision
+    // ----------------------------------------------------------
     AdaptiveDecision(
       watermarkDelayMs = watermarkDelayMs,
       windowSizeMs = windowSizeMs,

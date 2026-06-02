@@ -1,12 +1,13 @@
 package phd.adaptivecontrol.model
 
+
 /**
  * StreamFeatures
  *
  * Clean ML feature vector for:
  *   - ONNX inference
  *   - adaptive window control
- *   - watermark tuning
+ *   - adaptive watermark tuning
  *   - spatio-temporal behavior modeling
  */
 case class StreamFeatures(
@@ -40,10 +41,10 @@ case class StreamFeatures(
   processingLatencyMs: Double,
 
   // ============================================================
-  // Targets
+  // Adaptive control values (dynamic)
   // ============================================================
-  windowSizeMsFeature: Long,
-  watermarkDelayMsFeature: Long,
+  adaptiveWindowSizeMs: Long,
+  adaptiveWatermarkDelayMs: Long,
 
   // ============================================================
   // Metadata
@@ -72,8 +73,8 @@ case class StreamFeatures(
       watermarkLagMs.toFloat,
       processingLatencyMs.toFloat,
 
-      windowSizeMsFeature.toFloat,
-      watermarkDelayMsFeature.toFloat
+      adaptiveWindowSizeMs.toFloat,
+      adaptiveWatermarkDelayMs.toFloat
     )
   }
 
@@ -100,11 +101,13 @@ case class StreamFeatures(
       s"conflictRate=$conflictRate, " +
       s"watermarkLagMs=$watermarkLagMs, " +
       s"processingLatencyMs=$processingLatencyMs, " +
+      s"adaptiveWindowSizeMs=$adaptiveWindowSizeMs, " +
+      s"adaptiveWatermarkDelayMs=$adaptiveWatermarkDelayMs, " +
       s"timestamp=$timestamp)"
-  }
-
+}
 
 object StreamFeatures {
+
   def empty(timestamp: Long = System.currentTimeMillis()): StreamFeatures =
     StreamFeatures(
       eventRate = 0.0,
@@ -123,8 +126,8 @@ object StreamFeatures {
       watermarkLagMs = 0L,
       processingLatencyMs = 0.0,
 
-      windowSizeMsFeature = 0L,
-      watermarkDelayMsFeature = 0L,
+      adaptiveWindowSizeMs = 0L,
+      adaptiveWatermarkDelayMs = 0L,
 
       timestamp = timestamp
     )

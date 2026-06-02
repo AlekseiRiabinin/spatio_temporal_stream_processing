@@ -1,6 +1,7 @@
 package phd.adaptivecontrol.interaction
 
 import phd.adaptivecontrol.model.{GeoEvent, Interaction}
+import phd.adaptivecontrol.config.AdaptiveConfig
 
 
 /**
@@ -11,16 +12,26 @@ import phd.adaptivecontrol.model.{GeoEvent, Interaction}
  *  - Proximity detection (distance-based)
  *  - Conflict detection (CPA-based prediction)
  *  - Swarm clustering (ST-DBSCAN)
+ *
+ * Now parameterized by AdaptiveConfig so thresholds
+ * can become adaptive in future iterations.
  */
-class InteractionEngine() {
+class InteractionEngine(config: AdaptiveConfig) {
 
   // ------------------------------------------------------------
-  // Tunable parameters (system-wide defaults)
+  // Tunable parameters (config-driven)
   // ------------------------------------------------------------
-  private val collisionThresholdMeters = 5.0
-  private val proximityThresholdMeters = 20.0
-  private val conflictThresholdMeters = 10.0
-  private val predictionHorizonSec = 5.0
+  private val collisionThresholdMeters =
+    5.0 // could be made adaptive later
+
+  private val proximityThresholdMeters =
+    20.0
+
+  private val conflictThresholdMeters =
+    10.0
+
+  private val predictionHorizonSec =
+    5.0 // could be tied to window size
 
   private val swarmEpsMeters = 15.0
   private val swarmMinPoints = 3

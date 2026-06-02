@@ -9,14 +9,17 @@ import org.apache.flink.api.common.eventtime.{
 
 import phd.adaptivecontrol.model.GeoEvent
 import phd.adaptivecontrol.config.AdaptiveConfig
+import phd.adaptivecontrol.adaptive.StreamProfiler
 
 
 /**
  * WatermarkManager
  *
- * Centralized watermark construction using experiment config.
+ * Centralized watermark construction using AdaptiveConfig.
  *
- * Fully decoupled from environment variables.
+ * Supports:
+ *   - fixed watermark delay
+ *   - adaptive watermark delay (ML-driven)
  */
 object WatermarkManager {
 
@@ -25,17 +28,34 @@ object WatermarkManager {
   // ============================================================
   def build(config: AdaptiveConfig): WatermarkStrategy[GeoEvent] = {
 
-    val delayMs = config.watermarkDelayMs
+    // ------------------------------------------------------------
+    // Select watermark delay based on strategy
+    // ------------------------------------------------------------
+    val delayMs: Long =
+      config.watermarkStrategy match {
+
+        case "adaptive" =>
+          // Use adaptive value (updated dynamically)
+          config.adaptiveWatermarkDelayMs
+
+        case "fixed" | _ =>
+          // Default: use configured fixed watermark delay
+          config.watermarkDelayMs
+      }
 
     println(
-      s"[WatermarkManager] action=build delayMs=$delayMs"
+      s"[WATERMARK MANAGER] action=build " +
+      s"strategy=${config.watermarkStrategy} " +
+      s"effectiveDelay=$delayMs"
     )
 
+    // ------------------------------------------------------------
+    // Build Flink watermark strategy
+    // ------------------------------------------------------------
     WatermarkStrategy
       .forBoundedOutOfOrderness[GeoEvent](Duration.ofMillis(delayMs))
       .withTimestampAssigner(
         new SerializableTimestampAssigner[GeoEvent] {
-
           override def extractTimestamp(
             event: GeoEvent,
             recordTimestamp: Long
