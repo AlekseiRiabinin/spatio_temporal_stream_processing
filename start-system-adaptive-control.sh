@@ -315,4 +315,3 @@ echo "Flink UI: http://localhost:8081"
 # ./start-system-adaptive-control.sh skewed wave corridor 5000 3000 -> Fixed mode (default)
 # ./start-system-adaptive-control.sh skewed wave corridor 5000 3000 adaptive -> Adaptive mode (rule‑based adaptive window + watermark)
 # ./start-system-adaptive-control.sh skewed wave corridor "" "" adaptive -> Adaptive mode with clean defaults
-
