@@ -81,9 +81,7 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
     print(f"[CLEAN] initial rows = {len(df)}")
 
     df = df.copy()
-
     df = df.drop_duplicates()
-
     df = df.dropna()
 
     df = df[df["event_rate"] >= 0]
