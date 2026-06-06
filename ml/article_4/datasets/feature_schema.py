@@ -122,6 +122,7 @@ PROFILES = [
 RATE_PATTERNS = [
     "constant",
     "burst",
+    "wave",
 ]
 
 MOTION_MODES = [

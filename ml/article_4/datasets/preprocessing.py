@@ -35,11 +35,12 @@ PROJECT_ROOT = (
     Path.home()
     / "Projects"
     / "spatio_temporal_stream_processing"
+    / "ml"
 )
 
 ARTIFACTS_DIR = (
     PROJECT_ROOT
-    / "ml/article_4/models/artifacts"
+    / "article_4/models/artifacts"
 )
 
 ARTIFACTS_DIR.mkdir(
@@ -103,15 +104,12 @@ def build_preprocessor() -> ColumnTransformer:
 # Fitting
 # ============================================================
 
-def fit_preprocessor(
-    x_train: pd.DataFrame,
-) -> ColumnTransformer:
+def fit_preprocessor(x_train: pd.DataFrame,) -> ColumnTransformer:
     """
     Fit preprocessor on training data only.
     """
 
     preprocessor = build_preprocessor()
-
     preprocessor.fit(x_train)
 
     return preprocessor
@@ -132,25 +130,15 @@ def transform_features(
     return preprocessor.transform(x)
 
 
-def fit_transform_train(
-    x_train: pd.DataFrame,
-):
+def fit_transform_train(x_train: pd.DataFrame,):
     """
     Fit and transform training data.
     """
 
-    preprocessor = fit_preprocessor(
-        x_train
-    )
+    preprocessor = fit_preprocessor(x_train)
+    x_train_processed = (preprocessor.transform(x_train))
 
-    x_train_processed = (
-        preprocessor.transform(x_train)
-    )
-
-    return (
-        x_train_processed,
-        preprocessor,
-    )
+    return (x_train_processed, preprocessor,)
 
 
 def transform_datasets(
@@ -163,21 +151,9 @@ def transform_datasets(
     Transform all datasets.
     """
 
-    x_train_processed = (
-        preprocessor.transform(x_train)
-    )
-
-    x_validation_processed = (
-        preprocessor.transform(
-            x_validation
-        )
-    )
-
-    x_test_processed = (
-        preprocessor.transform(
-            x_test
-        )
-    )
+    x_train_processed = (preprocessor.transform(x_train))
+    x_validation_processed = (preprocessor.transform(x_validation))
+    x_test_processed = (preprocessor.transform(x_test))
 
     return (
         x_train_processed,
@@ -198,15 +174,10 @@ def save_preprocessor(
     Save fitted preprocessor.
     """
 
-    joblib.dump(
-        preprocessor,
-        path,
-    )
+    joblib.dump(preprocessor, path,)
 
 
-def load_preprocessor(
-    path: Path = PREPROCESSOR_PATH,
-) -> ColumnTransformer:
+def load_preprocessor(path: Path = PREPROCESSOR_PATH,) -> ColumnTransformer:
     """
     Load fitted preprocessor.
     """
@@ -218,9 +189,7 @@ def load_preprocessor(
 # Feature names
 # ============================================================
 
-def get_feature_names(
-    preprocessor: ColumnTransformer,
-):
+def get_feature_names(preprocessor: ColumnTransformer,):
     """
     Returns transformed feature names.
     """
@@ -247,9 +216,7 @@ def prepare_training_data(
         preprocessor
     """
 
-    preprocessor = fit_preprocessor(
-        x_train
-    )
+    preprocessor = fit_preprocessor(x_train)
 
     (
         x_train_processed,
