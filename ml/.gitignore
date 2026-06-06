@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual envs
+venv/
+.venv/
+
+# Models
+*.pt
+*.pth
+*.onnx
+*.engine
+
+# Jupyter
+.ipynb_checkpoints/
+
+# ML outputs
+ml/article_4/models/*
+ml/article_4/export/*
+ml/article_4/evaluation/*
