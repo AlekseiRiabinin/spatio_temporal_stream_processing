@@ -17,7 +17,6 @@ from typing import Tuple
 from datasets.feature_schema import (
     FEATURE_COLUMNS,
     TARGET_COLUMNS,
-    CATEGORICAL_FEATURE_COLUMNS,
     NUMERIC_FEATURE_COLUMNS,
     PROFILES,
     RATE_PATTERNS,
