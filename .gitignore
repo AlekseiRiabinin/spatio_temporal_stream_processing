@@ -6,7 +6,8 @@ logs/
 logs/*.log
 
 # Experiment outputs
-data/
+data/article_3/
+data/maps/
 
 # ============================================================
 # PYTHON
