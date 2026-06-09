@@ -1,0 +1,32 @@
+{
+  "feature_names": [
+    "categorical__profile_late",
+    "categorical__profile_mixed",
+    "categorical__profile_out_of_order",
+    "categorical__profile_realtime",
+    "categorical__profile_skewed",
+    "categorical__rate_pattern_burst",
+    "categorical__rate_pattern_constant",
+    "categorical__rate_pattern_wave",
+    "categorical__motion_mode_collision",
+    "categorical__motion_mode_corridor",
+    "categorical__motion_mode_random_walk",
+    "categorical__motion_mode_straight",
+    "categorical__motion_mode_swarm",
+    "numeric__event_rate",
+    "numeric__disorder_ratio",
+    "numeric__late_event_ratio",
+    "numeric__avg_latency_ms",
+    "numeric__window_fill_ratio",
+    "numeric__interaction_rate",
+    "numeric__collision_rate",
+    "numeric__proximity_rate",
+    "numeric__swarm_rate",
+    "numeric__conflict_rate",
+    "numeric__watermark_lag_ms",
+    "numeric__processing_latency_ms"
+  ],
+  "n_features": 25,
+  "window_model_path": "/home/aleksei/Projects/spatio_temporal_stream_processing/ml/article_4/models/onnx/model_a_window.onnx",
+  "watermark_model_path": "/home/aleksei/Projects/spatio_temporal_stream_processing/ml/article_4/models/onnx/model_b_watermark.onnx"
+}

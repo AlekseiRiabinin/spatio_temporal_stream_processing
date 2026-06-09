@@ -1,0 +1,105 @@
+{
+  "timestamp": "2026-06-09T21:33:53.885553",
+  "device": "gpu",
+  "search_space": {
+    "n_estimators": [
+      50,
+      100,
+      150,
+      200
+    ],
+    "max_depth": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "learning_rate": [
+      0.05,
+      0.1,
+      0.15,
+      0.2
+    ],
+    "min_child_weight": [
+      1,
+      3,
+      5
+    ],
+    "subsample": [
+      0.7,
+      0.8,
+      0.9
+    ],
+    "colsample_bytree": [
+      0.7,
+      0.8,
+      0.9
+    ],
+    "reg_alpha": [
+      0,
+      0.1,
+      0.2
+    ],
+    "reg_lambda": [
+      0.5,
+      1.0,
+      1.5
+    ]
+  },
+  "total_combinations": 864,
+  "window_best_params": {
+    "colsample_bytree": 0.9,
+    "learning_rate": 0.1,
+    "max_depth": 6,
+    "min_child_weight": 3,
+    "n_estimators": 150,
+    "reg_alpha": 0.05,
+    "reg_lambda": 1.0,
+    "subsample": 0.9
+  },
+  "window_best_metrics": {
+    "mse": 142.86265563964844,
+    "rmse": 11.95251670735701,
+    "mae": 3.367733955383301,
+    "r2": 0.9999749064445496
+  },
+  "watermark_best_params": {
+    "colsample_bytree": 0.8,
+    "learning_rate": 0.1,
+    "max_depth": 5,
+    "min_child_weight": 3,
+    "n_estimators": 100,
+    "reg_alpha": 0.1,
+    "reg_lambda": 0.5,
+    "subsample": 0.9
+  },
+  "watermark_best_metrics": {
+    "mse": 204.6481170654297,
+    "rmse": 14.30552750042548,
+    "mae": 4.054744243621826,
+    "r2": 0.9999120235443115
+  },
+  "test_metrics": {
+    "window_model": {
+      "mse": 2226.03857421875,
+      "rmse": 47.18091324061829,
+      "mae": 7.193080902099609,
+      "r2": 0.9996700882911682
+    },
+    "watermark_model": {
+      "mse": 863.3348388671875,
+      "rmse": 29.382560114244427,
+      "mae": 6.778703689575195,
+      "r2": 0.9996495842933655
+    },
+    "combined_rmse": 39.302502548094424,
+    "training_times": {
+      "window": 0.49006056785583496,
+      "watermark": 0.3097701072692871
+    },
+    "devices": {
+      "window": "gpu",
+      "watermark": "gpu"
+    }
+  }
+}

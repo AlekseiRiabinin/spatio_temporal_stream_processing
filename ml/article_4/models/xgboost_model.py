@@ -33,22 +33,36 @@ MODEL_B_PATH = MODELS_DIR / "model_b_watermark.joblib"
 # ============================================================
 
 def is_gpu_available() -> bool:
-    """Check if GPU is available for XGBoost."""
+    """Check if GPU is available for XGBoost 3.2.0+."""
     try:
+        import xgboost as xgb
+        import numpy as np
+        
+        # Quick check: does build info show CUDA?
         build_info = xgb.build_info()
-        if build_info.get('USE_CUDA', False):
-            X_test = np.random.randn(100, 10)
-            y_test = np.random.randn(100)
-            model = xgb.XGBRegressor(
-                n_estimators=1,
-                tree_method='gpu_hist',
-                predictor='gpu_predictor'
-            )
-            model.fit(X_test, y_test)
-            return True
-    except:
-        pass
-    return False
+        if not build_info.get('USE_CUDA', False):
+            return False
+        
+        # Test with actual GPU training
+        X_test = np.random.randn(100, 10)
+        y_test = np.random.randn(100)
+        
+        # XGBoost 3.2.0 uses device='cuda'
+        model = xgb.XGBRegressor(
+            n_estimators=1,
+            device='cuda',
+            verbosity=0
+        )
+        model.fit(X_test, y_test)
+        
+        # If we got here, GPU is working
+        print("✅ GPU detected and working with XGBoost 3.2.0+")
+        return True
+        
+    except Exception as e:
+        # GPU not available or not configured correctly
+        print(f"⚠️ GPU not available: {e}")
+        return False
 
 
 def get_best_device(use_gpu: Optional[bool] = None, verbose: bool = True) -> Dict:
@@ -56,23 +70,49 @@ def get_best_device(use_gpu: Optional[bool] = None, verbose: bool = True) -> Dic
     gpu_available = is_gpu_available()
     
     if use_gpu is False:
-        return {'device': 'cpu', 'tree_method': 'hist', 'predictor': 'cpu_predictor'}
+        return {
+            'device': 'cpu',
+            'tree_method': 'hist',
+            'predictor': 'cpu_predictor',
+            'xgb_device': 'cpu'
+        }
     elif use_gpu is True and gpu_available:
         if verbose:
             print("🚀 GPU ACCELERATION ENABLED")
-        return {'device': 'gpu', 'tree_method': 'gpu_hist', 'predictor': 'gpu_predictor'}
+        return {
+            'device': 'gpu',
+            'tree_method': 'hist',
+            'predictor': 'cpu_predictor',
+            'xgb_device': 'cuda'
+        }
     elif use_gpu is True and not gpu_available:
         print("⚠️ GPU requested but not available - falling back to CPU")
-        return {'device': 'cpu', 'tree_method': 'hist', 'predictor': 'cpu_predictor'}
+        return {
+            'device': 'cpu',
+            'tree_method': 'hist',
+            'predictor': 'cpu_predictor',
+            'xgb_device': 'cpu'
+        }
     else:
         if gpu_available:
             if verbose:
                 print("🚀 GPU ACCELERATION ENABLED")
-            return {'device': 'gpu', 'tree_method': 'gpu_hist', 'predictor': 'gpu_predictor'}
+            return {
+                'device': 'gpu', 
+                'tree_method': 'hist',
+                'predictor': 'cpu_predictor',
+                'xgb_device': 'cuda'
+            }
         else:
             if verbose:
                 print("💻 Using CPU")
-            return {'device': 'cpu', 'tree_method': 'hist', 'predictor': 'cpu_predictor'}
+            return {
+                'device': 'cpu',
+                'tree_method': 'hist',
+                'predictor': 'cpu_predictor',
+                'xgb_device': 'cpu'
+            }
+
 
 
 # ============================================================
@@ -123,25 +163,33 @@ class AdaptiveXGBoostGPU:
         
     def _build_model(self) -> xgb.XGBRegressor:
         """Build XGBoost regressor."""
-        return xgb.XGBRegressor(
-            n_estimators=self.n_estimators,
-            max_depth=self.max_depth,
-            learning_rate=self.learning_rate,
-            subsample=self.subsample,
-            colsample_bytree=self.colsample_bytree,
-            colsample_bylevel=self.colsample_bylevel,
-            min_child_weight=self.min_child_weight,
-            reg_alpha=self.reg_alpha,
-            reg_lambda=self.reg_lambda,
-            gamma=self.gamma,
-            random_state=self.random_state,
-            tree_method=self.device_config['tree_method'],
-            predictor=self.device_config['predictor'],
-            objective='reg:squarederror',
-            n_jobs=-1,
-            verbosity=0 if not self.verbose else 1,
-        )
-    
+        params = {
+            'n_estimators': self.n_estimators,
+            'max_depth': self.max_depth,
+            'learning_rate': self.learning_rate,
+            'subsample': self.subsample,
+            'colsample_bytree': self.colsample_bytree,
+            'colsample_bylevel': self.colsample_bylevel,
+            'min_child_weight': self.min_child_weight,
+            'reg_alpha': self.reg_alpha,
+            'reg_lambda': self.reg_lambda,
+            'gamma': self.gamma,
+            'random_state': self.random_state,
+            'objective': 'reg:squarederror',
+            'eval_metric': 'rmse',
+            'early_stopping_rounds': self.early_stopping_rounds,  # Move here
+            'n_jobs': -1,
+            'verbosity': 0 if not self.verbose else 1,
+        }
+        
+        if self.device_config.get('xgb_device') == 'cuda':
+            params['device'] = 'cuda'
+        else:
+            params['device'] = 'cpu'
+        
+        return xgb.XGBRegressor(**params)
+
+
     def fit(
         self,
         X_train: np.ndarray,
@@ -163,13 +211,13 @@ class AdaptiveXGBoostGPU:
             print(f"   Training samples: {X_train.shape[0]}")
         
         start_time = time.time()
+        
         self.model.fit(
             X_train, y_train,
             eval_set=eval_set,
-            eval_metric='rmse',
             verbose=self.verbose,
-            early_stopping_rounds=self.early_stopping_rounds if X_val is not None else None,
         )
+        
         self.training_time = time.time() - start_time
         self.is_fitted = True
         

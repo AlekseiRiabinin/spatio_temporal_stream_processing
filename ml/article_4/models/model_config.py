@@ -4,8 +4,10 @@ Model configuration for Article 4 adaptive control.
 Contains configuration classes and default parameters for all models.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 
 @dataclass
@@ -64,16 +66,16 @@ class HyperparameterSearchSpace:
     """Search space for hyperparameter tuning."""
     
     # Default search space for XGBoost
-    n_estimators: list = field(default_factory=lambda: [50, 100, 150, 200])
-    max_depth: list = field(default_factory=lambda: [3, 4, 5, 6])
-    learning_rate: list = field(default_factory=lambda: [0.05, 0.1, 0.15, 0.2])
-    min_child_weight: list = field(default_factory=lambda: [1, 3, 5])
-    subsample: list = field(default_factory=lambda: [0.7, 0.8, 0.9])
-    colsample_bytree: list = field(default_factory=lambda: [0.7, 0.8, 0.9])
-    reg_alpha: list = field(default_factory=lambda: [0, 0.1, 0.2])
-    reg_lambda: list = field(default_factory=lambda: [0.5, 1.0, 1.5])
+    n_estimators: List[int] = field(default_factory=lambda: [50, 100, 150, 200])
+    max_depth: List[int] = field(default_factory=lambda: [3, 4, 5, 6])
+    learning_rate: List[float] = field(default_factory=lambda: [0.05, 0.1, 0.15, 0.2])
+    min_child_weight: List[int] = field(default_factory=lambda: [1, 3, 5])
+    subsample: List[float] = field(default_factory=lambda: [0.7, 0.8, 0.9])
+    colsample_bytree: List[float] = field(default_factory=lambda: [0.7, 0.8, 0.9])
+    reg_alpha: List[float] = field(default_factory=lambda: [0, 0.1, 0.2])
+    reg_lambda: List[float] = field(default_factory=lambda: [0.5, 1.0, 1.5])
     
-    def to_dict(self) -> Dict[str, list]:
+    def to_dict(self) -> Dict[str, List[Any]]:
         """Convert to dictionary for grid search."""
         return {
             'n_estimators': self.n_estimators,
@@ -85,7 +87,62 @@ class HyperparameterSearchSpace:
             'reg_alpha': self.reg_alpha,
             'reg_lambda': self.reg_lambda,
         }
+
+
+@dataclass
+class LightSearchSpace:
+    """Light search space for quick testing purposes."""
     
+    # Reduced search space for fast experimentation
+    n_estimators: List[int] = field(default_factory=lambda: [50, 100])
+    max_depth: List[int] = field(default_factory=lambda: [3, 4])
+    learning_rate: List[float] = field(default_factory=lambda: [0.05, 0.1])
+    min_child_weight: List[int] = field(default_factory=lambda: [3, 5])
+    subsample: List[float] = field(default_factory=lambda: [0.8])
+    colsample_bytree: List[float] = field(default_factory=lambda: [0.8])
+    reg_alpha: List[float] = field(default_factory=lambda: [0.05, 0.1])
+    reg_lambda: List[float] = field(default_factory=lambda: [0.5, 1.0])
+    
+    def to_dict(self) -> Dict[str, List[Any]]:
+        """Convert to dictionary for grid search."""
+        return {
+            'n_estimators': self.n_estimators,
+            'max_depth': self.max_depth,
+            'learning_rate': self.learning_rate,
+            'min_child_weight': self.min_child_weight,
+            'subsample': self.subsample,
+            'colsample_bytree': self.colsample_bytree,
+            'reg_alpha': self.reg_alpha,
+            'reg_lambda': self.reg_lambda,
+        }
+
+
+@dataclass
+class ReducedSearchSpace:
+    """Reduced search space for balanced tuning (recommended for final training)."""
+    
+    # Balanced search space - good coverage without exhaustive time
+    n_estimators: List[int] = field(default_factory=lambda: [100, 150, 200])
+    max_depth: List[int] = field(default_factory=lambda: [4, 5, 6])
+    learning_rate: List[float] = field(default_factory=lambda: [0.05, 0.1, 0.15])
+    min_child_weight: List[int] = field(default_factory=lambda: [3, 5])
+    subsample: List[float] = field(default_factory=lambda: [0.8, 0.9])
+    colsample_bytree: List[float] = field(default_factory=lambda: [0.8, 0.9])
+    reg_alpha: List[float] = field(default_factory=lambda: [0.05, 0.1])
+    reg_lambda: List[float] = field(default_factory=lambda: [0.5, 1.0])
+    
+    def to_dict(self) -> Dict[str, List[Any]]:
+        """Convert to dictionary for grid search."""
+        return {
+            'n_estimators': self.n_estimators,
+            'max_depth': self.max_depth,
+            'learning_rate': self.learning_rate,
+            'min_child_weight': self.min_child_weight,
+            'subsample': self.subsample,
+            'colsample_bytree': self.colsample_bytree,
+            'reg_alpha': self.reg_alpha,
+            'reg_lambda': self.reg_lambda,
+        }
 
 
 @dataclass
@@ -111,6 +168,7 @@ class ControlBounds:
 
 # Default configurations
 DEFAULT_XGBOOST_CONFIG = XGBoostConfig()
-
 DEFAULT_SEARCH_SPACE = HyperparameterSearchSpace()
+LIGHT_SEARCH_SPACE = LightSearchSpace()
+REDUCED_SEARCH_SPACE = ReducedSearchSpace()
 DEFAULT_CONTROL_BOUNDS = ControlBounds()
