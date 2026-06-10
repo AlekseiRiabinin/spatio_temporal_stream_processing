@@ -1,0 +1,26 @@
+feature,importance,importance_percent,feature_clean,cumulative
+numeric__window_fill_ratio,0.3531785,35.31785,numeric__window_fill_ratio,35.31785
+numeric__collision_rate,0.19074588,19.074587,numeric__collision_rate,54.392433
+numeric__interaction_rate,0.17143297,17.143297,numeric__interaction_rate,71.53573
+numeric__conflict_rate,0.054388523,5.4388523,numeric__conflict_rate,76.97458
+categorical__motion_mode_straight,0.053332027,5.333203,Motion: straight,82.307785
+numeric__avg_latency_ms,0.048105825,4.8105826,numeric__avg_latency_ms,87.11837
+categorical__rate_pattern_constant,0.04467431,4.467431,Rate: constant,91.5858
+categorical__rate_pattern_burst,0.02992471,2.992471,Rate: burst,94.57827
+categorical__rate_pattern_wave,0.0137262875,1.3726288,Rate: wave,95.9509
+numeric__proximity_rate,0.013648181,1.3648181,numeric__proximity_rate,97.31571
+categorical__motion_mode_corridor,0.009089605,0.9089605,Motion: corridor,98.22467
+categorical__motion_mode_random_walk,0.00552722,0.55272204,Motion: random_walk,98.77739
+categorical__profile_late,0.0033082454,0.33082455,Profile: late,99.108215
+categorical__profile_realtime,0.0024770703,0.24770704,Profile: realtime,99.35592
+numeric__event_rate,0.002451044,0.2451044,numeric__event_rate,99.60102
+numeric__late_event_ratio,0.0013635837,0.13635837,numeric__late_event_ratio,99.73738
+categorical__motion_mode_collision,0.00052033656,0.052033655,Motion: collision,99.78941
+numeric__disorder_ratio,0.0005073642,0.050736424,numeric__disorder_ratio,99.84015
+numeric__swarm_rate,0.00046670798,0.0466708,numeric__swarm_rate,99.88682
+categorical__profile_out_of_order,0.00038575465,0.038575467,Profile: out_of_order,99.92539
+categorical__profile_skewed,0.00026904317,0.026904317,Profile: skewed,99.95229
+numeric__processing_latency_ms,0.00017585604,0.017585604,numeric__processing_latency_ms,99.96988
+categorical__profile_mixed,0.00016523486,0.016523486,Profile: mixed,99.986404
+categorical__motion_mode_swarm,0.00013573679,0.013573679,Motion: swarm,99.99998
+numeric__watermark_lag_ms,0.0,0.0,numeric__watermark_lag_ms,99.99998

@@ -1,0 +1,26 @@
+feature,importance,importance_percent,feature_clean,cumulative
+categorical__profile_late,0.43428206,43.428207,Profile: late,43.428207
+categorical__motion_mode_corridor,0.13883848,13.883848,Motion: corridor,57.312057
+numeric__late_event_ratio,0.1371118,13.71118,numeric__late_event_ratio,71.02324
+numeric__processing_latency_ms,0.10358784,10.358785,numeric__processing_latency_ms,81.38203
+categorical__profile_realtime,0.06267408,6.2674084,Profile: realtime,87.64944
+numeric__avg_latency_ms,0.040147133,4.0147133,numeric__avg_latency_ms,91.664154
+categorical__profile_mixed,0.031866077,3.1866078,Profile: mixed,94.85076
+numeric__proximity_rate,0.017480634,1.7480634,numeric__proximity_rate,96.59882
+categorical__rate_pattern_wave,0.00853366,0.853366,Rate: wave,97.45219
+categorical__rate_pattern_burst,0.0062240595,0.62240595,Rate: burst,98.07459
+categorical__motion_mode_straight,0.0058880346,0.58880347,Motion: straight,98.6634
+categorical__profile_skewed,0.004440624,0.44406238,Profile: skewed,99.10746
+categorical__motion_mode_swarm,0.0036701765,0.36701766,Motion: swarm,99.47448
+categorical__profile_out_of_order,0.0020704134,0.20704134,Profile: out_of_order,99.68152
+numeric__disorder_ratio,0.0015610148,0.15610148,numeric__disorder_ratio,99.83762
+categorical__motion_mode_random_walk,0.00093369826,0.09336983,Motion: random_walk,99.93099
+numeric__window_fill_ratio,0.00017270051,0.017270051,numeric__window_fill_ratio,99.948265
+numeric__event_rate,0.00013870941,0.013870941,numeric__event_rate,99.962135
+numeric__interaction_rate,0.00012861875,0.012861875,numeric__interaction_rate,99.975
+categorical__motion_mode_collision,0.00012301044,0.012301044,Motion: collision,99.9873
+categorical__rate_pattern_constant,4.4400393e-05,0.0044400394,Rate: constant,99.99174
+numeric__collision_rate,3.893007e-05,0.003893007,numeric__collision_rate,99.99563
+numeric__swarm_rate,2.3912855e-05,0.0023912855,numeric__swarm_rate,99.99802
+numeric__conflict_rate,1.991422e-05,0.001991422,numeric__conflict_rate,100.00001
+numeric__watermark_lag_ms,0.0,0.0,numeric__watermark_lag_ms,100.00001

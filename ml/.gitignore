@@ -15,7 +15,7 @@ venv/
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb
-notebooks/
+notebooks/*.ipynb
 
 # ML outputs
 # ml/article_4/models/*
