@@ -31,7 +31,7 @@ __pycache__/
 .python-version
 
 # Jupyter
-*.ipynb
+# *.ipynb
 .ipynb_checkpoints/
 .jupyter/
 .jupyter_cache/
