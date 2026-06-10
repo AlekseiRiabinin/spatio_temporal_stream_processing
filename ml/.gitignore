@@ -9,7 +9,7 @@ venv/
 # Models
 *.pt
 *.pth
-*.onnx
+# *.onnx
 *.engine
 
 # Jupyter
