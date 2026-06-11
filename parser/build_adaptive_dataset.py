@@ -3,21 +3,14 @@
 """
 build_adaptive_dataset.py
 
-Builds a unified ML dataset from parsed Article 04 experiment files.
+Reproducible dataset builder for Article 04.
 
-Input:
-    data/article_4/parsed/*.csv
-
-Output:
-    data/article_4/datasets/adaptive_control_dataset.csv
-
-    data/article_4/training/train.csv
-    data/article_4/validation/validation.csv
-    data/article_4/test/test.csv
+Key change:
+- Separates RAW log dataset (for research)
+- from ML dataset (strict schema for training/ONNX)
 """
 
 from pathlib import Path
-
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
@@ -42,6 +35,29 @@ TEST_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ============================================================
+# STRICT ML FEATURE SCHEMA (CRITICAL FOR REPRODUCIBILITY)
+# ============================================================
+
+ML_FEATURES = [
+    "event_rate",
+    "disorder_ratio",
+    "late_event_ratio",
+    "average_latency_ms",
+    "window_fill_ratio",
+    "interaction_rate",
+    "collision_rate",
+    "proximity_rate",
+    "swarm_rate",
+    "conflict_rate",
+    "watermark_lag_ms",
+    "processing_latency_ms",
+    "adaptive_window_size_ms",
+    "adaptive_watermark_delay_ms",
+    "timestamp"
+]
+
+
+# ============================================================
 # LOAD PARSED FILES
 # ============================================================
 
@@ -50,30 +66,25 @@ def load_parsed_files() -> pd.DataFrame:
     files = sorted(PARSED_DIR.glob("*.csv"))
 
     if not files:
-        raise RuntimeError(
-            f"No parsed CSV files found in {PARSED_DIR}"
-        )
+        raise RuntimeError(f"No parsed CSV files found in {PARSED_DIR}")
 
     frames = []
 
     for file in files:
         print(f"[LOAD] {file.name}")
-
         df = pd.read_csv(file)
 
         if not df.empty:
             frames.append(df)
 
     if not frames:
-        raise RuntimeError(
-            "Parsed files exist but contain no data."
-        )
+        raise RuntimeError("Parsed files exist but contain no data.")
 
     return pd.concat(frames, ignore_index=True)
 
 
 # ============================================================
-# CLEANING
+# CLEANING (SAFE FOR MULTI-EXPERIMENT DATA)
 # ============================================================
 
 def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
@@ -81,8 +92,12 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
     print(f"[CLEAN] initial rows = {len(df)}")
 
     df = df.copy()
+
     df = df.drop_duplicates()
-    df = df.dropna()
+
+    # IMPORTANT:
+    # only enforce ML-critical columns (avoid deleting new metric rows)
+    df = df.dropna(subset=[c for c in ML_FEATURES if c in df.columns])
 
     df = df[df["event_rate"] >= 0]
     df = df[df["window_size_ms"] > 0]
@@ -94,7 +109,7 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ============================================================
-# SPLIT
+# SPLIT (DETERMINISTIC)
 # ============================================================
 
 def split_dataset(df: pd.DataFrame):
@@ -130,20 +145,35 @@ def main():
 
     df = clean_dataset(df)
 
-    dataset_file = (
-        DATASET_DIR /
-        "adaptive_control_dataset.csv"
-    )
+    # ========================================================
+    # 1. RAW DATASET (FULL LOG EXPORT - FOR RESEARCH ONLY)
+    # ========================================================
 
-    df.to_csv(dataset_file, index=False)
+    raw_dataset_file = DATASET_DIR / "adaptive_control_dataset_full.csv"
+    df.to_csv(raw_dataset_file, index=False)
 
-    print(
-        f"[SAVE] full dataset -> {dataset_file}"
-    )
+    print(f"[SAVE] full dataset -> {raw_dataset_file}")
 
-    train_df, validation_df, test_df = (
-        split_dataset(df)
-    )
+    # ========================================================
+    # 2. STRICT ML DATASET (FOR TRAINING / ONNX / REPRODUCIBILITY)
+    # ========================================================
+
+    missing = [c for c in ML_FEATURES if c not in df.columns]
+    if missing:
+        raise RuntimeError(f"Missing ML features: {missing}")
+
+    ml_df = df[ML_FEATURES].copy()
+
+    ml_dataset_file = DATASET_DIR / "adaptive_control_dataset_ml.csv"
+    ml_df.to_csv(ml_dataset_file, index=False)
+
+    print(f"[SAVE] ml dataset -> {ml_dataset_file}")
+
+    # ========================================================
+    # SPLIT (ONLY ON ML DATASET)
+    # ========================================================
+
+    train_df, validation_df, test_df = split_dataset(ml_df)
 
     train_file = TRAIN_DIR / "train.csv"
     validation_file = VALIDATION_DIR / "validation.csv"
@@ -152,6 +182,10 @@ def main():
     train_df.to_csv(train_file, index=False)
     validation_df.to_csv(validation_file, index=False)
     test_df.to_csv(test_file, index=False)
+
+    # ========================================================
+    # STATS
+    # ========================================================
 
     print()
     print("Dataset statistics")
@@ -167,6 +201,8 @@ def main():
     print(train_file)
     print(validation_file)
     print(test_file)
+    print(ml_dataset_file)
+    print(raw_dataset_file)
 
 
 if __name__ == "__main__":

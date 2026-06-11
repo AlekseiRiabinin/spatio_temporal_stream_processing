@@ -3,10 +3,11 @@
 """
 validate_adaptive_dataset.py
 
-Validates adaptive-control ML dataset (Article 4).
+Article 4 - Reproducible dataset validation.
 
-Usage:
-    python validate_adaptive_dataset.py ../data/article_4/datasets/adaptive_control_dataset.csv
+Supports:
+- ML dataset validation (strict)
+- Full dataset validation (research logs)
 """
 
 from pathlib import Path
@@ -15,21 +16,16 @@ import pandas as pd
 
 
 # ============================================================
-# Expected schema (UPDATED for Article 4)
+# SCHEMA DEFINITIONS
 # ============================================================
 
-REQUIRED_COLUMNS = [
-
-    # metadata
-    "profile",
-    "rate_pattern",
-    "motion_mode",
+ML_COLUMNS = [
 
     # stream features
     "event_rate",
     "disorder_ratio",
     "late_event_ratio",
-    "avg_latency_ms",
+    "average_latency_ms",
     "window_fill_ratio",
 
     # interaction features
@@ -39,48 +35,73 @@ REQUIRED_COLUMNS = [
     "swarm_rate",
     "conflict_rate",
 
-    # temporal features
+    # temporal
     "watermark_lag_ms",
     "processing_latency_ms",
 
     # targets
     "window_size_ms",
-    "watermark_delay_ms"
+    "watermark_delay_ms",
+    "timestamp"
+]
+
+
+FULL_EXTRA_COLUMNS = [
+
+    # Article 4 extended controller observability (NEW)
+    "window_oscillation",
+    "watermark_oscillation",
+    "window_oscillation_rate",
+    "watermark_oscillation_rate",
+    "min_window_ms",
+    "max_window_ms",
+    "min_watermark_ms",
+    "max_watermark_ms",
+    "avg_adaptation_interval_ms",
 ]
 
 
 # ============================================================
-# Validation functions
+# VALIDATION
 # ============================================================
 
-def validate_columns(df: pd.DataFrame):
-    missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
+def validate_columns(df: pd.DataFrame, mode: str):
+
+    if mode == "ml":
+        required = ML_COLUMNS
+    else:
+        required = ML_COLUMNS + FULL_EXTRA_COLUMNS
+
+    missing = [c for c in required if c not in df.columns]
 
     if missing:
-        raise ValueError(f"Missing columns: {missing}")
+        raise ValueError(f"[ERROR] Missing columns: {missing}")
 
-    print("[OK] Required columns present")
+    print("[OK] Schema validation passed")
 
 
 def validate_missing_values(df: pd.DataFrame):
+
     missing = df.isna().sum().sum()
 
     if missing > 0:
-        print(f"[WARNING] Dataset contains {missing} missing values")
+        print(f"[WARNING] Missing values: {missing}")
     else:
         print("[OK] No missing values")
 
 
 def validate_duplicates(df: pd.DataFrame):
-    duplicates = df.duplicated().sum()
 
-    if duplicates > 0:
-        print(f"[WARNING] Dataset contains {duplicates} duplicated rows")
+    dup = df.duplicated().sum()
+
+    if dup > 0:
+        print(f"[WARNING] Duplicates: {dup}")
     else:
         print("[OK] No duplicates")
 
 
 def validate_profiles(df):
+
     expected = {"realtime", "skewed", "late", "out_of_order", "mixed"}
 
     present = set(df["profile"].unique())
@@ -91,24 +112,26 @@ def validate_profiles(df):
     if missing:
         print(f"[WARNING] Missing profiles: {sorted(missing)}")
     else:
-        print("[OK] All profiles present")
+        print("[OK] Profiles complete")
 
 
 def validate_rates(df):
+
     expected = {"constant", "burst", "wave"}
 
     present = set(df["rate_pattern"].unique())
 
-    print(f"[INFO] Rate patterns: {sorted(present)}")
+    print(f"[INFO] Rates: {sorted(present)}")
 
     missing = expected - present
     if missing:
-        print(f"[WARNING] Missing rate patterns: {sorted(missing)}")
+        print(f"[WARNING] Missing rates: {sorted(missing)}")
     else:
-        print("[OK] All rate patterns present")
+        print("[OK] Rates complete")
 
 
 def validate_motion_modes(df):
+
     expected = {"straight", "random_walk", "swarm", "collision", "corridor"}
 
     present = set(df["motion_mode"].unique())
@@ -119,24 +142,26 @@ def validate_motion_modes(df):
     if missing:
         print(f"[WARNING] Missing motion modes: {sorted(missing)}")
     else:
-        print("[OK] All motion modes present")
+        print("[OK] Motion modes complete")
 
 
 def validate_targets(df):
-    window_unique = df["window_size_ms"].dropna().nunique()
-    watermark_unique = df["watermark_delay_ms"].dropna().nunique()
 
-    print(f"[INFO] Unique windows: {window_unique}")
-    print(f"[INFO] Unique watermarks: {watermark_unique}")
+    w = df["window_size_ms"].nunique()
+    wm = df["watermark_delay_ms"].nunique()
 
-    if window_unique < 2:
-        print("[WARNING] Window target has insufficient diversity")
+    print(f"[INFO] Window diversity: {w}")
+    print(f"[INFO] Watermark diversity: {wm}")
 
-    if watermark_unique < 2:
-        print("[WARNING] Watermark target has insufficient diversity")
+    if w < 2:
+        print("[WARNING] Low window diversity")
+
+    if wm < 2:
+        print("[WARNING] Low watermark diversity")
 
 
 def validate_numeric_ranges(df):
+
     checks = {
         "event_rate": (0, None),
         "disorder_ratio": (0, 1),
@@ -151,47 +176,49 @@ def validate_numeric_ranges(df):
         if col not in df.columns:
             continue
 
-        series = df[col]
+        s = df[col]
 
-        if low is not None and (series < low).any():
-            print(f"[WARNING] {col} contains values < {low}")
+        if low is not None and (s < low).any():
+            print(f"[WARNING] {col} < {low}")
 
-        if high is not None and (series > high).any():
-            print(f"[WARNING] {col} contains values > {high}")
+        if high is not None and (s > high).any():
+            print(f"[WARNING] {col} > {high}")
 
-    print("[OK] Numeric range validation completed")
+    print("[OK] Range checks done")
 
 
 def print_summary(df):
+
     print("\n" + "=" * 60)
     print("DATASET SUMMARY")
     print("=" * 60)
 
-    print(f"Rows: {len(df):,}")
+    print(f"Rows: {len(df)}")
     print(f"Columns: {len(df.columns)}\n")
 
     print(df.describe(include="all").transpose())
 
 
 # ============================================================
-# Main
+# MAIN
 # ============================================================
 
 def main():
+
     if len(sys.argv) != 2:
-        print("Usage:\npython validate_adaptive_dataset.py <dataset.csv>")
+        print("Usage: python validate_adaptive_dataset.py <dataset.csv>")
         sys.exit(1)
 
-    dataset_path = Path(sys.argv[1])
+    path = Path(sys.argv[1])
 
-    if not dataset_path.exists():
-        raise FileNotFoundError(dataset_path)
+    df = pd.read_csv(path)
 
-    print(f"[INFO] Loading dataset:\n{dataset_path}")
+    # detect dataset mode
+    mode = "ml" if "ml" in path.name else "full"
 
-    df = pd.read_csv(dataset_path)
+    print(f"[INFO] Mode detected: {mode}")
 
-    validate_columns(df)
+    validate_columns(df, mode)
     validate_missing_values(df)
     validate_duplicates(df)
     validate_profiles(df)
@@ -202,7 +229,7 @@ def main():
 
     print_summary(df)
 
-    print("\n[SUCCESS] Dataset validation completed")
+    print("\n[SUCCESS] Validation complete")
 
 
 if __name__ == "__main__":
