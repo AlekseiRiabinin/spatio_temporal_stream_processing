@@ -1,16 +1,6 @@
 package phd.adaptivecontrol.config
 
 
-/**
- * AdaptiveConfig
- *
- * Unified configuration for:
- *   - fixed windowing
- *   - fixed watermarking
- *   - adaptive window control
- *   - adaptive watermark tuning
- *   - ML inference hooks
- */
 case class AdaptiveConfig(
 
   // ------------------------------------------------------------
@@ -20,16 +10,16 @@ case class AdaptiveConfig(
   watermarkDelayMs: Long,
 
   // ------------------------------------------------------------
-  // Adaptive (dynamic) values — must be mutable
+  // Adaptive (dynamic) values
   // ------------------------------------------------------------
   var adaptiveWindowSizeMs: Long = 0L,
   var adaptiveWatermarkDelayMs: Long = 0L,
 
   // ------------------------------------------------------------
-  // Strategies (future-proof)
+  // Strategies
   // ------------------------------------------------------------
-  windowStrategy: String = "fixed",        // fixed | adaptive
-  watermarkStrategy: String = "fixed",     // fixed | adaptive
+  windowStrategy: String = "fixed",
+  watermarkStrategy: String = "fixed",
 
   // ------------------------------------------------------------
   // ML inference
@@ -37,7 +27,13 @@ case class AdaptiveConfig(
   mlInference: Boolean = false,
 
   // ------------------------------------------------------------
-  // Adaptation interval (ms)
+  // ONNX models
+  // ------------------------------------------------------------
+  windowModelPath: String = "/opt/models/model_a_window.onnx",
+  watermarkModelPath: String = "/opt/models/model_b_watermark.onnx",
+
+  // ------------------------------------------------------------
+  // Adaptation interval
   // ------------------------------------------------------------
   adaptationIntervalMs: Long = 2000L
 )

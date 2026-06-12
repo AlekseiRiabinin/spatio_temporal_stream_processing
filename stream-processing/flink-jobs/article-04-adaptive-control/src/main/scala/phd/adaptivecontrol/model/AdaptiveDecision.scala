@@ -4,20 +4,30 @@ package phd.adaptivecontrol.model
 /**
  * AdaptiveDecision
  *
- * Reproducible adaptive control output with ML traceability.
+ * Final executable runtime decision produced by
+ * AdaptiveController after validation, safety checks,
+ * and bounds enforcement.
+ *
+ * Supports:
+ *   - rule-based control
+ *   - ONNX inference
+ *   - future ML models
+ *   - future RL policies
  */
 case class AdaptiveDecision(
 
   // ============================================================
   // Core adaptive control outputs
   // ============================================================
+
   watermarkDelayMs: Long,
   windowSizeMs: Long,
   allowedLatenessMs: Long,
 
   // ============================================================
-  // Interaction thresholds (spatial control layer)
+  // Spatial interaction thresholds
   // ============================================================
+
   proximityThresholdMeters: Double,
   collisionThresholdMeters: Double,
   conflictThresholdMeters: Double,
@@ -27,21 +37,26 @@ case class AdaptiveDecision(
   // ============================================================
   // Decision metadata
   // ============================================================
+
   confidence: Double,
   strategy: DecisionStrategy,
 
   // ============================================================
   // ML traceability
   // ============================================================
+
   modelVersion: Option[String] = None,
-  featureVectorHash: Option[String] = None,
   inferenceLatencyMs: Option[Double] = None,
+
+  // ============================================================
+  // Runtime metadata
+  // ============================================================
 
   timestamp: Long
 ) {
 
   /**
-   * Decision validity check
+   * Decision validity.
    */
   def isValid: Boolean = {
     watermarkDelayMs >= 0 &&
@@ -52,7 +67,7 @@ case class AdaptiveDecision(
   }
 
   /**
-   * High-confidence decision
+   * High-confidence decision.
    */
   def isReliable: Boolean =
     confidence >= 0.8
@@ -69,7 +84,6 @@ case class AdaptiveDecision(
       s"confidence=$confidence, " +
       s"strategy=$strategy, " +
       s"modelVersion=$modelVersion, " +
-      s"featureVectorHash=$featureVectorHash, " +
       s"inferenceLatencyMs=$inferenceLatencyMs, " +
       s"timestamp=$timestamp)"
   }
@@ -81,8 +95,7 @@ sealed trait DecisionStrategy
 object DecisionStrategy {
 
   case object RuleBased extends DecisionStrategy
-  case object Heuristic extends DecisionStrategy
-  case object ML extends DecisionStrategy
   case object ONNX extends DecisionStrategy
+  case object ML extends DecisionStrategy
   case object RL extends DecisionStrategy
 }

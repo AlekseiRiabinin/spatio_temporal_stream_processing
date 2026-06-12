@@ -108,21 +108,12 @@ object StreamProfiler extends Serializable {
   private var previousWindowSizeMs: Long = 0L
   private var previousWatermarkDelayMs: Long = 0L
 
-  private var windowAdjustments: Long = 0L
-  private var watermarkAdjustments: Long = 0L
-
-  private var cumulativeWindowDelta: Double = 0.0
-  private var cumulativeWatermarkDelta: Double = 0.0
-
   // ============================================================
   // Processing metrics
   // ============================================================
 
   private var processingOperations: Long = 0L
   private var accumulatedProcessingLatencyMs: Double = 0.0
-
-  private var inferenceCalls: Long = 0L
-  private var accumulatedInferenceLatencyMs: Double = 0.0
 
   // ============================================================
   // Configuration
@@ -225,35 +216,6 @@ object StreamProfiler extends Serializable {
   // Controller statistics
   // ============================================================
 
-  def updateAdaptiveParameters(
-      windowSizeMs: Long,
-      watermarkDelayMs: Long
-  ): Unit = {
-
-    if (windowSizeMs != previousWindowSizeMs) {
-
-      windowAdjustments += 1
-
-      cumulativeWindowDelta +=
-        math.abs(windowSizeMs - previousWindowSizeMs)
-
-      previousWindowSizeMs = windowSizeMs
-    }
-
-    if (watermarkDelayMs != previousWatermarkDelayMs) {
-
-      watermarkAdjustments += 1
-
-      cumulativeWatermarkDelta +=
-        math.abs(watermarkDelayMs - previousWatermarkDelayMs)
-
-      previousWatermarkDelayMs = watermarkDelayMs
-    }
-
-    adaptiveWindowSizeMs = windowSizeMs
-    adaptiveWatermarkDelayMs = watermarkDelayMs
-  }
-
   def updateAdaptiveDecision(
     decision: AdaptiveDecision,
     inferenceLatencyMs: Double
@@ -273,62 +235,70 @@ object StreamProfiler extends Serializable {
     )
       watermarkChangeCount += 1
 
-    lastPredictedWindowMs =
-      decision.windowSizeMs
+    val windowDir =
+      math.signum(
+        decision.windowSizeMs - lastPredictedWindowMs
+      ).toInt
 
-    lastPredictedWatermarkMs =
-      decision.watermarkDelayMs
+    val watermarkDir =
+      math.signum(
+        decision.watermarkDelayMs - lastPredictedWatermarkMs
+      ).toInt
 
-    adaptiveWindowSizeMs =
-      decision.windowSizeMs
+    // ----------------------------------------------------------
+    // Oscillation detection
+    // ----------------------------------------------------------
 
-    adaptiveWatermarkDelayMs =
-      decision.watermarkDelayMs
+    if (
+      windowDir != 0 &&
+      lastWindowDirection != 0 &&
+      windowDir != lastWindowDirection
+    )
+      windowOscillation += 1
 
-    lastInferenceLatencyMs =
-      inferenceLatencyMs
+    if (
+      watermarkDir != 0 &&
+      lastWatermarkDirection != 0 &&
+      watermarkDir != lastWatermarkDirection
+    )
+      watermarkOscillation += 1
 
-    totalInferenceLatencyMs +=
-      inferenceLatencyMs
+    lastWindowDirection = windowDir
+    lastWatermarkDirection = watermarkDir
+
+    // ----------------------------------------------------------
+    // Update current state
+    // ----------------------------------------------------------
+
+    lastPredictedWindowMs = decision.windowSizeMs
+    lastPredictedWatermarkMs = decision.watermarkDelayMs
+    adaptiveWindowSizeMs = decision.windowSizeMs
+    adaptiveWatermarkDelayMs = decision.watermarkDelayMs
+    lastInferenceLatencyMs = inferenceLatencyMs
+    totalInferenceLatencyMs += inferenceLatencyMs
 
     val now = System.currentTimeMillis()
 
     // adaptation interval
-    if (lastAdaptationTs != 0L) {
+    if (lastAdaptationTs != 0L)
       adaptationIntervalSumMs += (now - lastAdaptationTs)
-    }
+
     lastAdaptationTs = now
 
     // window bounds
-    minWindowMs = math.min(minWindowMs, decision.windowSizeMs)
-    maxWindowMs = math.max(maxWindowMs, decision.windowSizeMs)
+    minWindowMs =
+      math.min(minWindowMs, decision.windowSizeMs)
+
+    maxWindowMs =
+      math.max(maxWindowMs, decision.windowSizeMs)
 
     // watermark bounds
-    minWatermarkMs = math.min(minWatermarkMs, decision.watermarkDelayMs)
-    maxWatermarkMs = math.max(maxWatermarkMs, decision.watermarkDelayMs)
+    minWatermarkMs =
+      math.min(minWatermarkMs, decision.watermarkDelayMs)
 
-    // oscillation detection (direction flips only)
-    val windowDir = 
-      math.signum(decision.windowSizeMs - lastPredictedWindowMs).toInt
-    if (
-      windowDir != 0 && 
-      lastWindowDirection != 0 && 
-      windowDir != lastWindowDirection
-    )
-      windowOscillation += 1
-    lastWindowDirection = windowDir
-
-    val watermarkDir = 
-      math.signum(decision.watermarkDelayMs - lastPredictedWatermarkMs).toInt
-    if (
-      watermarkDir != 0 && 
-      lastWatermarkDirection != 0 && 
-      watermarkDir != lastWatermarkDirection
-    )
-      watermarkOscillation += 1
-    lastWatermarkDirection = watermarkDir
+    maxWatermarkMs =
+      math.max(maxWatermarkMs, decision.watermarkDelayMs)
   }
-
 
   // ============================================================
   // Processing latency
@@ -337,15 +307,6 @@ object StreamProfiler extends Serializable {
   def recordProcessingLatency(latencyMs: Double): Unit = {
     processingOperations += 1
     accumulatedProcessingLatencyMs += latencyMs
-  }
-
-  // ============================================================
-  // ONNX latency
-  // ============================================================
-
-  def recordInferenceLatency(latencyMs: Double): Unit = {
-    inferenceCalls += 1
-    accumulatedInferenceLatencyMs += latencyMs
   }
 
   // ============================================================

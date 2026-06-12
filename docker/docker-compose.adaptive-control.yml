@@ -201,8 +201,11 @@ services:
       FIXED_WATERMARK_MS: ${FIXED_WATERMARK_MS:-3000}
       ML_INFERENCE: ${ML_INFERENCE:-false}
       ADAPTATION_INTERVAL_MS: ${ADAPTATION_INTERVAL_MS:-2000}
+      WINDOW_MODEL_PATH: "/opt/models/model_a_window.onnx"
+      WATERMARK_MODEL_PATH: "/opt/models/model_b_watermark.onnx"
     volumes:
       - ../stream-processing/flink-jobs/article-04-adaptive-control/target/scala-2.12/article-04-adaptive-control.jar:/opt/flink/usrlib/article-04-adaptive-control.jar:ro
+      - ../ml/article_4/models/onnx:/opt/models:ro
     networks: [kafka-net]
     restart: "no"
 

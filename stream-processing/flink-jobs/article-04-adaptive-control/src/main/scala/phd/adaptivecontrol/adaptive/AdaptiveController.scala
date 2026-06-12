@@ -6,8 +6,16 @@ import phd.adaptivecontrol.model._
 /**
  * AdaptiveController
  *
- * Phase 1: Rule-based adaptation
- * Phase 2: ONNX/ML hybrid (ready)
+ * Converts AdaptivePrediction into
+ * executable AdaptiveDecision.
+ *
+ * Responsibilities:
+ *   - safety validation
+ *   - bounds enforcement
+ *   - runtime constraints
+ *   - decision construction
+ *
+ * Does NOT perform inference.
  */
 object AdaptiveController extends Serializable {
 
@@ -22,11 +30,8 @@ object AdaptiveController extends Serializable {
   private val MaxWatermarkMs = 10000L
 
   // ============================================================
-  // Defaults
+  // Runtime thresholds
   // ============================================================
-
-  private val DefaultWindowMs = 5000L
-  private val DefaultWatermarkMs = 3000L
 
   private val DefaultProximityThreshold = 50.0
   private val DefaultCollisionThreshold = 10.0
@@ -35,107 +40,55 @@ object AdaptiveController extends Serializable {
   private val DefaultPredictionHorizonSec = 30.0
 
   // ============================================================
-  // MAIN DECISION FUNCTION
+  // Main decision entry point
   // ============================================================
 
-  def decide(features: StreamFeatures): AdaptiveDecision = {
+  def decide(
+    features: StreamFeatures,
+    prediction: AdaptivePrediction
+  ): AdaptiveDecision = {
 
-    // ========================================================
-    // BASE STATE
-    // ========================================================
+    // ----------------------------------------------------------
+    // Safety fallback
+    // ----------------------------------------------------------
 
-    var windowSizeMs =
-      if (features.adaptiveWindowSizeMs > 0) features.adaptiveWindowSizeMs
-      else DefaultWindowMs
+    val safePrediction =
+      if (prediction.isValid) prediction
+      else AdaptivePrediction.empty()
 
-    var watermarkDelayMs =
-      if (features.adaptiveWatermarkDelayMs > 0) features.adaptiveWatermarkDelayMs
-      else DefaultWatermarkMs
+    // ----------------------------------------------------------
+    // Clamp adaptive values
+    // ----------------------------------------------------------
 
-    // ========================================================
-    // RULE-BASED ADAPTATION LOGIC
-    // ========================================================
+    val windowSizeMs =
+      math.max(
+        MinWindowMs,
+        math.min(safePrediction.windowSizeMs, MaxWindowMs)
+      )
 
-    if (features.disorderRatio > 0.20 || features.lateEventRatio > 0.20) {
-      watermarkDelayMs =
-        math.min(watermarkDelayMs * 2, MaxWatermarkMs)
-    }
+    val watermarkDelayMs =
+      math.max(
+        MinWatermarkMs,
+        math.min(safePrediction.watermarkDelayMs, MaxWatermarkMs)
+      )
 
-    if (features.eventRate > 100.0 || features.processingLatencyMs > 1000.0) {
-      windowSizeMs =
-        math.min(windowSizeMs * 2, MaxWindowMs)
-    }
-
-    if (features.eventRate < 20.0 && features.processingLatencyMs < 100.0) {
-      windowSizeMs =
-        math.max(windowSizeMs / 2, MinWindowMs)
-
-      watermarkDelayMs =
-        math.max(watermarkDelayMs / 2, MinWatermarkMs)
-    }
-
-    if (features.collisionRate > 0.05 || features.conflictRate > 0.05) {
-      watermarkDelayMs =
-        math.min(watermarkDelayMs + 1000L, MaxWatermarkMs)
-    }
-
-    // ========================================================
-    // FINAL CLAMPING
-    // ========================================================
-
-    windowSizeMs =
-      math.max(MinWindowMs, math.min(windowSizeMs, MaxWindowMs))
-
-    watermarkDelayMs =
-      math.max(MinWatermarkMs, math.min(watermarkDelayMs, MaxWatermarkMs))
-
-    // ========================================================
-    // CONFIDENCE
-    // ========================================================
-
-    val confidence = calculateConfidence(features)
-
-    // ========================================================
-    // BUILD DECISION
-    // ========================================================
+    // ----------------------------------------------------------
+    // Build executable decision
+    // ----------------------------------------------------------
 
     AdaptiveDecision(
       watermarkDelayMs = watermarkDelayMs,
       windowSizeMs = windowSizeMs,
       allowedLatenessMs = watermarkDelayMs,
-
       proximityThresholdMeters = DefaultProximityThreshold,
       collisionThresholdMeters = DefaultCollisionThreshold,
       conflictThresholdMeters = DefaultConflictThreshold,
-
       predictionHorizonSec = DefaultPredictionHorizonSec,
-
-      confidence = confidence,
-
-      strategy = DecisionStrategy.RuleBased,
-
-      // ======================================================
-      // ML TRACEABILITY
-      // ======================================================
-      modelVersion = None,
-      featureVectorHash = None,
-      inferenceLatencyMs = None,
-
+      confidence = safePrediction.confidence,
+      strategy = safePrediction.strategy,
+      modelVersion = safePrediction.modelVersion,
+      inferenceLatencyMs = safePrediction.inferenceLatencyMs,
       timestamp = System.currentTimeMillis()
     )
-  }
-
-  // ============================================================
-  // Confidence estimation
-  // ============================================================
-
-  private def calculateConfidence(features: StreamFeatures): Double = {
-
-    var confidence = 1.0
-
-    confidence -= features.disorderRatio * 0.5
-    confidence -= features.lateEventRatio * 0.3
-
-    math.max(0.0, math.min(1.0, confidence))
   }
 }

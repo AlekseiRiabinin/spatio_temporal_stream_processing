@@ -15,6 +15,7 @@ import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsIni
 import phd.adaptivecontrol.config.AdaptiveConfig
 import phd.adaptivecontrol.model.GeoEvent
 import phd.adaptivecontrol.pipeline.{AdaptivePipeline, WatermarkManager}
+import phd.adaptivecontrol.adaptive.{ONNXInference, StreamProfiler}
 
 
 object Article04AdaptiveControlJob {
@@ -32,33 +33,33 @@ object Article04AdaptiveControlJob {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     env.setParallelism(1)
 
-    println(s"[MAIN] action=env parallelism=${env.getParallelism}")
+    // ============================================================
+    // 2. Config (env-driven)
+    // ============================================================
+    val bootstrap = sys.env.getOrElse("KAFKA_BOOTSTRAP_SERVERS", "kafka-1:19092")
+    val topic = sys.env.getOrElse("KAFKA_TOPIC", "spatial-events")
+
+    val windowSizeMs = sys.env.getOrElse("FIXED_WINDOW_MS", "5000").toLong
+    val watermarkDelayMs = sys.env.getOrElse("FIXED_WATERMARK_MS", "3000").toLong
+
+    val windowStrategyMode = sys.env.getOrElse("WINDOW_STRATEGY", "fixed")
+    val watermarkStrategyMode = sys.env.getOrElse("WATERMARK_STRATEGY", "fixed")
+    val mlInferenceFlag = sys.env.getOrElse("ML_INFERENCE", "false").toBoolean
 
     // ============================================================
-    // 2. Experiment Configuration
+    // 3. MODEL PATHS (mounted from Docker volumes)
     // ============================================================
-    val bootstrap =
-      sys.env.getOrElse("KAFKA_BOOTSTRAP_SERVERS", "kafka-1:19092")
+    val windowModelPath =
+      sys.env.getOrElse("WINDOW_MODEL_PATH", "/opt/models/model_a_window.onnx")
 
-    val topic =
-      sys.env.getOrElse("KAFKA_TOPIC", "spatial-events")
+    val watermarkModelPath =
+      sys.env.getOrElse("WATERMARK_MODEL_PATH", "/opt/models/model_b_watermark.onnx")
 
-    val windowSizeMs =
-      sys.env.getOrElse("FIXED_WINDOW_MS", "5000").toLong
+    println(s"[MAIN] action=models window=$windowModelPath watermark=$watermarkModelPath")
 
-    val watermarkDelayMs =
-      sys.env.getOrElse("FIXED_WATERMARK_MS", "3000").toLong
-
-    // Strategies (optional env overrides)
-    val windowStrategyMode =
-      sys.env.getOrElse("WINDOW_STRATEGY", "fixed")
-
-    val watermarkStrategyMode =
-      sys.env.getOrElse("WATERMARK_STRATEGY", "fixed")
-
-    val mlInferenceFlag =
-      sys.env.getOrElse("ML_INFERENCE", "false").toBoolean
-
+    // ============================================================
+    // 4. Adaptive Config
+    // ============================================================
     val adaptiveConfig =
       AdaptiveConfig(
         windowSizeMs = windowSizeMs,
@@ -70,19 +71,19 @@ object Article04AdaptiveControlJob {
         mlInference = mlInferenceFlag
       )
 
-    println(
-      s"[MAIN] action=config " +
-      s"bootstrap=$bootstrap " +
-      s"topic=$topic " +
-      s"windowSizeMs=${adaptiveConfig.windowSizeMs} " +
-      s"watermarkDelayMs=${adaptiveConfig.watermarkDelayMs} " +
-      s"windowStrategy=${adaptiveConfig.windowStrategy} " +
-      s"watermarkStrategy=${adaptiveConfig.watermarkStrategy} " +
-      s"mlInference=${adaptiveConfig.mlInference}"
-    )
+    // ============================================================
+    // 5. INITIALIZE ML RUNTIME (IMPORTANT CHANGE)
+    // ============================================================
+    if (mlInferenceFlag) {
+      println("[MAIN] action=onnx init status=starting")
+
+      ONNXInference.initialize(adaptiveConfig)
+
+      println("[MAIN] action=onnx init status=ready")
+    }
 
     // ============================================================
-    // 3. Kafka Source
+    // 6. Kafka Source
     // ============================================================
     val kafkaSource =
       KafkaSource.builder[String]()
@@ -93,64 +94,45 @@ object Article04AdaptiveControlJob {
         .setValueOnlyDeserializer(new SimpleStringSchema())
         .build()
 
-    println("[MAIN] action=deserialization status=starting")
-
     implicit val geoEventTypeInfo: TypeInformation[GeoEvent] =
       createTypeInformation[GeoEvent]
 
-    val rawStream: DataStream[String] =
+    val rawStream =
       env.fromSource(
         kafkaSource,
         WatermarkStrategy.noWatermarks(),
         "KafkaSource"
       )
 
-    val geoEventStream: DataStream[GeoEvent] =
+    val geoEventStream =
       rawStream
         .map(json => mapper.readValue(json, classOf[GeoEvent]))
         .filter(_.isValid)
 
-    println("[MAIN] action=deserialization status=ready")
-
     // ============================================================
-    // 4. Watermark Strategy (adaptive-capable)
+    // 7. Watermarks
     // ============================================================
-    val wmStrategy =
-      WatermarkManager.build(adaptiveConfig)
+    val wmStrategy = WatermarkManager.build(adaptiveConfig)
 
     val timedGeoEventStream =
       geoEventStream.assignTimestampsAndWatermarks(wmStrategy)
 
-    println("[MAIN] action=watermarkStrategy status=initialized")
-
     // ============================================================
-    // 5. Adaptive Pipeline
+    // 8. PIPELINE
     // ============================================================
-    println("[MAIN] action=pipelineInit status=starting")
-
     val processedStream =
-      AdaptivePipeline.build(
-        env,
-        timedGeoEventStream,
-        adaptiveConfig
-      )
-
-    println("[MAIN] action=pipelineInit status=ready")
+      AdaptivePipeline.build(env, timedGeoEventStream, adaptiveConfig)
 
     // ============================================================
-    // 6. Output
+    // 9. OUTPUT
     // ============================================================
-    println("[MAIN] action=output status=printing")
-
     processedStream
       .map(result => mapper.writeValueAsString(result))
       .print()
 
     // ============================================================
-    // 7. Execute
+    // 10. EXECUTE
     // ============================================================
-    println("[MAIN] action=execute job=Article04AdaptiveControlJob")
-
     env.execute("Article 04: Adaptive Window and Watermark Control")
   }
 }

@@ -9,7 +9,11 @@ import org.apache.flink.api.common.functions.FlatMapFunction
 import phd.adaptivecontrol.config.AdaptiveConfig
 import phd.adaptivecontrol.model.{GeoEvent, Interaction}
 import phd.adaptivecontrol.interaction.InteractionEngine
-import phd.adaptivecontrol.adaptive.{StreamProfiler, AdaptiveController}
+import phd.adaptivecontrol.adaptive.{
+  StreamProfiler,
+  AdaptiveController,
+  ONNXInference
+}
 
 object AdaptivePipeline {
 
@@ -17,8 +21,8 @@ object AdaptivePipeline {
   // Interaction processing + profiling + adaptive control
   // ============================================================
   class InteractionFlatMap(config: AdaptiveConfig)
-      extends FlatMapFunction[List[GeoEvent], Interaction]
-      with Serializable {
+    extends FlatMapFunction[List[GeoEvent], Interaction]
+    with Serializable {
 
     @transient private var engine: InteractionEngine = _
     @transient private var initialized: Boolean = false
@@ -96,6 +100,7 @@ object AdaptivePipeline {
       // ----------------------------------------------------------
       // 6. Adaptive control
       // ----------------------------------------------------------
+
       if (
         config.windowStrategy == "adaptive" ||
         config.watermarkStrategy == "adaptive" ||
@@ -104,19 +109,24 @@ object AdaptivePipeline {
 
         if (shouldAdapt()) {
 
-          val inferenceStart =
-            System.nanoTime()
+          // ----------------------------------------
+          // Prediction layer
+          // ----------------------------------------
+
+          val prediction =
+            ONNXInference.predict(features)
+
+          // ----------------------------------------
+          // Runtime control layer
+          // ----------------------------------------
 
           val decision =
-            AdaptiveController.decide(features)
-
-          val inferenceLatencyMs =
-            (System.nanoTime() - inferenceStart) /
-              1000000.0
+            AdaptiveController.decide(features, prediction)
 
           // ----------------------------------------
           // Update runtime configuration
           // ----------------------------------------
+
           config.adaptiveWindowSizeMs =
             decision.windowSizeMs
 
@@ -126,18 +136,26 @@ object AdaptivePipeline {
           // ----------------------------------------
           // Store adaptive metrics
           // ----------------------------------------
+
           StreamProfiler.updateAdaptiveDecision(
             decision,
-            inferenceLatencyMs
+            prediction.inferenceLatencyMs.getOrElse(0.0)
           )
 
           println(
             "[ADAPTIVE CONTROL] " +
               s"window=${decision.windowSizeMs} " +
               s"watermark=${decision.watermarkDelayMs} " +
-              s"inference_ms=${inferenceLatencyMs.formatted("%.3f")} " +
-              s"confidence=${decision.confidence} " +
-              s"strategy=${decision.strategy}"
+              s"inference_ms=${
+                prediction.inferenceLatencyMs
+                  .getOrElse(0.0)
+                  .formatted("%.3f")
+              } " +
+              s"confidence=${decision.confidence.formatted("%.4f")} " +
+              s"strategy=${decision.strategy} " +
+              s"model_version=${
+                decision.modelVersion.getOrElse("none")
+              }"
           )
         }
       }
@@ -158,9 +176,9 @@ object AdaptivePipeline {
   // Pipeline builder
   // ============================================================
   def build(
-      env: StreamExecutionEnvironment,
-      inputStream: DataStream[GeoEvent],
-      config: AdaptiveConfig
+    env: StreamExecutionEnvironment,
+    inputStream: DataStream[GeoEvent],
+    config: AdaptiveConfig
   ): DataStream[Interaction] = {
 
     println(
@@ -189,14 +207,11 @@ object AdaptivePipeline {
     // ------------------------------------------------------------
     // Interaction processing
     // ------------------------------------------------------------
-    implicit val interactionTypeInfo
-        : TypeInformation[Interaction] =
+    implicit val interactionTypeInfo: TypeInformation[Interaction] =
       createTypeInformation[Interaction]
 
     val interactions: DataStream[Interaction] =
-      windowedStream.flatMap(
-        new InteractionFlatMap(config)
-      )
+      windowedStream.flatMap(new InteractionFlatMap(config))
 
     println(
       "[ADAPTIVE PIPELINE] action=interactionAnalysis status=ready"
