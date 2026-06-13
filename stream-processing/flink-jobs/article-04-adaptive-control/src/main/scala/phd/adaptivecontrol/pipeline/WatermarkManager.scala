@@ -4,63 +4,80 @@ import java.time.Duration
 
 import org.apache.flink.api.common.eventtime.{
   SerializableTimestampAssigner,
+  WatermarkGeneratorSupplier,
   WatermarkStrategy
 }
 
 import phd.adaptivecontrol.model.GeoEvent
 import phd.adaptivecontrol.config.AdaptiveConfig
-import phd.adaptivecontrol.adaptive.StreamProfiler
 
 
 /**
  * WatermarkManager
  *
- * Centralized watermark construction using AdaptiveConfig.
- *
  * Supports:
- *   - fixed watermark delay
- *   - adaptive watermark delay (ML-driven)
+ *   - fixed watermark strategy
+ *   - adaptive watermark strategy
  */
 object WatermarkManager {
 
   // ============================================================
-  // Build Watermark Strategy from AdaptiveConfig
+  // Build Watermark Strategy
   // ============================================================
   def build(config: AdaptiveConfig): WatermarkStrategy[GeoEvent] = {
 
-    // ------------------------------------------------------------
-    // Select watermark delay based on strategy
-    // ------------------------------------------------------------
-    val delayMs: Long =
-      config.watermarkStrategy match {
+    config.watermarkStrategy match {
 
-        case "adaptive" =>
-          // Use adaptive value (updated dynamically)
-          config.adaptiveWatermarkDelayMs
+      // ========================================================
+      // Adaptive Watermarks
+      // ========================================================
+      case "adaptive" =>
 
-        case "fixed" | _ =>
-          // Default: use configured fixed watermark delay
-          config.watermarkDelayMs
-      }
+        println(
+          "[WATERMARK MANAGER] action=build " +
+          s"strategy=adaptive " +
+          s"effectiveDelay=${config.adaptiveWatermarkDelayMs}"
+        )
 
-    println(
-      s"[WATERMARK MANAGER] action=build " +
-      s"strategy=${config.watermarkStrategy} " +
-      s"effectiveDelay=$delayMs"
-    )
+        WatermarkStrategy
+          .forGenerator(
+            (_: WatermarkGeneratorSupplier.Context) =>
+              new AdaptiveWatermarkGenerator(config)
+          )
+          .withTimestampAssigner(
+            new SerializableTimestampAssigner[GeoEvent] {
+              override def extractTimestamp(
+                event: GeoEvent,
+                recordTimestamp: Long
+              ): Long =
+                event.timestamp
+            }
+          )
 
-    // ------------------------------------------------------------
-    // Build Flink watermark strategy
-    // ------------------------------------------------------------
-    WatermarkStrategy
-      .forBoundedOutOfOrderness[GeoEvent](Duration.ofMillis(delayMs))
-      .withTimestampAssigner(
-        new SerializableTimestampAssigner[GeoEvent] {
-          override def extractTimestamp(
-            event: GeoEvent,
-            recordTimestamp: Long
-          ): Long = event.timestamp
-        }
-      )
+      // ========================================================
+      // Fixed Watermarks
+      // ========================================================
+      case "fixed" | _ =>
+
+        println(
+          "[WATERMARK MANAGER] action=build " +
+          s"strategy=fixed " +
+          s"effectiveDelay=${config.watermarkDelayMs}"
+        )
+
+        WatermarkStrategy
+          .forBoundedOutOfOrderness[GeoEvent](
+            Duration.ofMillis(config.watermarkDelayMs)
+          )
+          .withTimestampAssigner(
+            new SerializableTimestampAssigner[GeoEvent] {
+              override def extractTimestamp(
+                event: GeoEvent,
+                recordTimestamp: Long
+              ): Long =
+                event.timestamp
+            }
+          )
+    }
   }
 }

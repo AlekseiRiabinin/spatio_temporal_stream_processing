@@ -1,7 +1,7 @@
 package phd.adaptivecontrol.adaptive
 
+import scala.collection.JavaConverters._
 import java.io.File
-
 import ai.onnxruntime._
 
 import phd.adaptivecontrol.config.AdaptiveConfig
@@ -74,8 +74,8 @@ object ONNXInference extends Serializable {
 
     println(
       "[ONNX] action=initialize " +
-      s"windowModel=$windowModelPath " +
-      s"watermarkModel=$watermarkModelPath"
+        s"windowModel=$windowModelPath " +
+        s"watermarkModel=$watermarkModelPath"
     )
 
     try {
@@ -109,8 +109,7 @@ object ONNXInference extends Serializable {
 
       case ex: Exception =>
         println(
-          "[ONNX] action=load status=fallback " +
-          s"reason=${ex.getMessage}"
+          s"[ONNX] action=load status=fallback reason=${ex.getMessage}"
         )
     }
 
@@ -121,7 +120,6 @@ object ONNXInference extends Serializable {
     )
   }
 
-
   // ============================================================
   // Prediction
   // ============================================================
@@ -129,10 +127,113 @@ object ONNXInference extends Serializable {
   def predict(features: StreamFeatures): AdaptivePrediction = {
 
     val startNs = System.nanoTime()
+    var tensor: OnnxTensor = null
 
-    // ----------------------------------------------------------
-    // Rule-based fallback
-    // ----------------------------------------------------------
+    try {
+
+      println(
+        "[ONNX] debug " +
+        s"initialized=$initialized " +
+        s"windowSession=${windowSession != null} " +
+        s"watermarkSession=${watermarkSession != null}"
+      )
+
+      if (!isModelLoaded) {
+        throw new IllegalStateException("ONNX models are not loaded")
+      }
+
+      // ========================================================
+      // Feature vector
+      // ========================================================
+
+      val inputVector =
+        createInputVector(features)
+
+      println(
+        s"[ONNX] action=inference inputSize=${inputVector.length}"
+      )
+
+      // ========================================================
+      // Build ONNX tensor
+      // ========================================================
+
+      tensor =
+        OnnxTensor.createTensor(env, Array(inputVector))
+
+      // ======================================================
+      // Execute window model
+      // ======================================================
+
+      val windowInputName =
+        windowSession.getInputNames.iterator.next()
+
+      val windowResult =
+        windowSession.run(Map(windowInputName -> tensor).asJava)
+
+      val predictedWindowMs =
+        windowResult
+          .get(0)
+          .getValue
+          .asInstanceOf[Array[Array[Float]]](0)(0)
+          .toLong
+
+      // ======================================================
+      // Execute watermark model
+      // ======================================================
+
+      val watermarkInputName =
+        watermarkSession.getInputNames.iterator.next()
+
+      val watermarkResult =
+        watermarkSession.run(Map(watermarkInputName -> tensor).asJava)
+
+      val predictedWatermarkMs =
+        watermarkResult
+          .get(0)
+          .getValue
+          .asInstanceOf[Array[Array[Float]]](0)(0)
+          .toLong
+
+      val inferenceLatencyMs =
+        (System.nanoTime() - startNs) / 1000000.0
+
+      AdaptivePrediction(
+        windowSizeMs = math.max(
+          MinWindowMs,
+          math.min(predictedWindowMs, MaxWindowMs)
+        ),
+        watermarkDelayMs = math.max(
+          MinWatermarkMs,
+          math.min(predictedWatermarkMs, MaxWatermarkMs)
+        ),
+        confidence = 1.0,
+        strategy = DecisionStrategy.ONNX,
+        modelVersion = Some(ONNXModelVersion),
+        inferenceLatencyMs = Some(inferenceLatencyMs)
+      )
+
+    } catch {
+
+      case ex: Throwable =>
+
+        println(
+          s"[ONNX] action=inference status=fallback reason=${ex.getMessage}"
+        )
+
+        predictRuleBased(features)
+
+    } finally {
+      if (tensor != null) tensor.close()
+    }
+  }
+
+  // ============================================================
+  // Rule-based fallback
+  // ============================================================
+
+  private def predictRuleBased(features: StreamFeatures): AdaptivePrediction = {
+
+    val startNs = System.nanoTime()
 
     var windowSizeMs =
       if (features.adaptiveWindowSizeMs > 0)
@@ -182,31 +283,16 @@ object ONNXInference extends Serializable {
         math.min(watermarkDelayMs + 1000L, MaxWatermarkMs)
     }
 
-    // ----------------------------------------------------------
-    // Confidence
-    // ----------------------------------------------------------
-
     var confidence = 1.0
 
-    confidence -=
-      features.disorderRatio * 0.5
-
-    confidence -=
-      features.lateEventRatio * 0.3
+    confidence -= features.disorderRatio * 0.5
+    confidence -= features.lateEventRatio * 0.3
 
     confidence =
       math.max(0.0, math.min(confidence, 1.0))
 
-    // ----------------------------------------------------------
-    // Latency
-    // ----------------------------------------------------------
-
     val inferenceLatencyMs =
       (System.nanoTime() - startNs) / 1000000.0
-
-    // ----------------------------------------------------------
-    // Prediction
-    // ----------------------------------------------------------
 
     AdaptivePrediction(
       windowSizeMs = windowSizeMs,
@@ -248,7 +334,6 @@ object ONNXInference extends Serializable {
   // ============================================================
 
   def status: String = {
-
     if (isModelLoaded) "onnx_loaded"
     else "rule_based_fallback"
   }

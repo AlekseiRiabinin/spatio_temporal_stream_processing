@@ -83,23 +83,26 @@ configure_experiment() {
     [ -n "$FIXED_WATERMARK_MS_ARG" ] && FIXED_WATERMARK_MS="$FIXED_WATERMARK_MS_ARG"
 
     # --------------------------------------------------------
-    # MODE SELECTION (IMPORTANT FIX - unchanged behavior)
+    # Execution mode
     # --------------------------------------------------------
+
     if [ "$ADAPTIVE_MODE_ARG" = "adaptive" ]; then
+
         WINDOW_STRATEGY="adaptive"
         WATERMARK_STRATEGY="adaptive"
 
-        # ML still default false here (UNCHANGED)
-        ML_INFERENCE=${ML_INFERENCE:-false}
-    fi
+        if [ "$ML_INFERENCE_ARG" = "true" ]; then
+            ML_INFERENCE="true"
+        else
+            ML_INFERENCE="false"
+        fi
 
-    # ============================================================
-    # NEW (ADDED) ML OVERRIDE LOGIC
-    # ============================================================
-    if [ "$ML_INFERENCE_ARG" = "true" ]; then
-        ML_INFERENCE="true"
-    elif [ "$ML_INFERENCE_ARG" = "false" ]; then
+    else
+
+        WINDOW_STRATEGY="fixed"
+        WATERMARK_STRATEGY="fixed"
         ML_INFERENCE="false"
+
     fi
 
     # --------------------------------------------------------

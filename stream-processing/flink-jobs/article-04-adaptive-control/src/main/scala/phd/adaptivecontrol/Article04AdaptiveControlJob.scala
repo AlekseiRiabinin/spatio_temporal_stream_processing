@@ -71,15 +71,31 @@ object Article04AdaptiveControlJob {
         mlInference = mlInferenceFlag
       )
 
+      println(
+        "[MAIN] action=config " +
+          s"windowStrategy=${adaptiveConfig.windowStrategy} " +
+          s"watermarkStrategy=${adaptiveConfig.watermarkStrategy} " +
+          s"mlInference=${adaptiveConfig.mlInference}"
+      )
+
     // ============================================================
-    // 5. INITIALIZE ML RUNTIME (IMPORTANT CHANGE)
+    // 5. INITIALIZE ML RUNTIME
     // ============================================================
     if (mlInferenceFlag) {
+
       println("[MAIN] action=onnx init status=starting")
 
       ONNXInference.initialize(adaptiveConfig)
 
-      println("[MAIN] action=onnx init status=ready")
+      println(
+        s"[MAIN] action=onnx init status=ready mode=${ONNXInference.status}"
+      )
+
+    } else {
+
+      println(
+        "[MAIN] action=onnx init status=disabled"
+      )
     }
 
     // ============================================================

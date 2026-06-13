@@ -15,23 +15,17 @@ import phd.adaptivecontrol.adaptive.{
   ONNXInference
 }
 
+
 object AdaptivePipeline {
 
-  // ============================================================
-  // Interaction processing + profiling + adaptive control
-  // ============================================================
   class InteractionFlatMap(config: AdaptiveConfig)
     extends FlatMapFunction[List[GeoEvent], Interaction]
     with Serializable {
 
     @transient private var engine: InteractionEngine = _
     @transient private var initialized: Boolean = false
-
     @transient private var lastAdaptationTs: Long = 0L
 
-    // ----------------------------------------------------------
-    // Initialization
-    // ----------------------------------------------------------
     private def initIfNeeded(): Unit = {
       if (!initialized) {
         StreamProfiler.setConfig(config)
@@ -65,116 +59,81 @@ object AdaptivePipeline {
       out: Collector[Interaction]
     ): Unit = {
 
-      // ----------------------------------------------------------
-      // 0. Initialization
-      // ----------------------------------------------------------
       initIfNeeded()
 
       // ----------------------------------------------------------
-      // 1. Event profiling
+      // Profiling
       // ----------------------------------------------------------
+
       StreamProfiler.updateEvents(batch)
 
-      // ----------------------------------------------------------
-      // 2. Interaction analysis
-      // ----------------------------------------------------------
       val results =
         getEngine.process(batch)
 
-      // ----------------------------------------------------------
-      // 3. Interaction profiling
-      // ----------------------------------------------------------
       StreamProfiler.updateInteractions(results)
 
-      // ----------------------------------------------------------
-      // 4. Window profiling
-      // ----------------------------------------------------------
       StreamProfiler.updateWindow(batch.size)
 
-      // ----------------------------------------------------------
-      // 5. Build ML feature vector
-      // ----------------------------------------------------------
       val features =
         StreamProfiler.snapshot()
 
       // ----------------------------------------------------------
-      // 6. Adaptive control
+      // Adaptive mode only
       // ----------------------------------------------------------
 
-      if (
+      val adaptiveEnabled =
         config.windowStrategy == "adaptive" ||
-        config.watermarkStrategy == "adaptive" ||
-        config.mlInference
-      ) {
+        config.watermarkStrategy == "adaptive"
 
-        if (shouldAdapt()) {
+      if (adaptiveEnabled && shouldAdapt()) {
 
-          // ----------------------------------------
-          // Prediction layer
-          // ----------------------------------------
+        val prediction =
+          ONNXInference.predict(features)
 
-          val prediction =
-            ONNXInference.predict(features)
-
-          // ----------------------------------------
-          // Runtime control layer
-          // ----------------------------------------
-
-          val decision =
-            AdaptiveController.decide(features, prediction)
-
-          // ----------------------------------------
-          // Update runtime configuration
-          // ----------------------------------------
-
-          config.adaptiveWindowSizeMs =
-            decision.windowSizeMs
-
-          config.adaptiveWatermarkDelayMs =
-            decision.watermarkDelayMs
-
-          // ----------------------------------------
-          // Store adaptive metrics
-          // ----------------------------------------
-
-          StreamProfiler.updateAdaptiveDecision(
-            decision,
-            prediction.inferenceLatencyMs.getOrElse(0.0)
+        val decision =
+          AdaptiveController.decide(
+            features,
+            prediction
           )
 
-          println(
-            "[ADAPTIVE CONTROL] " +
-              s"window=${decision.windowSizeMs} " +
-              s"watermark=${decision.watermarkDelayMs} " +
-              s"inference_ms=${
-                prediction.inferenceLatencyMs
-                  .getOrElse(0.0)
-                  .formatted("%.3f")
-              } " +
-              s"confidence=${decision.confidence.formatted("%.4f")} " +
-              s"strategy=${decision.strategy} " +
-              s"model_version=${
-                decision.modelVersion.getOrElse("none")
-              }"
-          )
-        }
+        // ----------------------------------------
+        // Update runtime configuration
+        // ----------------------------------------
+
+        config.adaptiveWindowSizeMs =
+          decision.windowSizeMs
+
+        config.adaptiveWatermarkDelayMs =
+          decision.watermarkDelayMs
+
+        StreamProfiler.updateAdaptiveDecision(
+          decision,
+          prediction.inferenceLatencyMs.getOrElse(0.0)
+        )
+
+        println(
+          "[ADAPTIVE CONTROL] " +
+          s"window=${decision.windowSizeMs} " +
+          s"watermark=${decision.watermarkDelayMs} " +
+          s"inference_ms=${
+            prediction.inferenceLatencyMs
+              .getOrElse(0.0)
+              .formatted("%.3f")
+          } " +
+          s"confidence=${decision.confidence.formatted("%.4f")} " +
+          s"strategy=${decision.strategy} " +
+          s"model_version=${
+            decision.modelVersion.getOrElse("none")
+          }"
+        )
       }
 
-      // ----------------------------------------------------------
-      // 7. Log metrics
-      // ----------------------------------------------------------
       StreamProfiler.logSnapshot()
 
-      // ----------------------------------------------------------
-      // 8. Emit interactions
-      // ----------------------------------------------------------
       results.foreach(out.collect)
     }
   }
 
-  // ============================================================
-  // Pipeline builder
-  // ============================================================
   def build(
     env: StreamExecutionEnvironment,
     inputStream: DataStream[GeoEvent],
@@ -183,19 +142,16 @@ object AdaptivePipeline {
 
     println(
       "[ADAPTIVE PIPELINE] action=start " +
-        s"windowSizeMs=${config.windowSizeMs} " +
-        s"watermarkDelayMs=${config.watermarkDelayMs} " +
-        s"windowStrategy=${config.windowStrategy} " +
-        s"watermarkStrategy=${config.watermarkStrategy} " +
-        s"mlInference=${config.mlInference} " +
-        s"adaptationIntervalMs=${config.adaptationIntervalMs}"
+      s"windowSizeMs=${config.windowSizeMs} " +
+      s"watermarkDelayMs=${config.watermarkDelayMs} " +
+      s"windowStrategy=${config.windowStrategy} " +
+      s"watermarkStrategy=${config.watermarkStrategy} " +
+      s"mlInference=${config.mlInference} " +
+      s"adaptationIntervalMs=${config.adaptationIntervalMs}"
     )
 
-    // ------------------------------------------------------------
-    // Window processing
-    // ------------------------------------------------------------
-    val windowedStream: DataStream[List[GeoEvent]] =
-      WindowProcessor.applyWindow(
+    val windowedStream =
+      AdaptiveWindowOperator(
         inputStream,
         config
       )
@@ -204,13 +160,10 @@ object AdaptivePipeline {
       "[ADAPTIVE PIPELINE] action=windowing status=initialized"
     )
 
-    // ------------------------------------------------------------
-    // Interaction processing
-    // ------------------------------------------------------------
     implicit val interactionTypeInfo: TypeInformation[Interaction] =
       createTypeInformation[Interaction]
 
-    val interactions: DataStream[Interaction] =
+    val interactions =
       windowedStream.flatMap(new InteractionFlatMap(config))
 
     println(
