@@ -1,5 +1,9 @@
 package phd.adaptivecontrol.adaptive
 
+import java.io.File
+
+import ai.onnxruntime._
+
 import phd.adaptivecontrol.config.AdaptiveConfig
 import phd.adaptivecontrol.model.{
   StreamFeatures,
@@ -7,24 +11,10 @@ import phd.adaptivecontrol.model.{
   DecisionStrategy
 }
 
-
-/**
- * ONNXInference
- *
- * ML inference layer.
- *
- * Current state:
- *   Rule-based fallback.
- *
- * Future state:
- *   ONNX Runtime integration using:
- *     - model_a_window.onnx
- *     - model_b_watermark.onnx
- */
 object ONNXInference extends Serializable {
 
   // ============================================================
-  // Prediction bounds
+  // Bounds
   // ============================================================
 
   private val MinWindowMs = 1000L
@@ -41,7 +31,7 @@ object ONNXInference extends Serializable {
   private val DefaultWatermarkMs = 3000L
 
   // ============================================================
-  // Runtime configuration
+  // Runtime
   // ============================================================
 
   @volatile
@@ -51,10 +41,24 @@ object ONNXInference extends Serializable {
   private var watermarkModelPath = "/opt/models/model_b_watermark.onnx"
 
   // ============================================================
+  // ONNX Runtime
+  // ============================================================
+
+  @transient
+  private var env: OrtEnvironment = _
+
+  @transient
+  private var windowSession: OrtSession = _
+
+  @transient
+  private var watermarkSession: OrtSession = _
+
+  // ============================================================
   // Metadata
   // ============================================================
 
   private val FallbackModelVersion = "rule_based_v1"
+  private val ONNXModelVersion = "onnx_v1"
 
   // ============================================================
   // Initialization
@@ -62,23 +66,61 @@ object ONNXInference extends Serializable {
 
   def initialize(config: AdaptiveConfig): Unit = synchronized {
 
-    if (!initialized) {
+    if (initialized)
+      return
 
-      windowModelPath =
-        config.windowModelPath
+    windowModelPath = config.windowModelPath
+    watermarkModelPath = config.watermarkModelPath
 
-      watermarkModelPath =
-        config.watermarkModelPath
+    println(
+      "[ONNX] action=initialize " +
+      s"windowModel=$windowModelPath " +
+      s"watermarkModel=$watermarkModelPath"
+    )
 
-      println(
-        "[ONNX] action=initialize " +
-        s"windowModel=$windowModelPath " +
-        s"watermarkModel=$watermarkModelPath"
-      )
+    try {
 
-      initialized = true
+      env = OrtEnvironment.getEnvironment()
+
+      val options =
+        new OrtSession.SessionOptions()
+
+      if (new File(windowModelPath).exists()) {
+
+        windowSession =
+          env.createSession(windowModelPath, options)
+
+        println(
+          s"[ONNX] action=load type=window status=success path=$windowModelPath"
+        )
+      }
+
+      if (new File(watermarkModelPath).exists()) {
+
+        watermarkSession =
+          env.createSession(watermarkModelPath, options)
+
+        println(
+          s"[ONNX] action=load type=watermark status=success path=$watermarkModelPath"
+        )
+      }
+
+    } catch {
+
+      case ex: Exception =>
+        println(
+          "[ONNX] action=load status=fallback " +
+          s"reason=${ex.getMessage}"
+        )
     }
+
+    initialized = true
+
+    println(
+      s"[ONNX] action=status loaded=$isModelLoaded"
+    )
   }
+
 
   // ============================================================
   // Prediction
@@ -188,7 +230,8 @@ object ONNXInference extends Serializable {
   // ============================================================
 
   def isModelLoaded: Boolean =
-    false
+    windowSession != null &&
+    watermarkSession != null
 
   // ============================================================
   // Model paths

@@ -8,6 +8,7 @@ lazy val root = (project in file("."))
     name := "article-04-adaptive-control",
 
     libraryDependencies ++= Seq(
+
       // Flink runtime (provided by cluster)
       "org.apache.flink" %% "flink-streaming-scala" % "1.17.1" % Provided,
       "org.apache.flink" %  "flink-clients" % "1.17.1" % Provided,
@@ -34,7 +35,11 @@ lazy val root = (project in file("."))
       "org.apache.flink" % "flink-metrics-dropwizard" % "1.17.1",
 
       // Dropwizard Metrics library
-      "io.dropwizard.metrics" % "metrics-core" % "4.2.19"
+      "io.dropwizard.metrics" % "metrics-core" % "4.2.19",
+
+      // ONNX Runtime
+      "com.microsoft.onnxruntime" % "onnxruntime" % "1.18.0"
+      // "com.microsoft.onnxruntime" % "onnxruntime-linux-x86_64" % "1.18.0"
     ),
 
     // Fat-jar for deployment
