@@ -207,6 +207,7 @@ services:
       ADAPTATION_INTERVAL_MS: ${ADAPTATION_INTERVAL_MS:-2000}
       WINDOW_MODEL_PATH: "/opt/models/model_a_window.onnx"
       WATERMARK_MODEL_PATH: "/opt/models/model_b_watermark.onnx"
+      SCALER_PARAMS_PATH: "/opt/models/scaler_params.json"
     volumes:
       - ../stream-processing/flink-jobs/article-04-adaptive-control/target/scala-2.12/article-04-adaptive-control.jar:/opt/flink/usrlib/article-04-adaptive-control.jar:ro
       - ../ml/article_4/models/onnx:/opt/models:ro

@@ -441,11 +441,11 @@ object StreamProfiler extends Serializable {
 
       watermarkLagMs =
         if (currentWatermark == Long.MinValue) 0L
-        else now - currentWatermark,
+        else math.max(0L, now - currentWatermark),
 
       processingLatencyMs =
         if (processingOperations == 0)
-          (now - lastEventTimestamp)
+          math.max(0L, now - lastEventTimestamp).toDouble
         else
           averageProcessingLatencyMs,
 

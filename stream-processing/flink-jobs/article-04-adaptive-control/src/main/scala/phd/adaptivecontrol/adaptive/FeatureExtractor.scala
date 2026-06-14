@@ -3,23 +3,20 @@ package phd.adaptivecontrol.adaptive
 import phd.adaptivecontrol.model.StreamFeatures
 
 
-/**
- * FeatureExtractor
- *
- * STRICT contract between:
- *   StreamProfiler → ML features → ONNX models
- *
- * IMPORTANT:
- * - StreamFeatures may evolve (logging / research)
- * - ONNX vector MUST remain stable
- */
 object FeatureExtractor extends Serializable {
 
   // ============================================================
-  // STRICT FEATURE ORDER (MUST MATCH ONNX TRAINING)
+  // RAW TRAINING FEATURE ORDER
   // ============================================================
 
   private val FEATURE_ORDER: Array[String] = Array(
+
+    // categorical
+    "profile",
+    "ratePattern",
+    "motionMode",
+
+    // numeric
     "eventRate",
     "disorderRatio",
     "lateEventRatio",
@@ -33,58 +30,47 @@ object FeatureExtractor extends Serializable {
     "conflictRate",
 
     "watermarkLagMs",
-    "processingLatencyMs",
-
-    "adaptiveWindowSizeMs",
-    "adaptiveWatermarkDelayMs"
+    "processingLatencyMs"
   )
 
   // ============================================================
-  // Extract full feature object (safe, immutable snapshot)
+  // Snapshot
   // ============================================================
 
   def extract(): StreamFeatures =
     StreamProfiler.snapshot()
 
   // ============================================================
-  // ONNX VECTOR (STRICT CONTRACT)
+  // Raw feature snapshot
+  // ============================================================
+
+  def extractRawFeatures(): StreamFeatures =
+    StreamProfiler.snapshot()
+
+  // ============================================================
+  // ONNX input vector
   // ============================================================
 
   def extractVector(): Array[Float] = {
 
-    val f = StreamProfiler.snapshot()
+    val features =
+      StreamProfiler.snapshot()
 
-    val vec = Array(
-      f.eventRate.toFloat,
-      f.disorderRatio.toFloat,
-      f.lateEventRatio.toFloat,
-      f.averageLatencyMs.toFloat,
+    FeaturePreprocessor.transform(features)
+  }
 
-      f.windowFillRatio.toFloat,
+  // ============================================================
+  // Validation
+  // ============================================================
 
-      f.interactionRate.toFloat,
-      f.collisionRate.toFloat,
-      f.proximityRate.toFloat,
-      f.swarmRate.toFloat,
-      f.conflictRate.toFloat,
+  def validateSchema(): Unit = {
 
-      f.watermarkLagMs.toFloat,
-      f.processingLatencyMs.toFloat,
+    val expectedRawFeatures = 15
 
-      f.adaptiveWindowSizeMs.toFloat,
-      f.adaptiveWatermarkDelayMs.toFloat
-    )
-
-    // ========================================================
-    // SAFETY CHECK (fails fast if schema drift occurs)
-    // ========================================================
-
-    if (vec.length != FEATURE_ORDER.length) {
+    if (FEATURE_ORDER.length != expectedRawFeatures) {
       throw new IllegalStateException(
-        s"Feature vector mismatch: expected ${FEATURE_ORDER.length}, got ${vec.length}"
+        s"Feature schema mismatch: expected=$expectedRawFeatures actual=${FEATURE_ORDER.length}"
       )
     }
-
-    vec
   }
 }

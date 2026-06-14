@@ -58,7 +58,12 @@ object Article04AdaptiveControlJob {
     val scalerParamsPath =
       sys.env.getOrElse("SCALER_PARAMS_PATH", "/opt/models/scaler_params.json")
 
-    println(s"[MAIN] action=models window=$windowModelPath watermark=$watermarkModelPath")
+    println(
+      "[MAIN] action=models " +
+      s"window=$windowModelPath " +
+      s"watermark=$watermarkModelPath " +
+      s"scaler=$scalerParamsPath"
+    )
 
     // ============================================================
     // 4. Adaptive Config
@@ -67,11 +72,18 @@ object Article04AdaptiveControlJob {
       AdaptiveConfig(
         windowSizeMs = windowSizeMs,
         watermarkDelayMs = watermarkDelayMs,
+
         adaptiveWindowSizeMs = windowSizeMs,
         adaptiveWatermarkDelayMs = watermarkDelayMs,
+
         windowStrategy = windowStrategyMode,
         watermarkStrategy = watermarkStrategyMode,
-        mlInference = mlInferenceFlag
+
+        mlInference = mlInferenceFlag,
+
+        windowModelPath = windowModelPath,
+        watermarkModelPath = watermarkModelPath,
+        scalerParamsPath = scalerParamsPath
       )
 
       println(

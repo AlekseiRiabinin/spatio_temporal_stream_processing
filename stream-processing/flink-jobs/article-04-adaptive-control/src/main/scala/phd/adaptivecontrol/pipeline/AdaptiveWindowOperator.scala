@@ -93,6 +93,11 @@ object AdaptiveWindowOperator {
 
       if (currentTimer == 0L) {
 
+        println(
+          "[ADAPTIVE WINDOW] action=current_config " +
+          s"windowMs=${config.adaptiveWindowSizeMs}"
+        )
+
         val windowSizeMs =
           math.max(1000L, config.adaptiveWindowSizeMs)
 

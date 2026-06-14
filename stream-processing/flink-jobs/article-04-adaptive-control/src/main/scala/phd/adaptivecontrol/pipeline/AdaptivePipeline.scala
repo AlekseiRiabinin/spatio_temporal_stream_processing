@@ -12,7 +12,8 @@ import phd.adaptivecontrol.interaction.InteractionEngine
 import phd.adaptivecontrol.adaptive.{
   StreamProfiler,
   AdaptiveController,
-  ONNXInference
+  ONNXInference,
+  FeaturePreprocessor
 }
 
 
@@ -36,6 +37,17 @@ object AdaptivePipeline {
         // Initialize ONNX inside TaskManager JVM
         // ------------------------------------------------------
         if (config.mlInference) {
+
+          println(
+            "[ADAPTIVE CONTROL] action=preprocessor_initialize"
+          )
+
+          FeaturePreprocessor.initialize(config)
+
+          println(
+            s"[ADAPTIVE CONTROL] action=preprocessor_status " +
+            s"initialized=${FeaturePreprocessor.isInitialized}"
+          )
 
           println(
             "[ADAPTIVE CONTROL] action=onnx_initialize"
@@ -106,6 +118,12 @@ object AdaptivePipeline {
         config.watermarkStrategy == "adaptive"
 
       if (adaptiveEnabled && shouldAdapt()) {
+
+        if (!FeaturePreprocessor.isInitialized) {
+          throw new IllegalStateException(
+            "FeaturePreprocessor is not initialized"
+          )
+        }
 
         val prediction =
           ONNXInference.predict(features)

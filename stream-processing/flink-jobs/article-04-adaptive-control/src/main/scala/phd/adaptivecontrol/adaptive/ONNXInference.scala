@@ -114,6 +114,14 @@ object ONNXInference extends Serializable {
         )
       }
 
+      FeaturePreprocessor.initialize(config)
+
+      println(
+        "[ONNX] action=status " +
+        s"loaded=$isModelLoaded " +
+        s"preprocessor=${FeaturePreprocessor.isInitialized}"
+      )
+
     } catch {
 
       case ex: Exception =>
@@ -123,10 +131,6 @@ object ONNXInference extends Serializable {
     }
 
     initialized = true
-
-    println(
-      s"[ONNX] action=status loaded=$isModelLoaded"
-    )
   }
 
   private def ensureInitialized(): Unit = synchronized {
@@ -229,10 +233,20 @@ object ONNXInference extends Serializable {
       // ========================================================
 
       val inputVector =
-        createInputVector(features)
+        FeaturePreprocessor.transform(features)
+
+      if (inputVector.length != 25) {
+        throw new IllegalStateException(
+          s"Invalid ONNX input size: expected 25 got ${inputVector.length}"
+        )
+      }
 
       println(
-        s"[ONNX] action=inference inputSize=${inputVector.length}"
+        "[ONNX] action=inference " +
+        s"inputSize=${inputVector.length} " +
+        s"profile=${features.profile} " +
+        s"ratePattern=${features.ratePattern} " +
+        s"motionMode=${features.motionMode}"
       )
 
       // ========================================================
@@ -387,13 +401,6 @@ object ONNXInference extends Serializable {
   }
 
   // ============================================================
-  // Feature vector
-  // ============================================================
-
-  def createInputVector(features: StreamFeatures): Array[Float] =
-    features.toVector
-
-  // ============================================================
   // Runtime state
   // ============================================================
 
@@ -416,7 +423,14 @@ object ONNXInference extends Serializable {
   // ============================================================
 
   def status: String = {
-    if (isModelLoaded) "onnx_loaded"
-    else "rule_based_fallback"
+
+    if (
+      isModelLoaded &&
+      FeaturePreprocessor.isInitialized
+    ) {
+      "onnx_loaded"
+    } else {
+      "rule_based_fallback"
+    }
   }
 }
