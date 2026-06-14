@@ -14,8 +14,17 @@ import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsIni
 
 import phd.adaptivecontrol.config.AdaptiveConfig
 import phd.adaptivecontrol.model.GeoEvent
-import phd.adaptivecontrol.pipeline.{AdaptivePipeline, WatermarkManager}
-import phd.adaptivecontrol.adaptive.{ONNXInference, StreamProfiler}
+
+import phd.adaptivecontrol.pipeline.{
+  AdaptivePipeline,
+  WatermarkManager
+}
+
+import phd.adaptivecontrol.adaptive.{
+  ONNXInference,
+  StreamProfiler,
+  AdaptiveRuntimeState
+}
 
 
 object Article04AdaptiveControlJob {
@@ -25,38 +34,62 @@ object Article04AdaptiveControlJob {
 
   def main(args: Array[String]): Unit = {
 
-    println("[MAIN] action=start job=Article04AdaptiveControlJob")
+    println(
+      "[MAIN] action=start job=Article04AdaptiveControlJob"
+    )
 
     // ============================================================
     // 1. Flink Environment
     // ============================================================
-    val env = StreamExecutionEnvironment.getExecutionEnvironment
+    val env =
+      StreamExecutionEnvironment.getExecutionEnvironment
+
     env.setParallelism(1)
 
     // ============================================================
     // 2. Config (env-driven)
     // ============================================================
-    val bootstrap = sys.env.getOrElse("KAFKA_BOOTSTRAP_SERVERS", "kafka-1:19092")
-    val topic = sys.env.getOrElse("KAFKA_TOPIC", "spatial-events")
+    val bootstrap =
+      sys.env.getOrElse("KAFKA_BOOTSTRAP_SERVERS", "kafka-1:19092")
 
-    val windowSizeMs = sys.env.getOrElse("FIXED_WINDOW_MS", "5000").toLong
-    val watermarkDelayMs = sys.env.getOrElse("FIXED_WATERMARK_MS", "3000").toLong
+    val topic =
+      sys.env.getOrElse("KAFKA_TOPIC", "spatial-events")
 
-    val windowStrategyMode = sys.env.getOrElse("WINDOW_STRATEGY", "fixed")
-    val watermarkStrategyMode = sys.env.getOrElse("WATERMARK_STRATEGY", "fixed")
-    val mlInferenceFlag = sys.env.getOrElse("ML_INFERENCE", "false").toBoolean
+    val windowSizeMs =
+      sys.env.getOrElse("FIXED_WINDOW_MS", "5000").toLong
+
+    val watermarkDelayMs =
+      sys.env.getOrElse("FIXED_WATERMARK_MS", "3000").toLong
+
+    val windowStrategyMode =
+      sys.env.getOrElse("WINDOW_STRATEGY", "fixed")
+
+    val watermarkStrategyMode =
+      sys.env.getOrElse("WATERMARK_STRATEGY", "fixed")
+
+    val mlInferenceFlag =
+      sys.env.getOrElse("ML_INFERENCE", "false").toBoolean
 
     // ============================================================
-    // 3. MODEL PATHS (mounted from Docker volumes)
+    // 3. Model paths
     // ============================================================
     val windowModelPath =
-      sys.env.getOrElse("WINDOW_MODEL_PATH", "/opt/models/model_a_window.onnx")
+      sys.env.getOrElse(
+        "WINDOW_MODEL_PATH",
+        "/opt/models/model_a_window.onnx"
+      )
 
     val watermarkModelPath =
-      sys.env.getOrElse("WATERMARK_MODEL_PATH", "/opt/models/model_b_watermark.onnx")
+      sys.env.getOrElse(
+        "WATERMARK_MODEL_PATH",
+        "/opt/models/model_b_watermark.onnx"
+      )
 
     val scalerParamsPath =
-      sys.env.getOrElse("SCALER_PARAMS_PATH", "/opt/models/scaler_params.json")
+      sys.env.getOrElse(
+        "SCALER_PARAMS_PATH",
+        "/opt/models/scaler_params.json"
+      )
 
     println(
       "[MAIN] action=models " +
@@ -86,24 +119,38 @@ object Article04AdaptiveControlJob {
         scalerParamsPath = scalerParamsPath
       )
 
-      println(
-        "[MAIN] action=config " +
-          s"windowStrategy=${adaptiveConfig.windowStrategy} " +
-          s"watermarkStrategy=${adaptiveConfig.watermarkStrategy} " +
-          s"mlInference=${adaptiveConfig.mlInference}"
-      )
+    println(
+      "[MAIN] action=config " +
+      s"windowStrategy=${adaptiveConfig.windowStrategy} " +
+      s"watermarkStrategy=${adaptiveConfig.watermarkStrategy} " +
+      s"mlInference=${adaptiveConfig.mlInference}"
+    )
 
     // ============================================================
-    // 5. INITIALIZE ML RUNTIME
+    // 5. Initialize runtime state
+    // ============================================================
+    AdaptiveRuntimeState.initialize(windowSizeMs, watermarkDelayMs)
+
+    println(
+      "[MAIN] action=runtime_state " +
+      s"windowMs=${AdaptiveRuntimeState.windowSizeMs} " +
+      s"watermarkMs=${AdaptiveRuntimeState.watermarkDelayMs}"
+    )
+
+    // ============================================================
+    // 6. Initialize ML runtime
     // ============================================================
     if (mlInferenceFlag) {
 
-      println("[MAIN] action=onnx init status=starting")
+      println(
+        "[MAIN] action=onnx init status=starting"
+      )
 
       ONNXInference.initialize(adaptiveConfig)
 
       println(
-        s"[MAIN] action=onnx init status=ready mode=${ONNXInference.status}"
+        "[MAIN] action=onnx init status=ready " +
+        s"mode=${ONNXInference.status}"
       )
 
     } else {
@@ -114,7 +161,7 @@ object Article04AdaptiveControlJob {
     }
 
     // ============================================================
-    // 6. Kafka Source
+    // 7. Kafka Source
     // ============================================================
     val kafkaSource =
       KafkaSource.builder[String]()
@@ -125,7 +172,8 @@ object Article04AdaptiveControlJob {
         .setValueOnlyDeserializer(new SimpleStringSchema())
         .build()
 
-    implicit val geoEventTypeInfo: TypeInformation[GeoEvent] =
+    implicit val geoEventTypeInfo:
+      TypeInformation[GeoEvent] =
       createTypeInformation[GeoEvent]
 
     val rawStream =
@@ -141,29 +189,32 @@ object Article04AdaptiveControlJob {
         .filter(_.isValid)
 
     // ============================================================
-    // 7. Watermarks
+    // 8. Watermarks
     // ============================================================
-    val wmStrategy = WatermarkManager.build(adaptiveConfig)
+    val wmStrategy =
+      WatermarkManager.build(adaptiveConfig)
 
     val timedGeoEventStream =
       geoEventStream.assignTimestampsAndWatermarks(wmStrategy)
 
     // ============================================================
-    // 8. PIPELINE
+    // 9. Pipeline
     // ============================================================
     val processedStream =
       AdaptivePipeline.build(env, timedGeoEventStream, adaptiveConfig)
 
     // ============================================================
-    // 9. OUTPUT
+    // 10. Output
     // ============================================================
     processedStream
       .map(result => mapper.writeValueAsString(result))
       .print()
 
     // ============================================================
-    // 10. EXECUTE
+    // 11. Execute
     // ============================================================
-    env.execute("Article 04: Adaptive Window and Watermark Control")
+    env.execute(
+      "Article 04: Adaptive Window and Watermark Control"
+    )
   }
 }

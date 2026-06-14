@@ -6,11 +6,12 @@ import org.apache.flink.api.common.eventtime.{
   WatermarkOutput
 }
 
-import phd.adaptivecontrol.config.AdaptiveConfig
 import phd.adaptivecontrol.model.GeoEvent
+import phd.adaptivecontrol.adaptive.AdaptiveRuntimeState
+import phd.adaptivecontrol.adaptive.StreamProfiler
 
 
-class AdaptiveWatermarkGenerator(config: AdaptiveConfig)
+class AdaptiveWatermarkGenerator
   extends WatermarkGenerator[GeoEvent] {
 
   private var maxTimestampSeen: Long =
@@ -22,6 +23,7 @@ class AdaptiveWatermarkGenerator(config: AdaptiveConfig)
     output: WatermarkOutput
   ): Unit = {
 
+    // Track event-time progress
     maxTimestampSeen =
       math.max(maxTimestampSeen, eventTimestamp)
   }
@@ -31,14 +33,20 @@ class AdaptiveWatermarkGenerator(config: AdaptiveConfig)
     if (maxTimestampSeen == Long.MinValue)
       return
 
+    // Adaptive delay from runtime state
     val delayMs =
-      math.max(0L, config.adaptiveWatermarkDelayMs)
+      math.max(0L, AdaptiveRuntimeState.watermarkDelayMs)
 
+    // Compute watermark (event-time - delay)
     val watermarkTs =
       maxTimestampSeen - delayMs
 
+    StreamProfiler.updateWatermark(watermarkTs)
+
+    // Emit watermark into Flink
     output.emitWatermark(new Watermark(watermarkTs))
 
+    // Logging
     println(
       "[ADAPTIVE WATERMARK] " +
       s"watermark=$watermarkTs " +

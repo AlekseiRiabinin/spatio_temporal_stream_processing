@@ -22,8 +22,11 @@ object StreamProfiler extends Serializable {
   private var lateEvents: Long = 0L
   private var outOfOrderEvents: Long = 0L
 
+  // event-time tracking (STRICT)
   private var lastEventTimestamp: Long = Long.MinValue
-  private var accumulatedLatencyMs: Double = 0.0
+  private var maxEventTimestampSeen: Long = Long.MinValue
+
+  private var accumulatedEventLatencyMs: Double = 0.0
 
   private val recentEventTimes = mutable.Queue[Long]()
   private val EventRateWindowMs = 5000L
@@ -58,6 +61,7 @@ object StreamProfiler extends Serializable {
   // ============================================================
 
   private var currentWatermark: Long = Long.MinValue
+  private var lastEffectiveWatermark: Long = Long.MinValue
 
   // ============================================================
   // Adaptive control state
@@ -122,6 +126,7 @@ object StreamProfiler extends Serializable {
 
   private var processingOperations: Long = 0L
   private var accumulatedProcessingLatencyMs: Double = 0.0
+  private var processingEMA: Double = 0.0
 
   // ============================================================
   // Configuration
@@ -143,6 +148,7 @@ object StreamProfiler extends Serializable {
 
   def updateWatermark(wm: Long): Unit =
     currentWatermark = wm
+
 
   // ============================================================
   // Events
@@ -166,34 +172,51 @@ object StreamProfiler extends Serializable {
       recentEventTimes.dequeue()
     }
 
+    // -------------------------------
+    // Event-time ordering tracking
+    // -------------------------------
+
     if (event.timestamp < lastEventTimestamp)
       outOfOrderEvents += 1
 
     lastEventTimestamp =
       math.max(lastEventTimestamp, event.timestamp)
 
-    val latency = now - event.timestamp
+    // also maintain max seen timestamp (IMPORTANT for watermark logic)
+    maxEventTimestampSeen =
+      math.max(maxEventTimestampSeen, event.timestamp)
 
-    if (latency > 0) {
+    // -------------------------------
+    // Latency (processing - event time)
+    // -------------------------------
 
-      accumulatedLatencyMs += latency
+    val latencyMs: Double =
+      math.max(0L, now - event.timestamp).toDouble
 
-      latencyEMA =
-        if (latencyEMA == 0.0)
-          latency.toDouble
-        else
-          alpha * latency + (1.0 - alpha) * latencyEMA
-    }
+    accumulatedEventLatencyMs += latencyMs
 
-    val effectiveWatermark =
+    latencyEMA =
+      if (latencyEMA == 0.0)
+        latencyMs
+      else
+        alpha * latencyMs + (1.0 - alpha) * latencyEMA
+
+    // -------------------------------
+    // Watermark evaluation (event-time domain)
+    // -------------------------------
+
+    val effectiveWatermark: Long =
       if (currentWatermark != Long.MinValue)
         currentWatermark
       else
-        (now - latencyEMA * 1.5).toLong
+        (maxEventTimestampSeen - (latencyEMA * 1.5).toLong)
+
+    lastEffectiveWatermark = effectiveWatermark
 
     if (event.timestamp < effectiveWatermark)
       lateEvents += 1
   }
+
 
   // ============================================================
   // Interactions
@@ -204,16 +227,15 @@ object StreamProfiler extends Serializable {
     totalInteractions += interactions.size
 
     interactions.foreach { interaction =>
-
       interaction.interactionType match {
-
         case Collision => collisionCount += 1
         case Proximity => proximityCount += 1
         case Swarm     => swarmCount += 1
-        case Conflict  =>  conflictCount += 1
+        case Conflict  => conflictCount += 1
       }
     }
   }
+
 
   // ============================================================
   // Window statistics
@@ -223,6 +245,7 @@ object StreamProfiler extends Serializable {
     totalWindows += 1
     totalWindowEvents += batchSize
   }
+
 
   // ============================================================
   // Controller statistics
@@ -248,18 +271,14 @@ object StreamProfiler extends Serializable {
       watermarkChangeCount += 1
 
     val windowDir =
-      math.signum(
-        decision.windowSizeMs - lastPredictedWindowMs
-      ).toInt
+      math.signum(decision.windowSizeMs - lastPredictedWindowMs).toInt
 
     val watermarkDir =
-      math.signum(
-        decision.watermarkDelayMs - lastPredictedWatermarkMs
-      ).toInt
+      math.signum(decision.watermarkDelayMs - lastPredictedWatermarkMs).toInt
 
-    // ----------------------------------------------------------
+    // -------------------------------
     // Oscillation detection
-    // ----------------------------------------------------------
+    // -------------------------------
 
     if (
       windowDir != 0 &&
@@ -278,39 +297,33 @@ object StreamProfiler extends Serializable {
     lastWindowDirection = windowDir
     lastWatermarkDirection = watermarkDir
 
-    // ----------------------------------------------------------
-    // Update current state
-    // ----------------------------------------------------------
+    // -------------------------------
+    // State update
+    // -------------------------------
 
     lastPredictedWindowMs = decision.windowSizeMs
     lastPredictedWatermarkMs = decision.watermarkDelayMs
+
     adaptiveWindowSizeMs = decision.windowSizeMs
     adaptiveWatermarkDelayMs = decision.watermarkDelayMs
+
     lastInferenceLatencyMs = inferenceLatencyMs
     totalInferenceLatencyMs += inferenceLatencyMs
 
     val now = System.currentTimeMillis()
 
-    // adaptation interval
     if (lastAdaptationTs != 0L)
       adaptationIntervalSumMs += (now - lastAdaptationTs)
 
     lastAdaptationTs = now
 
-    // window bounds
-    minWindowMs =
-      math.min(minWindowMs, decision.windowSizeMs)
+    minWindowMs = math.min(minWindowMs, decision.windowSizeMs)
+    maxWindowMs = math.max(maxWindowMs, decision.windowSizeMs)
 
-    maxWindowMs =
-      math.max(maxWindowMs, decision.windowSizeMs)
-
-    // watermark bounds
-    minWatermarkMs =
-      math.min(minWatermarkMs, decision.watermarkDelayMs)
-
-    maxWatermarkMs =
-      math.max(maxWatermarkMs, decision.watermarkDelayMs)
+    minWatermarkMs = math.min(minWatermarkMs, decision.watermarkDelayMs)
+    maxWatermarkMs = math.max(maxWatermarkMs, decision.watermarkDelayMs)
   }
+
 
   // ============================================================
   // Processing latency
@@ -321,8 +334,9 @@ object StreamProfiler extends Serializable {
     accumulatedProcessingLatencyMs += latencyMs
   }
 
+
   // ============================================================
-  // ML features
+  // Derived Metrics
   // ============================================================
 
   def eventRate: Double =
@@ -338,11 +352,18 @@ object StreamProfiler extends Serializable {
 
   def averageLatencyMs: Double =
     if (totalEvents == 0) 0.0
-    else accumulatedLatencyMs / totalEvents
+    else accumulatedEventLatencyMs / totalEvents
 
-  def averageWindowFill: Double =
+  def averageEventsPerWindow: Double =
     if (totalWindows == 0) 0.0
     else totalWindowEvents.toDouble / totalWindows
+
+  def normalizedWindowFillRatio: Double = {
+    val expectedEvents = if (eventRate <= 0) 1.0 
+                         else eventRate * adaptiveWindowSizeMs / 1000.0
+    if (expectedEvents <= 0) 0.0 
+    else averageEventsPerWindow / expectedEvents
+  }
 
   def interactionRate: Double =
     if (totalEvents == 0) 0.0
@@ -372,43 +393,10 @@ object StreamProfiler extends Serializable {
     if (adaptationCount == 0) 0.0
     else watermarkOscillation.toDouble / adaptationCount
 
-  def minWindow: Long =
-    if (minWindowMs == Long.MaxValue) 0L 
-    else minWindowMs
-  
-  def maxWindow: Long =
-    if (maxWindowMs == Long.MinValue) 0L
-    else maxWindowMs
-
-  def minWatermark: Long =
-    if (minWatermarkMs == Long.MaxValue) 0L
-    else minWatermarkMs
-
-  def maxWatermark: Long =
-    if (maxWatermarkMs == Long.MinValue) 0L
-    else maxWatermarkMs
-
   def avgAdaptationIntervalMs: Double =
     if (adaptationCount <= 1) 0.0
     else adaptationIntervalSumMs / (adaptationCount - 1)
 
-  def currentProfile: String =
-    profile
-
-  def currentRatePattern: String =
-    ratePattern
-
-  def currentMotionMode: String =
-    motionMode
-
-  def setProfile(value: String): Unit =
-    profile = value
-
-  def setRatePattern(value: String): Unit =
-    ratePattern = value
-
-  def setMotionMode(value: String): Unit =
-    motionMode = value
 
   // ============================================================
   // Snapshot for ML
@@ -417,9 +405,17 @@ object StreamProfiler extends Serializable {
   def snapshot(): StreamFeatures = {
 
     val now = System.currentTimeMillis()
+    val safeInteractions = math.max(totalInteractions, 1L)
 
-    val safeInteractions =
-      math.max(totalInteractions, 1L)
+    // Event‑time watermark lag (Layer 3)
+    val eventTimeWatermarkLag =
+      if (currentWatermark == Long.MinValue) 0L
+      else math.max(0L, lastEventTimestamp - currentWatermark)
+
+    // Ingestion lag
+    val ingestionLag =
+      if (totalEvents == 0) 0L
+      else math.max(0L, now - lastEventTimestamp)
 
     StreamFeatures(
       profile = profile,
@@ -431,7 +427,7 @@ object StreamProfiler extends Serializable {
       lateEventRatio = lateEventRatio,
       averageLatencyMs = averageLatencyMs,
 
-      windowFillRatio = averageWindowFill,
+      windowFillRatio = normalizedWindowFillRatio,
 
       interactionRate = interactionRate,
       collisionRate = collisionCount.toDouble / safeInteractions,
@@ -439,15 +435,11 @@ object StreamProfiler extends Serializable {
       swarmRate = swarmCount.toDouble / safeInteractions,
       conflictRate = conflictCount.toDouble / safeInteractions,
 
-      watermarkLagMs =
-        if (currentWatermark == Long.MinValue) 0L
-        else math.max(0L, now - currentWatermark),
+      watermarkLagMs = eventTimeWatermarkLag,
 
-      processingLatencyMs =
-        if (processingOperations == 0)
-          math.max(0L, now - lastEventTimestamp).toDouble
-        else
-          averageProcessingLatencyMs,
+      processingLatencyMs = averageProcessingLatencyMs,
+      mlInferenceLatencyMs = averageInferenceLatencyMs,
+      ingestionLagMs = ingestionLag,
 
       adaptiveWindowSizeMs = adaptiveWindowSizeMs,
       adaptiveWatermarkDelayMs = adaptiveWatermarkDelayMs,
@@ -465,37 +457,56 @@ object StreamProfiler extends Serializable {
 
     val now = System.currentTimeMillis()
 
+    val safeInteractions =
+      math.max(totalInteractions, 1L)
+
+    val collisionRate =
+      collisionCount.toDouble / safeInteractions
+
+    val proximityRate =
+      proximityCount.toDouble / safeInteractions
+
+    val swarmRate =
+      swarmCount.toDouble / safeInteractions
+
+    val conflictRate =
+      conflictCount.toDouble / safeInteractions
+
+    // Event‑time watermark lag
+    val watermarkLagMs =
+      if (currentWatermark == Long.MinValue) 0L
+      else math.max(0L, lastEventTimestamp - currentWatermark)
+
+    // Ingestion lag
+    val ingestionLagMs =
+      if (totalEvents == 0) 0L
+      else math.max(0L, now - lastEventTimestamp)
+
     println(
       "[METRIC] " +
         s"event_rate=${eventRate.formatted("%.2f")} " +
         s"disorder_ratio=${disorderRatio.formatted("%.4f")} " +
         s"late_event_ratio=${lateEventRatio.formatted("%.4f")} " +
         s"avg_latency_ms=${averageLatencyMs.formatted("%.2f")} " +
-        s"window_fill_ratio=${averageWindowFill.formatted("%.2f")} " +
+
+        s"window_fill_ratio=${normalizedWindowFillRatio.formatted("%.4f")} " +
+        s"avg_events_per_window=${averageEventsPerWindow.formatted("%.2f")} " +
+
         s"interaction_rate=${interactionRate.formatted("%.4f")} " +
-        s"collision_rate=${
-          if (totalInteractions == 0) 0.0
-          else collisionCount.toDouble / totalInteractions
-        } " +
-        s"proximity_rate=${
-          if (totalInteractions == 0) 0.0
-          else proximityCount.toDouble / totalInteractions
-        } " +
-        s"swarm_rate=${
-          if (totalInteractions == 0) 0.0
-          else swarmCount.toDouble / totalInteractions
-        } " +
-        s"conflict_rate=${
-          if (totalInteractions == 0) 0.0
-          else conflictCount.toDouble / totalInteractions
-        } " +
-        s"watermark_lag_ms=${
-          if (currentWatermark == Long.MinValue) 0L
-          else now - currentWatermark
-        } " +
-        s"processing_latency_ms=${now - lastEventTimestamp} " +
+        s"collision_rate=${collisionRate.formatted("%.4f")} " +
+        s"proximity_rate=${proximityRate.formatted("%.4f")} " +
+        s"swarm_rate=${swarmRate.formatted("%.4f")} " +
+        s"conflict_rate=${conflictRate.formatted("%.4f")} " +
+
+        s"watermark_lag_ms=$watermarkLagMs " +
+        s"ingestion_lag_ms=$ingestionLagMs " +
+
+        s"processing_latency_ms=${averageProcessingLatencyMs.formatted("%.2f")} " +
+        s"ml_inference_ms=${averageInferenceLatencyMs.formatted("%.3f")} " +
+
         s"adaptive_window_ms=$adaptiveWindowSizeMs " +
         s"adaptive_watermark_ms=$adaptiveWatermarkDelayMs " +
+
         s"collision_count=$collisionCount " +
         s"proximity_count=$proximityCount " +
         s"swarm_count=$swarmCount " +
@@ -503,20 +514,20 @@ object StreamProfiler extends Serializable {
         s"total_events=$totalEvents " +
         s"total_interactions=$totalInteractions " +
 
-        // Article 4 metrics
+        // Article 4 adaptive control metrics
         s"adaptation_count=$adaptationCount " +
-        s"ml_inference_ms=${lastInferenceLatencyMs.formatted("%.3f")} " +
-        s"avg_ml_inference_ms=${averageInferenceLatencyMs.formatted("%.3f")} " +
         s"window_change_rate=${windowChangeRate.formatted("%.4f")} " +
         s"watermark_change_rate=${watermarkChangeRate.formatted("%.4f")} " +
-        s"window_oscillation=${windowOscillation} " +
-        s"watermark_oscillation=${watermarkOscillation} " +
+        s"window_oscillation=$windowOscillation " +
+        s"watermark_oscillation=$watermarkOscillation " +
         s"window_oscillation_rate=${windowOscillationRate.formatted("%.4f")} " +
         s"watermark_oscillation_rate=${watermarkOscillationRate.formatted("%.4f")} " +
-        s"min_window_ms=${minWindow} " +
-        s"max_window_ms=${maxWindow} " +
-        s"min_watermark_ms=${minWatermark} " +
-        s"max_watermark_ms=${maxWatermark} " +
+
+        s"min_window_ms=$minWindowMs " +
+        s"max_window_ms=$maxWindowMs " +
+        s"min_watermark_ms=$minWatermarkMs " +
+        s"max_watermark_ms=$maxWatermarkMs " +
+
         s"avg_adaptation_interval_ms=${avgAdaptationIntervalMs.formatted("%.2f")} "
     )
   }

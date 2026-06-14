@@ -42,10 +42,18 @@ case class StreamFeatures(
   conflictRate: Double,
 
   // ============================================================
-  // System state
+  // System state (Layer 3 decomposition)
   // ============================================================
   watermarkLagMs: Long,
+
+  // execution cost of Flink / pipeline
   processingLatencyMs: Double,
+
+  // NEW: ML inference overhead (control plane cost)
+  mlInferenceLatencyMs: Double,
+
+  // NEW: ingestion delay / stream disorder delay
+  ingestionLagMs: Long,
 
   // ============================================================
   // Adaptive control values
@@ -69,26 +77,32 @@ case class StreamFeatures(
   def isHighLoad: Boolean =
     eventRate > 100.0 || processingLatencyMs > 1000.0
 
-  override def toString: String =
-    s"StreamFeatures(" +
-      s"profile=$profile, " +
-      s"ratePattern=$ratePattern, " +
-      s"motionMode=$motionMode, " +
-      s"eventRate=$eventRate, " +
-      s"disorderRatio=$disorderRatio, " +
-      s"lateEventRatio=$lateEventRatio, " +
-      s"avgLatencyMs=$averageLatencyMs, " +
-      s"windowFillRatio=$windowFillRatio, " +
-      s"interactionRate=$interactionRate, " +
-      s"collisionRate=$collisionRate, " +
-      s"proximityRate=$proximityRate, " +
-      s"swarmRate=$swarmRate, " +
-      s"conflictRate=$conflictRate, " +
-      s"watermarkLagMs=$watermarkLagMs, " +
-      s"processingLatencyMs=$processingLatencyMs, " +
-      s"adaptiveWindowSizeMs=$adaptiveWindowSizeMs, " +
-      s"adaptiveWatermarkDelayMs=$adaptiveWatermarkDelayMs, " +
-      s"timestamp=$timestamp)"
+override def toString: String =
+  s"""StreamFeatures(
+     |profile=$profile,
+     |ratePattern=$ratePattern,
+     |motionMode=$motionMode,
+     |eventRate=$eventRate,
+     |disorderRatio=$disorderRatio,
+     |lateEventRatio=$lateEventRatio,
+     |avgLatencyMs=$averageLatencyMs,
+     |windowFillRatio=$windowFillRatio,
+     |interactionRate=$interactionRate,
+     |collisionRate=$collisionRate,
+     |proximityRate=$proximityRate,
+     |swarmRate=$swarmRate,
+     |conflictRate=$conflictRate,
+     |
+     |watermarkLagMs=$watermarkLagMs,
+     |
+     |processingLatencyMs=$processingLatencyMs,
+     |mlInferenceLatencyMs=$mlInferenceLatencyMs,
+     |ingestionLagMs=$ingestionLagMs,
+     |
+     |adaptiveWindowSizeMs=$adaptiveWindowSizeMs,
+     |adaptiveWatermarkDelayMs=$adaptiveWatermarkDelayMs,
+     |timestamp=$timestamp
+     |)""".stripMargin
 }
 
 object StreamFeatures {
@@ -116,7 +130,10 @@ object StreamFeatures {
       conflictRate = 0.0,
 
       watermarkLagMs = 0L,
+
       processingLatencyMs = 0.0,
+      mlInferenceLatencyMs = 0.0,
+      ingestionLagMs = 0L,
 
       adaptiveWindowSizeMs = 0L,
       adaptiveWatermarkDelayMs = 0L,

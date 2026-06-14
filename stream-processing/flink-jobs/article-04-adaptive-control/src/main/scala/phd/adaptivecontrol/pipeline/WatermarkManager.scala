@@ -10,6 +10,7 @@ import org.apache.flink.api.common.eventtime.{
 
 import phd.adaptivecontrol.model.GeoEvent
 import phd.adaptivecontrol.config.AdaptiveConfig
+import phd.adaptivecontrol.adaptive.AdaptiveRuntimeState
 
 
 /**
@@ -36,22 +37,13 @@ object WatermarkManager {
         println(
           "[WATERMARK MANAGER] action=build " +
           s"strategy=adaptive " +
-          s"effectiveDelay=${config.adaptiveWatermarkDelayMs}"
+          s"effectiveDelay=${AdaptiveRuntimeState.watermarkDelayMs}"
         )
 
         WatermarkStrategy
           .forGenerator(
             (_: WatermarkGeneratorSupplier.Context) =>
-              new AdaptiveWatermarkGenerator(config)
-          )
-          .withTimestampAssigner(
-            new SerializableTimestampAssigner[GeoEvent] {
-              override def extractTimestamp(
-                event: GeoEvent,
-                recordTimestamp: Long
-              ): Long =
-                event.timestamp
-            }
+              new AdaptiveWatermarkGenerator
           )
 
       // ========================================================

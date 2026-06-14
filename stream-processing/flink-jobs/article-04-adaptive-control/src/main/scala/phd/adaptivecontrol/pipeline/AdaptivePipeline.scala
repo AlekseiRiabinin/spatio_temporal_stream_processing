@@ -13,7 +13,8 @@ import phd.adaptivecontrol.adaptive.{
   StreamProfiler,
   AdaptiveController,
   ONNXInference,
-  FeaturePreprocessor
+  FeaturePreprocessor,
+  AdaptiveRuntimeState
 }
 
 
@@ -94,16 +95,19 @@ object AdaptivePipeline {
       initIfNeeded()
 
       // ----------------------------------------------------------
+      // Start processing timer
+      // ----------------------------------------------------------
+      val t0 = System.currentTimeMillis()
+
+      // ----------------------------------------------------------
       // Profiling
       // ----------------------------------------------------------
-
       StreamProfiler.updateEvents(batch)
 
       val results =
         getEngine.process(batch)
 
       StreamProfiler.updateInteractions(results)
-
       StreamProfiler.updateWindow(batch.size)
 
       val features =
@@ -112,7 +116,6 @@ object AdaptivePipeline {
       // ----------------------------------------------------------
       // Adaptive mode only
       // ----------------------------------------------------------
-
       val adaptiveEnabled =
         config.windowStrategy == "adaptive" ||
         config.watermarkStrategy == "adaptive"
@@ -129,20 +132,18 @@ object AdaptivePipeline {
           ONNXInference.predict(features)
 
         val decision =
-          AdaptiveController.decide(
-            features,
-            prediction
-          )
+          AdaptiveController.decide(features, prediction)
 
-        // ----------------------------------------
-        // Update runtime configuration
-        // ----------------------------------------
-
-        config.adaptiveWindowSizeMs =
-          decision.windowSizeMs
-
-        config.adaptiveWatermarkDelayMs =
+        AdaptiveRuntimeState.update(
+          decision.windowSizeMs,
           decision.watermarkDelayMs
+        )
+
+        println(
+          "[ADAPTIVE CONTROL] action=config_update " +
+          s"window=${AdaptiveRuntimeState.windowSizeMs} " +
+          s"watermark=${AdaptiveRuntimeState.watermarkDelayMs}"
+        )
 
         StreamProfiler.updateAdaptiveDecision(
           decision,
@@ -154,18 +155,24 @@ object AdaptivePipeline {
           s"window=${decision.windowSizeMs} " +
           s"watermark=${decision.watermarkDelayMs} " +
           s"inference_ms=${
-            prediction.inferenceLatencyMs
-              .getOrElse(0.0)
-              .formatted("%.3f")
+            prediction.inferenceLatencyMs.getOrElse(0.0).formatted("%.3f")
           } " +
           s"confidence=${decision.confidence.formatted("%.4f")} " +
           s"strategy=${decision.strategy} " +
-          s"model_version=${
-            decision.modelVersion.getOrElse("none")
-          }"
+          s"model_version=${decision.modelVersion.getOrElse("none")}"
         )
       }
 
+      // ----------------------------------------------------------
+      // End processing timer
+      // ----------------------------------------------------------
+      val t1 = System.currentTimeMillis()
+
+      StreamProfiler.recordProcessingLatency(t1 - t0)
+
+      // ----------------------------------------------------------
+      // Logging + output
+      // ----------------------------------------------------------
       StreamProfiler.logSnapshot()
 
       results.foreach(out.collect)
@@ -189,10 +196,7 @@ object AdaptivePipeline {
     )
 
     val windowedStream =
-      AdaptiveWindowOperator(
-        inputStream,
-        config
-      )
+      AdaptiveWindowOperator(inputStream, config)
 
     println(
       "[ADAPTIVE PIPELINE] action=windowing status=initialized"
