@@ -55,6 +55,9 @@ object Article04AdaptiveControlJob {
     val watermarkModelPath =
       sys.env.getOrElse("WATERMARK_MODEL_PATH", "/opt/models/model_b_watermark.onnx")
 
+    val scalerParamsPath =
+      sys.env.getOrElse("SCALER_PARAMS_PATH", "/opt/models/scaler_params.json")
+
     println(s"[MAIN] action=models window=$windowModelPath watermark=$watermarkModelPath")
 
     // ============================================================

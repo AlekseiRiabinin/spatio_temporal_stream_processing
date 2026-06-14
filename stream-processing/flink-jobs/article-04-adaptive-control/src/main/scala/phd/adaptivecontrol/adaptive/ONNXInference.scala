@@ -37,8 +37,17 @@ object ONNXInference extends Serializable {
   @volatile
   private var initialized = false
 
-  private var windowModelPath = "/opt/models/model_a_window.onnx"
-  private var watermarkModelPath = "/opt/models/model_b_watermark.onnx"
+  private var windowModelPath =
+    sys.env.getOrElse(
+      "WINDOW_MODEL_PATH",
+      "/opt/models/model_a_window.onnx"
+    )
+
+  private var watermarkModelPath =
+    sys.env.getOrElse(
+      "WATERMARK_MODEL_PATH",
+      "/opt/models/model_b_watermark.onnx"
+    )
 
   // ============================================================
   // ONNX Runtime
@@ -120,6 +129,77 @@ object ONNXInference extends Serializable {
     )
   }
 
+  private def ensureInitialized(): Unit = synchronized {
+
+    if (isModelLoaded)
+      return
+
+    println(
+      "[ONNX] action=lazy_initialize " +
+      s"windowModel=$windowModelPath " +
+      s"watermarkModel=$watermarkModelPath"
+    )
+
+    println(
+      "[ONNX] action=file_check " +
+      s"path=$windowModelPath " +
+      s"exists=${new File(windowModelPath).exists()}"
+    )
+
+    println(
+      "[ONNX] action=file_check " +
+      s"path=$watermarkModelPath " +
+      s"exists=${new File(watermarkModelPath).exists()}"
+    )
+
+    try {
+
+      env = OrtEnvironment.getEnvironment()
+
+      val options =
+        new OrtSession.SessionOptions()
+
+      if (windowSession == null) {
+
+        val file = new File(windowModelPath)
+
+        if (file.exists()) {
+
+          windowSession =
+            env.createSession(windowModelPath, options)
+
+          println(
+            "[ONNX] action=load type=window status=success"
+          )
+        }
+      }
+
+      if (watermarkSession == null) {
+
+        val file = new File(watermarkModelPath)
+
+        if (file.exists()) {
+
+          watermarkSession =
+            env.createSession(watermarkModelPath, options)
+
+          println(
+            "[ONNX] action=load type=watermark status=success"
+          )
+        }
+      }
+
+    } catch {
+
+      case ex: Throwable =>
+        println(
+          s"[ONNX] action=lazy_initialize status=failed reason=${ex.getMessage}"
+        )
+    }
+
+    initialized = true
+  }
+
   // ============================================================
   // Prediction
   // ============================================================
@@ -130,6 +210,8 @@ object ONNXInference extends Serializable {
     var tensor: OnnxTensor = null
 
     try {
+
+      ensureInitialized()
 
       println(
         "[ONNX] debug " +

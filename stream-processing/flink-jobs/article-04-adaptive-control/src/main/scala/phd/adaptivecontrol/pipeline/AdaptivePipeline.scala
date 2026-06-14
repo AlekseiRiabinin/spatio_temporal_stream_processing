@@ -27,8 +27,28 @@ object AdaptivePipeline {
     @transient private var lastAdaptationTs: Long = 0L
 
     private def initIfNeeded(): Unit = {
+
       if (!initialized) {
+
         StreamProfiler.setConfig(config)
+
+        // ------------------------------------------------------
+        // Initialize ONNX inside TaskManager JVM
+        // ------------------------------------------------------
+        if (config.mlInference) {
+
+          println(
+            "[ADAPTIVE CONTROL] action=onnx_initialize"
+          )
+
+          ONNXInference.initialize(config)
+
+          println(
+            s"[ADAPTIVE CONTROL] action=onnx_status " +
+            s"status=${ONNXInference.status}"
+          )
+        }
+
         initialized = true
       }
     }

@@ -4,13 +4,20 @@ package phd.adaptivecontrol.model
 /**
  * StreamFeatures
  *
- * Clean ML feature vector for:
- *   - ONNX inference
- *   - adaptive window control
- *   - adaptive watermark tuning
- *   - spatio-temporal behavior modeling
+ * Complete feature snapshot used by:
+ *   - StreamProfiler
+ *   - FeatureExtractor
+ *   - FeaturePreprocessor
+ *   - ONNXInference
  */
 case class StreamFeatures(
+
+  // ============================================================
+  // Categorical ML features
+  // ============================================================
+  profile: String,
+  ratePattern: String,
+  motionMode: String,
 
   // ============================================================
   // Temporal stream behavior
@@ -41,7 +48,7 @@ case class StreamFeatures(
   processingLatencyMs: Double,
 
   // ============================================================
-  // Adaptive control values (dynamic)
+  // Adaptive control values
   // ============================================================
   adaptiveWindowSizeMs: Long,
   adaptiveWatermarkDelayMs: Long,
@@ -53,34 +60,9 @@ case class StreamFeatures(
 ) {
 
   // ============================================================
-  // ONNX input vector
-  // ============================================================
-  def toVector: Array[Float] = {
-    Array(
-      eventRate.toFloat,
-      disorderRatio.toFloat,
-      lateEventRatio.toFloat,
-      averageLatencyMs.toFloat,
-
-      windowFillRatio.toFloat,
-
-      interactionRate.toFloat,
-      collisionRate.toFloat,
-      proximityRate.toFloat,
-      swarmRate.toFloat,
-      conflictRate.toFloat,
-
-      watermarkLagMs.toFloat,
-      processingLatencyMs.toFloat,
-
-      adaptiveWindowSizeMs.toFloat,
-      adaptiveWatermarkDelayMs.toFloat
-    )
-  }
-
-  // ============================================================
   // Simple ML heuristics
   // ============================================================
+
   def isHighlyDisordered: Boolean =
     disorderRatio > 0.3 || lateEventRatio > 0.2
 
@@ -89,6 +71,9 @@ case class StreamFeatures(
 
   override def toString: String =
     s"StreamFeatures(" +
+      s"profile=$profile, " +
+      s"ratePattern=$ratePattern, " +
+      s"motionMode=$motionMode, " +
       s"eventRate=$eventRate, " +
       s"disorderRatio=$disorderRatio, " +
       s"lateEventRatio=$lateEventRatio, " +
@@ -108,8 +93,15 @@ case class StreamFeatures(
 
 object StreamFeatures {
 
-  def empty(timestamp: Long = System.currentTimeMillis()): StreamFeatures =
+  def empty(
+    timestamp: Long = System.currentTimeMillis()
+  ): StreamFeatures =
     StreamFeatures(
+
+      profile = "realtime",
+      ratePattern = "constant",
+      motionMode = "straight",
+
       eventRate = 0.0,
       disorderRatio = 0.0,
       lateEventRatio = 0.0,

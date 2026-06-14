@@ -31,6 +31,7 @@ case class AdaptiveConfig(
   // ------------------------------------------------------------
   windowModelPath: String = "/opt/models/model_a_window.onnx",
   watermarkModelPath: String = "/opt/models/model_b_watermark.onnx",
+  scalerParamsPath: String = "/opt/models/scaler_params.json",
 
   // ------------------------------------------------------------
   // Adaptation interval

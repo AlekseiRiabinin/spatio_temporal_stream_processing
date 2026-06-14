@@ -149,6 +149,8 @@ services:
         metrics.reporters: prom
         metrics.reporter.prom.class: org.apache.flink.metrics.prometheus.PrometheusReporter
         metrics.reporter.prom.port: 9249
+    volumes:
+      - ../ml/article_4/models/onnx:/opt/models:ro
     command: jobmanager
     networks: [kafka-net]
     restart: always
@@ -171,6 +173,8 @@ services:
         metrics.reporters: prom
         metrics.reporter.prom.class: org.apache.flink.metrics.prometheus.PrometheusReporter
         metrics.reporter.prom.port: 9249
+    volumes:
+      - ../ml/article_4/models/onnx:/opt/models:ro
     command: taskmanager
     networks: [kafka-net]
     restart: always

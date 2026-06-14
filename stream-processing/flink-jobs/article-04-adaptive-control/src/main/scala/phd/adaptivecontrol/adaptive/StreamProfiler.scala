@@ -102,6 +102,14 @@ object StreamProfiler extends Serializable {
   private var adaptiveWatermarkDelayMs: Long = 0L
 
   // ============================================================
+  // ML categorical features
+  // ============================================================
+
+  private var profile: String = "mixed"
+  private var ratePattern: String = "constant"
+  private var motionMode: String = "random_walk"
+
+  // ============================================================
   // Controller metrics
   // ============================================================
 
@@ -127,6 +135,10 @@ object StreamProfiler extends Serializable {
 
     previousWindowSizeMs = adaptiveWindowSizeMs
     previousWatermarkDelayMs = adaptiveWatermarkDelayMs
+
+    profile = "mixed"
+    ratePattern = "constant"
+    motionMode = "random_walk"
   }
 
   def updateWatermark(wm: Long): Unit =
@@ -380,6 +392,23 @@ object StreamProfiler extends Serializable {
     if (adaptationCount <= 1) 0.0
     else adaptationIntervalSumMs / (adaptationCount - 1)
 
+  def currentProfile: String =
+    profile
+
+  def currentRatePattern: String =
+    ratePattern
+
+  def currentMotionMode: String =
+    motionMode
+
+  def setProfile(value: String): Unit =
+    profile = value
+
+  def setRatePattern(value: String): Unit =
+    ratePattern = value
+
+  def setMotionMode(value: String): Unit =
+    motionMode = value
 
   // ============================================================
   // Snapshot for ML
@@ -393,26 +422,36 @@ object StreamProfiler extends Serializable {
       math.max(totalInteractions, 1L)
 
     StreamFeatures(
+      profile = profile,
+      ratePattern = ratePattern,
+      motionMode = motionMode,
+
       eventRate = eventRate,
       disorderRatio = disorderRatio,
       lateEventRatio = lateEventRatio,
       averageLatencyMs = averageLatencyMs,
+
       windowFillRatio = averageWindowFill,
+
       interactionRate = interactionRate,
       collisionRate = collisionCount.toDouble / safeInteractions,
       proximityRate = proximityCount.toDouble / safeInteractions,
       swarmRate = swarmCount.toDouble / safeInteractions,
       conflictRate = conflictCount.toDouble / safeInteractions,
+
       watermarkLagMs =
         if (currentWatermark == Long.MinValue) 0L
         else now - currentWatermark,
+
       processingLatencyMs =
         if (processingOperations == 0)
           (now - lastEventTimestamp)
         else
-          averageProcessingLatencyMs.toLong,
+          averageProcessingLatencyMs,
+
       adaptiveWindowSizeMs = adaptiveWindowSizeMs,
       adaptiveWatermarkDelayMs = adaptiveWatermarkDelayMs,
+
       timestamp = now
     )
   }
