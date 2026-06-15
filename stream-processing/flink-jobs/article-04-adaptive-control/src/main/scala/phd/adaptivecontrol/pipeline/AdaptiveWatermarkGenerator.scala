@@ -23,7 +23,6 @@ class AdaptiveWatermarkGenerator
     output: WatermarkOutput
   ): Unit = {
 
-    // Track event-time progress
     maxTimestampSeen =
       math.max(maxTimestampSeen, eventTimestamp)
   }
@@ -33,14 +32,21 @@ class AdaptiveWatermarkGenerator
     if (maxTimestampSeen == Long.MinValue)
       return
 
-    // Adaptive delay from runtime state
+    // --------------------------------------------------------
+    // runtime delay retrieval
+    // --------------------------------------------------------
     val delayMs =
       math.max(0L, AdaptiveRuntimeState.watermarkDelayMs)
 
-    // Compute watermark (event-time - delay)
-    val watermarkTs =
-      maxTimestampSeen - delayMs
+    val safeDelayMs =
+      if (delayMs <= 0L) 3000L else delayMs   // fallback safety
 
+    val watermarkTs =
+      maxTimestampSeen - safeDelayMs
+
+    // --------------------------------------------------------
+    // expose watermark to profiler
+    // --------------------------------------------------------
     StreamProfiler.updateWatermark(watermarkTs)
 
     // Emit watermark into Flink
@@ -50,7 +56,7 @@ class AdaptiveWatermarkGenerator
     println(
       "[ADAPTIVE WATERMARK] " +
       s"watermark=$watermarkTs " +
-      s"delayMs=$delayMs " +
+      s"delayMs=$safeDelayMs " +
       s"maxTimestampSeen=$maxTimestampSeen"
     )
   }

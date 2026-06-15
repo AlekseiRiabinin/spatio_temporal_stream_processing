@@ -1,25 +1,32 @@
 package phd.adaptivecontrol.config
 
 
+/**
+ * AdaptiveConfig
+ *
+ * Clean configuration model:
+ * - NO string-based mode switching
+ * - Explicit typed strategy modes
+ */
 case class AdaptiveConfig(
 
   // ------------------------------------------------------------
-  // Fixed (configured) values
+  // Fixed (configured) baseline values
   // ------------------------------------------------------------
   windowSizeMs: Long,
   watermarkDelayMs: Long,
 
   // ------------------------------------------------------------
-  // Adaptive (dynamic) values
+  // Adaptive (runtime-updated values)
   // ------------------------------------------------------------
-  var adaptiveWindowSizeMs: Long = 0L,
-  var adaptiveWatermarkDelayMs: Long = 0L,
+  @volatile var adaptiveWindowSizeMs: Long = 0L,
+  @volatile var adaptiveWatermarkDelayMs: Long = 0L,
 
   // ------------------------------------------------------------
-  // Strategies
+  // Strategy modes
   // ------------------------------------------------------------
-  windowStrategy: String = "fixed",
-  watermarkStrategy: String = "fixed",
+  windowMode: StrategyMode = StrategyMode.Fixed,
+  watermarkMode: StrategyMode = StrategyMode.Fixed,
 
   // ------------------------------------------------------------
   // ML inference
@@ -37,4 +44,17 @@ case class AdaptiveConfig(
   // Adaptation interval
   // ------------------------------------------------------------
   adaptationIntervalMs: Long = 2000L
-)
+) {
+
+  /**
+   * Convenience helper used across pipeline.
+   * Eliminates repeated OR logic like:
+   * windowStrategy == "adaptive" || watermarkStrategy == "adaptive"
+   */
+  def isAdaptive: Boolean =
+    windowMode == StrategyMode.Adaptive ||
+    watermarkMode == StrategyMode.Adaptive
+
+  def isFixed: Boolean =
+    !isAdaptive
+}

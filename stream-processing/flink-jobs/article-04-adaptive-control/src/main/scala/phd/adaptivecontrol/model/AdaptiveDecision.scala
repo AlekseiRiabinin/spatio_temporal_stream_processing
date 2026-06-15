@@ -11,8 +11,8 @@ package phd.adaptivecontrol.model
  * Supports:
  *   - rule-based control
  *   - ONNX inference
- *   - future ML models
- *   - future RL policies
+ *   - ML / RL policies
+ *   - fixed deterministic mode
  */
 case class AdaptiveDecision(
 
@@ -58,13 +58,12 @@ case class AdaptiveDecision(
   /**
    * Decision validity.
    */
-  def isValid: Boolean = {
+  def isValid: Boolean =
     watermarkDelayMs >= 0 &&
     windowSizeMs > 0 &&
     allowedLatenessMs >= 0 &&
     confidence >= 0.0 &&
     confidence <= 1.0
-  }
 
   /**
    * High-confidence decision.
@@ -72,7 +71,7 @@ case class AdaptiveDecision(
   def isReliable: Boolean =
     confidence >= 0.8
 
-  override def toString: String = {
+  override def toString: String =
     s"AdaptiveDecision(" +
       s"watermarkDelayMs=$watermarkDelayMs, " +
       s"windowSizeMs=$windowSizeMs, " +
@@ -86,14 +85,18 @@ case class AdaptiveDecision(
       s"modelVersion=$modelVersion, " +
       s"inferenceLatencyMs=$inferenceLatencyMs, " +
       s"timestamp=$timestamp)"
-  }
 }
 
+
+// ============================================================
+// Decision strategy taxonomy
+// ============================================================
 
 sealed trait DecisionStrategy
 
 object DecisionStrategy {
 
+  case object Fixed extends DecisionStrategy
   case object RuleBased extends DecisionStrategy
   case object ONNX extends DecisionStrategy
   case object ML extends DecisionStrategy

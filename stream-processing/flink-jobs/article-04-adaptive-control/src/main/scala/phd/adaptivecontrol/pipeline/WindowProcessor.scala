@@ -10,13 +10,13 @@ import org.apache.flink.util.Collector
 
 import phd.adaptivecontrol.model.GeoEvent
 import phd.adaptivecontrol.config.AdaptiveConfig
-import phd.adaptivecontrol.adaptive.StreamProfiler
+import phd.adaptivecontrol.adaptive.{StreamProfiler, AdaptiveRuntimeState}
 
 
 object WindowProcessor {
 
   // ------------------------------------------------------------
-  // Explicit TypeInformation
+  // TypeInformation
   // ------------------------------------------------------------
   implicit val geoEventTypeInfo: TypeInformation[GeoEvent] =
     TypeInformation.of(classOf[GeoEvent])
@@ -33,32 +33,19 @@ object WindowProcessor {
   ): DataStream[List[GeoEvent]] = {
 
     // ------------------------------------------------------------
-    // Select window size based on strategy
+    // Runtime-driven window size
     // ------------------------------------------------------------
-    val windowSizeMs: Long =
-      config.windowStrategy match {
-
-        case "adaptive" =>
-          // Use adaptive value (updated dynamically)
-          config.adaptiveWindowSizeMs
-
-        case "fixed" | _ =>
-          // Default: use configured fixed window
-          config.windowSizeMs
-      }
+    val initialWindowMs: Long =
+      math.max(1000L, AdaptiveRuntimeState.windowSizeMs)
 
     println(
-      s"[WINDOW PROCESSOR] action=config " +
-      s"strategy=${config.windowStrategy} " +
-      s"effectiveWindow=$windowSizeMs"
+      s"[WINDOW PROCESSOR] action=start " +
+      s"initialWindowMs=$initialWindowMs"
     )
 
-    // ------------------------------------------------------------
-    // Apply tumbling event-time window
-    // ------------------------------------------------------------
     stream
       .keyBy(_ => "global")
-      .window(TumblingEventTimeWindows.of(Time.milliseconds(windowSizeMs)))
+      .window(TumblingEventTimeWindows.of(Time.milliseconds(initialWindowMs)))
       .process(
         new ProcessWindowFunction[
           GeoEvent,
@@ -76,15 +63,17 @@ object WindowProcessor {
 
             val batch = elements.toList
 
+            val effectiveWindowMs =
+              AdaptiveRuntimeState.windowSizeMs
+
             println(
               s"[WINDOW PROCESSOR] key=$key " +
               s"events=${batch.size} " +
               s"windowStart=${context.window.getStart} " +
               s"windowEnd=${context.window.getEnd} " +
-              s"effectiveWindowSizeMs=$windowSizeMs"
+              s"effectiveWindowSizeMs=$effectiveWindowMs"
             )
 
-            // Update profiler window stats
             StreamProfiler.updateWindow(batch.size)
 
             out.collect(batch)

@@ -6,7 +6,7 @@ import org.apache.flink.api.scala.createTypeInformation
 import org.apache.flink.util.Collector
 import org.apache.flink.api.common.functions.FlatMapFunction
 
-import phd.adaptivecontrol.config.AdaptiveConfig
+import phd.adaptivecontrol.config.{AdaptiveConfig, StrategyMode}
 import phd.adaptivecontrol.model.{GeoEvent, Interaction}
 import phd.adaptivecontrol.interaction.InteractionEngine
 import phd.adaptivecontrol.adaptive.{
@@ -28,21 +28,18 @@ object AdaptivePipeline {
     @transient private var initialized: Boolean = false
     @transient private var lastAdaptationTs: Long = 0L
 
+    // ============================================================
+    // Initialization
+    // ============================================================
     private def initIfNeeded(): Unit = {
 
       if (!initialized) {
 
         StreamProfiler.setConfig(config)
 
-        // ------------------------------------------------------
-        // Initialize ONNX inside TaskManager JVM
-        // ------------------------------------------------------
         if (config.mlInference) {
 
-          println(
-            "[ADAPTIVE CONTROL] action=preprocessor_initialize"
-          )
-
+          println("[ADAPTIVE CONTROL] action=preprocessor_initialize")
           FeaturePreprocessor.initialize(config)
 
           println(
@@ -50,10 +47,7 @@ object AdaptivePipeline {
             s"initialized=${FeaturePreprocessor.isInitialized}"
           )
 
-          println(
-            "[ADAPTIVE CONTROL] action=onnx_initialize"
-          )
-
+          println("[ADAPTIVE CONTROL] action=onnx_initialize")
           ONNXInference.initialize(config)
 
           println(
@@ -76,10 +70,7 @@ object AdaptivePipeline {
     private def shouldAdapt(): Boolean = {
       val now = System.currentTimeMillis()
 
-      if (
-        now - lastAdaptationTs >=
-        config.adaptationIntervalMs
-      ) {
+      if (now - lastAdaptationTs >= config.adaptationIntervalMs) {
         lastAdaptationTs = now
         true
       } else {
@@ -87,6 +78,9 @@ object AdaptivePipeline {
       }
     }
 
+    // ============================================================
+    // Main processing
+    // ============================================================
     override def flatMap(
       batch: List[GeoEvent],
       out: Collector[Interaction]
@@ -94,9 +88,6 @@ object AdaptivePipeline {
 
       initIfNeeded()
 
-      // ----------------------------------------------------------
-      // Start processing timer
-      // ----------------------------------------------------------
       val t0 = System.currentTimeMillis()
 
       // ----------------------------------------------------------
@@ -113,12 +104,11 @@ object AdaptivePipeline {
       val features =
         StreamProfiler.snapshot()
 
-      // ----------------------------------------------------------
-      // Adaptive mode only
-      // ----------------------------------------------------------
+      // ============================================================
+      // CLEAN ADAPTIVE DECISION LOGIC
+      // ============================================================
       val adaptiveEnabled =
-        config.windowStrategy == "adaptive" ||
-        config.watermarkStrategy == "adaptive"
+        config.isAdaptive && config.mlInference
 
       if (adaptiveEnabled && shouldAdapt()) {
 
@@ -154,31 +144,25 @@ object AdaptivePipeline {
           "[ADAPTIVE CONTROL] " +
           s"window=${decision.windowSizeMs} " +
           s"watermark=${decision.watermarkDelayMs} " +
-          s"inference_ms=${
-            prediction.inferenceLatencyMs.getOrElse(0.0).formatted("%.3f")
-          } " +
+          s"inference_ms=${prediction.inferenceLatencyMs.getOrElse(0.0).formatted("%.3f")} " +
           s"confidence=${decision.confidence.formatted("%.4f")} " +
           s"strategy=${decision.strategy} " +
           s"model_version=${decision.modelVersion.getOrElse("none")}"
         )
       }
 
-      // ----------------------------------------------------------
-      // End processing timer
-      // ----------------------------------------------------------
       val t1 = System.currentTimeMillis()
-
       StreamProfiler.recordProcessingLatency(t1 - t0)
 
-      // ----------------------------------------------------------
-      // Logging + output
-      // ----------------------------------------------------------
       StreamProfiler.logSnapshot()
 
       results.foreach(out.collect)
     }
   }
 
+  // ============================================================
+  // Pipeline build
+  // ============================================================
   def build(
     env: StreamExecutionEnvironment,
     inputStream: DataStream[GeoEvent],
@@ -189,8 +173,8 @@ object AdaptivePipeline {
       "[ADAPTIVE PIPELINE] action=start " +
       s"windowSizeMs=${config.windowSizeMs} " +
       s"watermarkDelayMs=${config.watermarkDelayMs} " +
-      s"windowStrategy=${config.windowStrategy} " +
-      s"watermarkStrategy=${config.watermarkStrategy} " +
+      s"windowMode=${config.windowMode} " +
+      s"watermarkMode=${config.watermarkMode} " +
       s"mlInference=${config.mlInference} " +
       s"adaptationIntervalMs=${config.adaptationIntervalMs}"
     )

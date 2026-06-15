@@ -3,20 +3,6 @@ package phd.adaptivecontrol.adaptive
 import phd.adaptivecontrol.model._
 
 
-/**
- * AdaptiveController
- *
- * Converts AdaptivePrediction into
- * executable AdaptiveDecision.
- *
- * Responsibilities:
- *   - safety validation
- *   - bounds enforcement
- *   - runtime constraints
- *   - decision construction
- *
- * Does NOT perform inference.
- */
 object AdaptiveController extends Serializable {
 
   // ============================================================
@@ -30,7 +16,7 @@ object AdaptiveController extends Serializable {
   private val MaxWatermarkMs = 10000L
 
   // ============================================================
-  // Runtime thresholds
+  // Default thresholds
   // ============================================================
 
   private val DefaultProximityThreshold = 50.0
@@ -49,16 +35,34 @@ object AdaptiveController extends Serializable {
   ): AdaptiveDecision = {
 
     // ----------------------------------------------------------
-    // Safety fallback
+    // If system is in FIXED mode -> no ML-driven behavior
+    // ----------------------------------------------------------
+
+    if (AdaptiveRuntimeState.isFixed) {
+
+      return AdaptiveDecision(
+        watermarkDelayMs = 3000L,
+        windowSizeMs = 5000L,
+        allowedLatenessMs = 3000L,
+        proximityThresholdMeters = DefaultProximityThreshold,
+        collisionThresholdMeters = DefaultCollisionThreshold,
+        conflictThresholdMeters = DefaultConflictThreshold,
+        predictionHorizonSec = DefaultPredictionHorizonSec,
+        confidence = 1.0,
+        strategy = DecisionStrategy.ONNX,
+        modelVersion = None,
+        inferenceLatencyMs = Some(0.0),
+        timestamp = System.currentTimeMillis()
+      )
+    }
+
+    // ----------------------------------------------------------
+    // ADAPTIVE mode logic
     // ----------------------------------------------------------
 
     val safePrediction =
       if (prediction.isValid) prediction
       else AdaptivePrediction.empty()
-
-    // ----------------------------------------------------------
-    // Clamp adaptive values
-    // ----------------------------------------------------------
 
     val windowSizeMs =
       math.max(
@@ -71,10 +75,6 @@ object AdaptiveController extends Serializable {
         MinWatermarkMs,
         math.min(safePrediction.watermarkDelayMs, MaxWatermarkMs)
       )
-
-    // ----------------------------------------------------------
-    // Build executable decision
-    // ----------------------------------------------------------
 
     AdaptiveDecision(
       watermarkDelayMs = watermarkDelayMs,

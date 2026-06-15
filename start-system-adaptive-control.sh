@@ -8,12 +8,7 @@ EVENT_RATE_PATTERN_ARG=${2:-}
 MOTION_MODE_ARG=${3:-}
 FIXED_WINDOW_MS_ARG=${4:-}
 FIXED_WATERMARK_MS_ARG=${5:-}
-ADAPTIVE_MODE_ARG=${6:-}
-
-# ============================================================
-# NEW (ADDED - SAFE EXTENSION)
-# ============================================================
-ML_INFERENCE_ARG=${7:-}
+ADAPTIVE_MODE_ARG=${6:-}   # only: fixed | adaptive
 
 echo "=== Starting Adaptive Control System (Article 04) ==="
 
@@ -74,7 +69,7 @@ configure_experiment() {
     FIXED_WATERMARK_MS=3000
 
     # --------------------------------------------------------
-    # CLI overrides (fixed execution parameters only)
+    # CLI overrides
     # --------------------------------------------------------
     [ -n "$TIMESTAMP_PATTERN_ARG" ] && TIMESTAMP_PATTERN="$TIMESTAMP_PATTERN_ARG"
     [ -n "$EVENT_RATE_PATTERN_ARG" ] && EVENT_RATE_PATTERN="$EVENT_RATE_PATTERN_ARG"
@@ -83,26 +78,16 @@ configure_experiment() {
     [ -n "$FIXED_WATERMARK_MS_ARG" ] && FIXED_WATERMARK_MS="$FIXED_WATERMARK_MS_ARG"
 
     # --------------------------------------------------------
-    # Execution mode
+    # Execution mode (ONLY fixed | adaptive)
     # --------------------------------------------------------
-
     if [ "$ADAPTIVE_MODE_ARG" = "adaptive" ]; then
-
         WINDOW_STRATEGY="adaptive"
         WATERMARK_STRATEGY="adaptive"
-
-        if [ "$ML_INFERENCE_ARG" = "true" ]; then
-            ML_INFERENCE="true"
-        else
-            ML_INFERENCE="false"
-        fi
-
+        ML_INFERENCE="true"
     else
-
         WINDOW_STRATEGY="fixed"
         WATERMARK_STRATEGY="fixed"
         ML_INFERENCE="false"
-
     fi
 
     # --------------------------------------------------------
@@ -123,7 +108,7 @@ configure_experiment() {
     esac
 
     # --------------------------------------------------------
-    # EXPERIMENT PROFILE EXPANSION (UNCHANGED)
+    # EXPERIMENT PROFILE EXPANSION
     # --------------------------------------------------------
     case "$TIMESTAMP_PATTERN" in
         realtime)
@@ -160,7 +145,7 @@ configure_experiment() {
 }
 
 # ============================================================
-# EXPORT ENVIRONMENT (ONLY ADD ML ARG EXPORT)
+# EXPORT ENVIRONMENT
 # ============================================================
 export_experiment_env() {
 
@@ -188,9 +173,6 @@ export_experiment_env() {
     export ENABLE_GPS_DROPOUT
     export GPS_DROPOUT_PROBABILITY
 
-    # --------------------------------------------------------
-    # Adaptive system exports
-    # --------------------------------------------------------
     export WINDOW_STRATEGY
     export WINDOW_SIZE_MS
     export WATERMARK_STRATEGY
@@ -277,7 +259,6 @@ echo "ADAPTIVE CONTROL SYSTEM READY"
 echo "======================================"
 echo "Flink UI: http://localhost:8081"
 
-# ./start-system-adaptive-control.sh skewed wave corridor 5000 3000 -> Fixed mode (default)
-# ./start-system-adaptive-control.sh skewed wave corridor 5000 3000 adaptive false -> Adaptive mode (rule‑based adaptive window + watermark)
-# ./start-system-adaptive-control.sh skewed wave corridor 5000 3000 adaptive true -> Adaptive mode (ml‑based adaptive window + watermark)
-# ./start-system-adaptive-control.sh skewed wave corridor "" "" adaptive -> Adaptive mode with clean defaults
+
+# ./start-system-adaptive-control.sh skewed wave corridor 5000 3000 fixed
+# ./start-system-adaptive-control.sh skewed wave corridor 5000 3000 adaptive

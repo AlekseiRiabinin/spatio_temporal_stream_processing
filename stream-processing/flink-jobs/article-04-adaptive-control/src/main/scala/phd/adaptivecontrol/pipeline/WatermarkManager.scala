@@ -3,22 +3,26 @@ package phd.adaptivecontrol.pipeline
 import java.time.Duration
 
 import org.apache.flink.api.common.eventtime.{
-  SerializableTimestampAssigner,
+  Watermark,
+  WatermarkGenerator,
   WatermarkGeneratorSupplier,
-  WatermarkStrategy
+  WatermarkOutput,
+  WatermarkStrategy,
+  SerializableTimestampAssigner
 }
 
 import phd.adaptivecontrol.model.GeoEvent
-import phd.adaptivecontrol.config.AdaptiveConfig
-import phd.adaptivecontrol.adaptive.AdaptiveRuntimeState
+import phd.adaptivecontrol.config.{AdaptiveConfig, StrategyMode}
+import phd.adaptivecontrol.adaptive.{AdaptiveRuntimeState, StreamProfiler}
 
 
 /**
  * WatermarkManager
  *
- * Supports:
- *   - fixed watermark strategy
- *   - adaptive watermark strategy
+ * Clean design:
+ * - NO string-based switching
+ * - NO duplicated watermark logic
+ * - Single responsibility per strategy
  */
 object WatermarkManager {
 
@@ -27,12 +31,12 @@ object WatermarkManager {
   // ============================================================
   def build(config: AdaptiveConfig): WatermarkStrategy[GeoEvent] = {
 
-    config.watermarkStrategy match {
+    config.watermarkMode match {
 
       // ========================================================
-      // Adaptive Watermarks
+      // Adaptive Watermarks (runtime + ML controlled)
       // ========================================================
-      case "adaptive" =>
+      case StrategyMode.Adaptive =>
 
         println(
           "[WATERMARK MANAGER] action=build " +
@@ -45,31 +49,81 @@ object WatermarkManager {
             (_: WatermarkGeneratorSupplier.Context) =>
               new AdaptiveWatermarkGenerator
           )
-
-      // ========================================================
-      // Fixed Watermarks
-      // ========================================================
-      case "fixed" | _ =>
-
-        println(
-          "[WATERMARK MANAGER] action=build " +
-          s"strategy=fixed " +
-          s"effectiveDelay=${config.watermarkDelayMs}"
-        )
-
-        WatermarkStrategy
-          .forBoundedOutOfOrderness[GeoEvent](
-            Duration.ofMillis(config.watermarkDelayMs)
-          )
           .withTimestampAssigner(
             new SerializableTimestampAssigner[GeoEvent] {
               override def extractTimestamp(
                 event: GeoEvent,
                 recordTimestamp: Long
-              ): Long =
-                event.timestamp
+              ): Long = event.timestamp
             }
           )
+
+      // ========================================================
+      // Fixed Watermarks (deterministic bounded delay)
+      // ========================================================
+      case StrategyMode.Fixed =>
+        createFixedWatermarkStrategy(config)
+
     }
+  }
+
+  // ============================================================
+  // Fixed watermark strategy (isolated, no duplication)
+  // ============================================================
+  private def createFixedWatermarkStrategy(
+    config: AdaptiveConfig
+  ): WatermarkStrategy[GeoEvent] = {
+
+    println(
+      "[WATERMARK MANAGER] action=build " +
+      s"strategy=fixed " +
+      s"effectiveDelay=${config.watermarkDelayMs}"
+    )
+
+    WatermarkStrategy
+      .forGenerator(
+        new WatermarkGeneratorSupplier[GeoEvent] {
+
+          override def createWatermarkGenerator(
+            context: WatermarkGeneratorSupplier.Context
+          ): WatermarkGenerator[GeoEvent] = {
+
+            new WatermarkGenerator[GeoEvent] {
+
+              private var maxTimestampSeen: Long = Long.MinValue
+
+              override def onEvent(
+                event: GeoEvent,
+                eventTimestamp: Long,
+                output: WatermarkOutput
+              ): Unit = {
+                maxTimestampSeen =
+                  math.max(maxTimestampSeen, eventTimestamp)
+              }
+
+              override def onPeriodicEmit(output: WatermarkOutput): Unit = {
+
+                if (maxTimestampSeen == Long.MinValue)
+                  return
+
+                val watermarkTs =
+                  maxTimestampSeen - config.watermarkDelayMs
+
+                StreamProfiler.updateWatermark(watermarkTs)
+
+                output.emitWatermark(new Watermark(watermarkTs))
+              }
+            }
+          }
+        }
+      )
+      .withTimestampAssigner(
+        new SerializableTimestampAssigner[GeoEvent] {
+          override def extractTimestamp(
+            event: GeoEvent,
+            recordTimestamp: Long
+          ): Long = event.timestamp
+        }
+      )
   }
 }

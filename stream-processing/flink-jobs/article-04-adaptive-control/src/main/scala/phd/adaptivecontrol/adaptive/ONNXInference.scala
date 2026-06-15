@@ -210,6 +210,12 @@ object ONNXInference extends Serializable {
 
   def predict(features: StreamFeatures): AdaptivePrediction = {
 
+    if (!AdaptiveRuntimeState.isAdaptive) {
+      throw new IllegalStateException(
+        "ONNX inference requested while adaptive mode is disabled"
+      )
+    }
+
     val startNs = System.nanoTime()
     var tensor: OnnxTensor = null
 
@@ -308,97 +314,11 @@ object ONNXInference extends Serializable {
         inferenceLatencyMs = Some(inferenceLatencyMs)
       )
 
-    } catch {
-
-      case ex: Throwable =>
-
-        println(
-          s"[ONNX] action=inference status=fallback reason=${ex.getMessage}"
-        )
-
-        predictRuleBased(features)
-
     } finally {
       if (tensor != null) tensor.close()
     }
   }
 
-  // ============================================================
-  // Rule-based fallback
-  // ============================================================
-
-  private def predictRuleBased(features: StreamFeatures): AdaptivePrediction = {
-
-    val startNs = System.nanoTime()
-
-    var windowSizeMs =
-      if (features.adaptiveWindowSizeMs > 0)
-        features.adaptiveWindowSizeMs
-      else
-        DefaultWindowMs
-
-    var watermarkDelayMs =
-      if (features.adaptiveWatermarkDelayMs > 0)
-        features.adaptiveWatermarkDelayMs
-      else
-        DefaultWatermarkMs
-
-    if (
-      features.disorderRatio > 0.20 ||
-      features.lateEventRatio > 0.20
-    ) {
-      watermarkDelayMs =
-        math.min(watermarkDelayMs * 2, MaxWatermarkMs)
-    }
-
-    if (
-      features.eventRate > 100.0 ||
-      features.processingLatencyMs > 1000.0
-    ) {
-      windowSizeMs =
-        math.min(windowSizeMs * 2, MaxWindowMs)
-    }
-
-    if (
-      features.eventRate < 20.0 &&
-      features.processingLatencyMs < 100.0
-    ) {
-
-      windowSizeMs =
-        math.max(windowSizeMs / 2, MinWindowMs)
-
-      watermarkDelayMs =
-        math.max(watermarkDelayMs / 2, MinWatermarkMs)
-    }
-
-    if (
-      features.collisionRate > 0.05 ||
-      features.conflictRate > 0.05
-    ) {
-      watermarkDelayMs =
-        math.min(watermarkDelayMs + 1000L, MaxWatermarkMs)
-    }
-
-    var confidence = 1.0
-
-    confidence -= features.disorderRatio * 0.5
-    confidence -= features.lateEventRatio * 0.3
-
-    confidence =
-      math.max(0.0, math.min(confidence, 1.0))
-
-    val inferenceLatencyMs =
-      (System.nanoTime() - startNs) / 1000000.0
-
-    AdaptivePrediction(
-      windowSizeMs = windowSizeMs,
-      watermarkDelayMs = watermarkDelayMs,
-      confidence = confidence,
-      strategy = DecisionStrategy.RuleBased,
-      modelVersion = Some(FallbackModelVersion),
-      inferenceLatencyMs = Some(inferenceLatencyMs)
-    )
-  }
 
   // ============================================================
   // Runtime state
