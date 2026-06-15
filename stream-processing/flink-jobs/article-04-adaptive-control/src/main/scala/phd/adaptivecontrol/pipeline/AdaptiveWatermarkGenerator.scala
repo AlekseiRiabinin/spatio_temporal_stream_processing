@@ -7,12 +7,16 @@ import org.apache.flink.api.common.eventtime.{
 }
 
 import phd.adaptivecontrol.model.GeoEvent
-import phd.adaptivecontrol.adaptive.AdaptiveRuntimeState
-import phd.adaptivecontrol.adaptive.StreamProfiler
+import phd.adaptivecontrol.config.{AdaptiveConfig, StrategyMode}
+import phd.adaptivecontrol.adaptive.{
+  AdaptiveRuntimeState,
+  StreamProfiler
+}
 
 
-class AdaptiveWatermarkGenerator
-  extends WatermarkGenerator[GeoEvent] {
+class AdaptiveWatermarkGenerator(
+  config: AdaptiveConfig
+) extends WatermarkGenerator[GeoEvent] {
 
   private var maxTimestampSeen: Long =
     Long.MinValue
@@ -33,30 +37,43 @@ class AdaptiveWatermarkGenerator
       return
 
     // --------------------------------------------------------
-    // runtime delay retrieval
+    // Watermark delay selection
     // --------------------------------------------------------
     val delayMs =
-      math.max(0L, AdaptiveRuntimeState.watermarkDelayMs)
+      config.watermarkMode match {
 
-    val safeDelayMs =
-      if (delayMs <= 0L) 3000L else delayMs   // fallback safety
+        case StrategyMode.Adaptive =>
+          math.max(
+            0L,
+            AdaptiveRuntimeState.watermarkDelayMs
+          )
+
+        case StrategyMode.Fixed =>
+          math.max(
+            0L,
+            config.watermarkDelayMs
+          )
+      }
 
     val watermarkTs =
-      maxTimestampSeen - safeDelayMs
+      maxTimestampSeen - delayMs
 
     // --------------------------------------------------------
-    // expose watermark to profiler
+    // Expose watermark to profiler
     // --------------------------------------------------------
     StreamProfiler.updateWatermark(watermarkTs)
 
+    // --------------------------------------------------------
     // Emit watermark into Flink
-    output.emitWatermark(new Watermark(watermarkTs))
+    // --------------------------------------------------------
+    output.emitWatermark(
+      new Watermark(watermarkTs)
+    )
 
-    // Logging
     println(
       "[ADAPTIVE WATERMARK] " +
       s"watermark=$watermarkTs " +
-      s"delayMs=$safeDelayMs " +
+      s"delayMs=$delayMs " +
       s"maxTimestampSeen=$maxTimestampSeen"
     )
   }

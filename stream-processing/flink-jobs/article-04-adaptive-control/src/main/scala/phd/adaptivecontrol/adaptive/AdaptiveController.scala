@@ -61,8 +61,10 @@ object AdaptiveController extends Serializable {
     // ----------------------------------------------------------
 
     val safePrediction =
-      if (prediction.isValid) prediction
-      else AdaptivePrediction.empty()
+      if (prediction != null && prediction.isValid)
+        prediction
+      else
+        AdaptivePrediction.empty()
 
     val windowSizeMs =
       math.max(
@@ -84,7 +86,7 @@ object AdaptiveController extends Serializable {
       collisionThresholdMeters = DefaultCollisionThreshold,
       conflictThresholdMeters = DefaultConflictThreshold,
       predictionHorizonSec = DefaultPredictionHorizonSec,
-      confidence = safePrediction.confidence,
+      confidence = math.max(0.0, math.min(1.0, safePrediction.confidence)),
       strategy = safePrediction.strategy,
       modelVersion = safePrediction.modelVersion,
       inferenceLatencyMs = safePrediction.inferenceLatencyMs,

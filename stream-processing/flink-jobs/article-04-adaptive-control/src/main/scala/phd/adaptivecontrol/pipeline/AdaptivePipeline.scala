@@ -6,7 +6,7 @@ import org.apache.flink.api.scala.createTypeInformation
 import org.apache.flink.util.Collector
 import org.apache.flink.api.common.functions.FlatMapFunction
 
-import phd.adaptivecontrol.config.{AdaptiveConfig, StrategyMode}
+import phd.adaptivecontrol.config.AdaptiveConfig
 import phd.adaptivecontrol.model.{GeoEvent, Interaction}
 import phd.adaptivecontrol.interaction.InteractionEngine
 import phd.adaptivecontrol.adaptive.{
@@ -20,6 +20,9 @@ import phd.adaptivecontrol.adaptive.{
 
 object AdaptivePipeline {
 
+  // ============================================================
+  // Interaction processor
+  // ============================================================
   class InteractionFlatMap(config: AdaptiveConfig)
     extends FlatMapFunction[List[GeoEvent], Interaction]
     with Serializable {
@@ -37,6 +40,25 @@ object AdaptivePipeline {
 
         StreamProfiler.setConfig(config)
 
+        // ----------------------------------------------------------
+        // Runtime mode initialization (FIXED vs ADAPTIVE)
+        // ----------------------------------------------------------
+        if (config.isAdaptive) {
+          AdaptiveRuntimeState.setMode(AdaptiveRuntimeState.Adaptive)
+        } else {
+          AdaptiveRuntimeState.setMode(AdaptiveRuntimeState.Fixed)
+        }
+
+        println(
+          s"[ADAPTIVE CONTROL] action=runtime_init " +
+          s"mode=${AdaptiveRuntimeState.currentMode} " +
+          s"isAdaptive=${config.isAdaptive} " +
+          s"mlInference=${config.mlInference}"
+        )
+
+        // ----------------------------------------------------------
+        // ML stack initialization
+        // ----------------------------------------------------------
         if (config.mlInference) {
 
           println("[ADAPTIVE CONTROL] action=preprocessor_initialize")
@@ -91,24 +113,45 @@ object AdaptivePipeline {
       val t0 = System.currentTimeMillis()
 
       // ----------------------------------------------------------
-      // Profiling
+      // 1. Profiling (events first)
       // ----------------------------------------------------------
       StreamProfiler.updateEvents(batch)
+      StreamProfiler.updateWindow(batch.size)
 
+      // ----------------------------------------------------------
+      // 2. Interaction processing
+      // ----------------------------------------------------------
       val results =
         getEngine.process(batch)
 
       StreamProfiler.updateInteractions(results)
-      StreamProfiler.updateWindow(batch.size)
 
+      // ----------------------------------------------------------
+      // 3. Watermark
+      // ----------------------------------------------------------
+      val now = System.currentTimeMillis()
+
+      val wmDelay =
+        if (AdaptiveRuntimeState.isAdaptive)
+          AdaptiveRuntimeState.watermarkDelayMs
+        else
+          config.watermarkDelayMs
+
+      val computedWatermark = now - wmDelay
+
+      StreamProfiler.updateWatermark(computedWatermark)
+
+      // ----------------------------------------------------------
+      // 4. Snapshot after full state update
+      // ----------------------------------------------------------
       val features =
         StreamProfiler.snapshot()
 
       // ============================================================
-      // CLEAN ADAPTIVE DECISION LOGIC
+      // 5. Adaptive control logic
       // ============================================================
       val adaptiveEnabled =
-        config.isAdaptive && config.mlInference
+        AdaptiveRuntimeState.isAdaptive && config.mlInference
 
       if (adaptiveEnabled && shouldAdapt()) {
 
@@ -131,8 +174,8 @@ object AdaptivePipeline {
 
         println(
           "[ADAPTIVE CONTROL] action=config_update " +
-          s"window=${AdaptiveRuntimeState.windowSizeMs} " +
-          s"watermark=${AdaptiveRuntimeState.watermarkDelayMs}"
+          s"window=${decision.windowSizeMs} " +
+          s"watermark=${decision.watermarkDelayMs}"
         )
 
         StreamProfiler.updateAdaptiveDecision(
@@ -152,6 +195,7 @@ object AdaptivePipeline {
       }
 
       val t1 = System.currentTimeMillis()
+
       StreamProfiler.recordProcessingLatency(t1 - t0)
 
       StreamProfiler.logSnapshot()

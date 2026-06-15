@@ -1,7 +1,5 @@
 package phd.adaptivecontrol.pipeline
 
-import java.time.Duration
-
 import org.apache.flink.api.common.eventtime.{
   Watermark,
   WatermarkGenerator,
@@ -13,62 +11,57 @@ import org.apache.flink.api.common.eventtime.{
 
 import phd.adaptivecontrol.model.GeoEvent
 import phd.adaptivecontrol.config.{AdaptiveConfig, StrategyMode}
-import phd.adaptivecontrol.adaptive.{AdaptiveRuntimeState, StreamProfiler}
+import phd.adaptivecontrol.adaptive.StreamProfiler
 
 
-/**
- * WatermarkManager
- *
- * Clean design:
- * - NO string-based switching
- * - NO duplicated watermark logic
- * - Single responsibility per strategy
- */
 object WatermarkManager {
 
   // ============================================================
   // Build Watermark Strategy
   // ============================================================
-  def build(config: AdaptiveConfig): WatermarkStrategy[GeoEvent] = {
+  def build(
+    config: AdaptiveConfig
+  ): WatermarkStrategy[GeoEvent] = {
 
     config.watermarkMode match {
 
       // ========================================================
-      // Adaptive Watermarks (runtime + ML controlled)
+      // Adaptive Watermarks
       // ========================================================
       case StrategyMode.Adaptive =>
 
         println(
           "[WATERMARK MANAGER] action=build " +
           s"strategy=adaptive " +
-          s"effectiveDelay=${AdaptiveRuntimeState.watermarkDelayMs}"
+          s"initialDelay=${config.watermarkDelayMs}"
         )
 
         WatermarkStrategy
           .forGenerator(
             (_: WatermarkGeneratorSupplier.Context) =>
-              new AdaptiveWatermarkGenerator
+              new AdaptiveWatermarkGenerator(config)
           )
           .withTimestampAssigner(
             new SerializableTimestampAssigner[GeoEvent] {
+
               override def extractTimestamp(
                 event: GeoEvent,
                 recordTimestamp: Long
-              ): Long = event.timestamp
+              ): Long =
+                event.timestamp
             }
           )
 
       // ========================================================
-      // Fixed Watermarks (deterministic bounded delay)
+      // Fixed Watermarks
       // ========================================================
       case StrategyMode.Fixed =>
         createFixedWatermarkStrategy(config)
-
     }
   }
 
   // ============================================================
-  // Fixed watermark strategy (isolated, no duplication)
+  // Fixed watermark strategy
   // ============================================================
   private def createFixedWatermarkStrategy(
     config: AdaptiveConfig
@@ -90,13 +83,15 @@ object WatermarkManager {
 
             new WatermarkGenerator[GeoEvent] {
 
-              private var maxTimestampSeen: Long = Long.MinValue
+              private var maxTimestampSeen: Long =
+                Long.MinValue
 
               override def onEvent(
                 event: GeoEvent,
                 eventTimestamp: Long,
                 output: WatermarkOutput
               ): Unit = {
+
                 maxTimestampSeen =
                   math.max(maxTimestampSeen, eventTimestamp)
               }
@@ -109,9 +104,13 @@ object WatermarkManager {
                 val watermarkTs =
                   maxTimestampSeen - config.watermarkDelayMs
 
-                StreamProfiler.updateWatermark(watermarkTs)
+                StreamProfiler.updateWatermark(
+                  watermarkTs
+                )
 
-                output.emitWatermark(new Watermark(watermarkTs))
+                output.emitWatermark(
+                  new Watermark(watermarkTs)
+                )
               }
             }
           }
@@ -119,10 +118,12 @@ object WatermarkManager {
       )
       .withTimestampAssigner(
         new SerializableTimestampAssigner[GeoEvent] {
+
           override def extractTimestamp(
             event: GeoEvent,
             recordTimestamp: Long
-          ): Long = event.timestamp
+          ): Long =
+            event.timestamp
         }
       )
   }

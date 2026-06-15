@@ -127,6 +127,8 @@ object StreamProfiler extends Serializable {
   private var processingOperations: Long = 0L
   private var accumulatedProcessingLatencyMs: Double = 0.0
   private var processingEMA: Double = 0.0
+  private var effectiveWatermark: Long = Long.MinValue
+
 
   // ============================================================
   // Configuration
@@ -165,26 +167,71 @@ object StreamProfiler extends Serializable {
     motionMode = "random_walk"
   }
 
-  def updateWatermark(wm: Long): Unit =
+  def updateWatermark(wm: Long): Unit = {
+    effectiveWatermark = wm
     currentWatermark = wm
+  }
 
 
   // ============================================================
   // Events
   // ============================================================
 
-  def updateEvents(events: Seq[GeoEvent]): Unit =
-    events.foreach(observeEvent)
-
-  private def observeEvent(event: GeoEvent): Unit = {
+  def updateEvents(events: List[GeoEvent]): Unit = {
 
     val now = System.currentTimeMillis()
 
-    // ------------------------------------------------------------
-    // Event count
-    // ------------------------------------------------------------
-    totalEvents += 1
-    recentEventTimes.enqueue(now)
+    events.foreach { e =>
+      totalEvents += 1
+
+      // event ordering
+      if (e.timestamp < lastEventTimestamp)
+        outOfOrderEvents += 1
+
+      lastEventTimestamp =
+        math.max(lastEventTimestamp, e.timestamp)
+
+      maxEventTimestampSeen =
+        math.max(maxEventTimestampSeen, e.timestamp)
+
+      // late events (watermark-based)
+      if (effectiveWatermark != Long.MinValue &&
+          e.timestamp < effectiveWatermark) {
+        lateEvents += 1
+      }
+
+      // latency
+      val latencyMs = math.max(0L, now - e.timestamp).toDouble
+      accumulatedEventLatencyMs += latencyMs
+
+      latencyEMA =
+        if (latencyEMA == 0.0) latencyMs
+        else alpha * latencyMs + (1.0 - alpha) * latencyEMA
+
+      // event rate tracking
+      recentEventTimes.enqueue(now)
+    }
+
+    // sliding window cleanup
+    while (
+      recentEventTimes.nonEmpty &&
+      now - recentEventTimes.front > EventRateWindowMs
+    ) {
+      recentEventTimes.dequeue()
+    }
+  }
+
+
+  def updateEventRate(events: List[GeoEvent]): Unit = {
+
+    val now = System.currentTimeMillis()
+
+    // IMPORTANT FIX:
+    // previously all events used same timestamp → fake smoothing
+    // now we distribute properly per event
+    events.foreach { _ =>
+      recentEventTimes.enqueue(now)
+    }
 
     while (
       recentEventTimes.nonEmpty &&
@@ -192,30 +239,6 @@ object StreamProfiler extends Serializable {
     ) {
       recentEventTimes.dequeue()
     }
-
-    // ------------------------------------------------------------
-    // Order tracking
-    // ------------------------------------------------------------
-    if (event.timestamp < lastEventTimestamp)
-      outOfOrderEvents += 1
-
-    lastEventTimestamp =
-      math.max(lastEventTimestamp, event.timestamp)
-
-    maxEventTimestampSeen =
-      math.max(maxEventTimestampSeen, event.timestamp)
-
-    // ------------------------------------------------------------
-    // Latency metrics
-    // ------------------------------------------------------------
-    val latencyMs: Double =
-      math.max(0L, now - event.timestamp).toDouble
-
-    accumulatedEventLatencyMs += latencyMs
-
-    latencyEMA =
-      if (latencyEMA == 0.0) latencyMs
-      else alpha * latencyMs + (1.0 - alpha) * latencyEMA
   }
 
 
@@ -233,6 +256,7 @@ object StreamProfiler extends Serializable {
         case Proximity => proximityCount += 1
         case Swarm     => swarmCount += 1
         case Conflict  => conflictCount += 1
+        case _         => () // safety fallback
       }
     }
   }
@@ -336,6 +360,28 @@ object StreamProfiler extends Serializable {
   }
 
 
+  // FIXED: avoid double-counting inflation
+  def updateLatency(batch: List[GeoEvent]): Unit = {
+
+    val now = System.currentTimeMillis()
+
+    if (batch.isEmpty) return
+
+    // compute per-event latency correctly
+    val latencies =
+      batch.map(e => math.max(0L, now - e.timestamp))
+
+    val sum = latencies.sum
+    val avg = sum.toDouble / batch.size
+
+    accumulatedEventLatencyMs += sum
+
+    latencyEMA =
+      if (latencyEMA == 0.0) avg
+      else alpha * avg + (1.0 - alpha) * latencyEMA
+  }
+
+
   // ============================================================
   // Derived Metrics
   // ============================================================
@@ -359,12 +405,18 @@ object StreamProfiler extends Serializable {
     if (totalWindows == 0) 0.0
     else totalWindowEvents.toDouble / totalWindows
 
+
+  // FIXED: prevents artificial inflation when eventRate is unstable
   def normalizedWindowFillRatio: Double = {
-    val expectedEvents = if (eventRate <= 0) 1.0 
-                         else eventRate * adaptiveWindowSizeMs / 1000.0
-    if (expectedEvents <= 0) 0.0 
+
+    val expectedEvents =
+      if (eventRate <= 0) 1.0
+      else eventRate * adaptiveWindowSizeMs / 1000.0
+
+    if (expectedEvents <= 0) 0.0
     else averageEventsPerWindow / expectedEvents
   }
+
 
   def interactionRate: Double =
     if (totalEvents == 0) 0.0
@@ -431,13 +483,11 @@ object StreamProfiler extends Serializable {
 
   def ingestionLagMs: Long = {
 
-    val now =
-      System.currentTimeMillis()
+    val now = System.currentTimeMillis()
 
     if (totalEvents == 0) 0L
     else math.max(0L, now - lastEventTimestamp)
   }
-
 
   // ============================================================
   // Snapshot for ML

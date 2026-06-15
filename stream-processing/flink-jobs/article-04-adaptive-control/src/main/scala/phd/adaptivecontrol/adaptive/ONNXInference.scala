@@ -210,12 +210,6 @@ object ONNXInference extends Serializable {
 
   def predict(features: StreamFeatures): AdaptivePrediction = {
 
-    if (!AdaptiveRuntimeState.isAdaptive) {
-      throw new IllegalStateException(
-        "ONNX inference requested while adaptive mode is disabled"
-      )
-    }
-
     val startNs = System.nanoTime()
     var tensor: OnnxTensor = null
 

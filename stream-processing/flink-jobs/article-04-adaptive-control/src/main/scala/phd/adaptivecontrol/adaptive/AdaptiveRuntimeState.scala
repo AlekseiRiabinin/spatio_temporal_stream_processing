@@ -1,5 +1,7 @@
 package phd.adaptivecontrol.adaptive
 
+import phd.adaptivecontrol.config.StrategyMode
+
 
 object AdaptiveRuntimeState {
 
@@ -14,6 +16,11 @@ object AdaptiveRuntimeState {
   @volatile
   private var mode: Mode = Fixed
 
+  def fromStrategyMode(m: StrategyMode): Mode = m match {
+    case StrategyMode.Fixed    => Fixed
+    case StrategyMode.Adaptive => Adaptive
+  }
+
   def setMode(m: Mode): Unit = {
     mode = m
 
@@ -22,23 +29,25 @@ object AdaptiveRuntimeState {
     )
   }
 
+  def setModeFromStrategy(m: StrategyMode): Unit = {
+    setMode(fromStrategyMode(m))
+  }
+
   def isAdaptive: Boolean =
     mode == Adaptive
 
   def isFixed: Boolean =
     mode == Fixed
 
-
   // ============================================================
-  // Adaptive state
+  // Runtime state
   // ============================================================
 
   @volatile
-  private var currentWindowSizeMs: Long = _
-  
-  @volatile
-  private var currentWatermarkDelayMs: Long = _
+  private var currentWindowSizeMs: Long = 5000L
 
+  @volatile
+  private var currentWatermarkDelayMs: Long = 3000L
 
   // ============================================================
   // Initialization
@@ -49,8 +58,6 @@ object AdaptiveRuntimeState {
     watermarkDelayMs: Long
   ): Unit = synchronized {
 
-    if (!isAdaptive) return
-
     currentWindowSizeMs =
       math.max(1000L, windowSizeMs)
 
@@ -59,11 +66,10 @@ object AdaptiveRuntimeState {
 
     println(
       "[ADAPTIVE RUNTIME] action=initialize " +
-      s"windowMs=$currentWindowSizeMs " +
-      s"watermarkMs=$currentWatermarkDelayMs"
+        s"windowMs=$currentWindowSizeMs " +
+        s"watermarkMs=$currentWatermarkDelayMs"
     )
   }
-
 
   // ============================================================
   // Updates
@@ -83,7 +89,11 @@ object AdaptiveRuntimeState {
       math.max(0L, watermarkDelayMs)
   }
 
-  def update(windowSizeMs: Long, watermarkDelayMs: Long): Unit = {
+  def update(
+    windowSizeMs: Long,
+    watermarkDelayMs: Long
+  ): Unit = {
+
     if (!isAdaptive) return
 
     updateWindowSize(windowSizeMs)
@@ -91,27 +101,21 @@ object AdaptiveRuntimeState {
 
     println(
       "[ADAPTIVE RUNTIME] action=update " +
-      s"windowMs=$currentWindowSizeMs " +
-      s"watermarkMs=$currentWatermarkDelayMs"
+        s"windowMs=$currentWindowSizeMs " +
+        s"watermarkMs=$currentWatermarkDelayMs"
     )
   }
-
 
   // ============================================================
   // Accessors
   // ============================================================
 
-  def windowSizeMs: Long = {
-    if (isAdaptive) currentWindowSizeMs
-    else throw new IllegalStateException(
-      "windowSizeMs accessed in FIXED mode - use config.windowSizeMs instead"
-    )
-  }
+  def windowSizeMs: Long =
+    currentWindowSizeMs
 
-  def watermarkDelayMs: Long = {
-    if (isAdaptive) currentWatermarkDelayMs
-    else throw new IllegalStateException(
-      "watermarkDelayMs accessed in FIXED mode - use config.watermarkDelayMs instead"
-    )
-  }
+  def watermarkDelayMs: Long =
+    currentWatermarkDelayMs
+
+  def currentMode: Mode =
+    mode
 }

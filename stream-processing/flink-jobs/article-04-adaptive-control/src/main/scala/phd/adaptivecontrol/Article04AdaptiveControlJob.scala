@@ -12,19 +12,11 @@ import org.apache.flink.api.common.serialization.SimpleStringSchema
 import org.apache.flink.connector.kafka.source.KafkaSource
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer
 
-import phd.adaptivecontrol.config.AdaptiveConfig
+import phd.adaptivecontrol.config.{AdaptiveConfig, StrategyMode}
 import phd.adaptivecontrol.model.GeoEvent
 
-import phd.adaptivecontrol.pipeline.{
-  AdaptivePipeline,
-  WatermarkManager
-}
-
-import phd.adaptivecontrol.adaptive.{
-  ONNXInference,
-  StreamProfiler,
-  AdaptiveRuntimeState
-}
+import phd.adaptivecontrol.pipeline._
+import phd.adaptivecontrol.adaptive._
 
 
 object Article04AdaptiveControlJob {
@@ -60,9 +52,6 @@ object Article04AdaptiveControlJob {
     val mlInferenceFlag =
       sys.env.getOrElse("ML_INFERENCE", "false").toBoolean
 
-    val mode =
-      sys.env.getOrElse("ADAPTIVE_MODE", "fixed") // fixed | adaptive
-
     // ============================================================
     // 3. Model paths
     // ============================================================
@@ -77,18 +66,86 @@ object Article04AdaptiveControlJob {
 
     println(
       "[MAIN] action=models " +
-      s"window=$windowModelPath " +
-      s"watermark=$watermarkModelPath " +
-      s"scaler=$scalerParamsPath"
+        s"window=$windowModelPath " +
+        s"watermark=$watermarkModelPath " +
+        s"scaler=$scalerParamsPath"
     )
 
     // ============================================================
-    // 4. Adaptive Config (NO STRINGS FOR MODE)
+    // 4. MODE RESOLUTION (single source of truth)
+    // ============================================================
+    val windowStrategy =
+      sys.env.getOrElse("WINDOW_STRATEGY", "fixed")
+
+    val watermarkStrategy =
+      sys.env.getOrElse("WATERMARK_STRATEGY", "fixed")
+
+    val windowMode =
+      if (windowStrategy.equalsIgnoreCase("adaptive"))
+        StrategyMode.Adaptive
+      else
+        StrategyMode.Fixed
+
+    val watermarkMode =
+      if (watermarkStrategy.equalsIgnoreCase("adaptive"))
+        StrategyMode.Adaptive
+      else
+        StrategyMode.Fixed
+
+    // Runtime state remains a single global switch.
+    // Adaptive if either strategy is adaptive.
+    val runtimeMode =
+      if (
+        windowMode == StrategyMode.Adaptive ||
+        watermarkMode == StrategyMode.Adaptive
+      )
+        StrategyMode.Adaptive
+      else
+        StrategyMode.Fixed
+
+    // ============================================================
+    // 5. Runtime state (authoritative execution layer)
+    // ============================================================
+    AdaptiveRuntimeState.setModeFromStrategy(runtimeMode)
+    AdaptiveRuntimeState.initialize(
+      windowSizeMs,
+      watermarkDelayMs
+    )
+
+    val isAdaptive =
+      AdaptiveRuntimeState.isAdaptive
+
+    val effectiveWindow =
+      if (isAdaptive)
+        AdaptiveRuntimeState.windowSizeMs
+      else
+        windowSizeMs
+
+    val effectiveWatermark =
+      if (isAdaptive)
+        AdaptiveRuntimeState.watermarkDelayMs
+      else
+        watermarkDelayMs
+
+    println(
+      "[MAIN] action=runtime_state " +
+        s"windowStrategy=$windowStrategy " +
+        s"watermarkStrategy=$watermarkStrategy " +
+        s"windowMs=$effectiveWindow " +
+        s"watermarkMs=$effectiveWatermark"
+    )
+
+    // ============================================================
+    // 6. CONFIG (aligned with runtime mode)
     // ============================================================
     val adaptiveConfig =
       AdaptiveConfig(
         windowSizeMs = windowSizeMs,
         watermarkDelayMs = watermarkDelayMs,
+        adaptiveWindowSizeMs = 0L,
+        adaptiveWatermarkDelayMs = 0L,
+        windowMode = windowMode,
+        watermarkMode = watermarkMode,
         mlInference = mlInferenceFlag,
         windowModelPath = windowModelPath,
         watermarkModelPath = watermarkModelPath,
@@ -97,29 +154,15 @@ object Article04AdaptiveControlJob {
 
     println(
       "[MAIN] action=config " +
-      s"mlInference=$mlInferenceFlag"
+        s"mlInference=$mlInferenceFlag " +
+        s"windowMode=$windowMode " +
+        s"watermarkMode=$watermarkMode"
     )
 
     // ============================================================
-    // 5. Runtime mode (SOURCE OF TRUTH NOW)
+    // 7. ML runtime
     // ============================================================
-    if (mode == "adaptive") {
-      AdaptiveRuntimeState.setMode(AdaptiveRuntimeState.Adaptive)
-      AdaptiveRuntimeState.initialize(windowSizeMs, watermarkDelayMs)
-    } else {
-      AdaptiveRuntimeState.setMode(AdaptiveRuntimeState.Fixed)
-    }
-
-    println(
-      "[MAIN] action=runtime_state " +
-      s"windowMs=${AdaptiveRuntimeState.windowSizeMs} " +
-      s"watermarkMs=${AdaptiveRuntimeState.watermarkDelayMs}"
-    )
-
-    // ============================================================
-    // 6. ML runtime
-    // ============================================================
-    if (mlInferenceFlag && AdaptiveRuntimeState.isAdaptive) {
+    if (mlInferenceFlag && isAdaptive) {
 
       println("[MAIN] action=onnx init status=starting")
 
@@ -127,16 +170,15 @@ object Article04AdaptiveControlJob {
 
       println(
         "[MAIN] action=onnx init status=ready " +
-        s"mode=${ONNXInference.status}"
+          s"mode=${ONNXInference.status}"
       )
 
     } else {
-
       println("[MAIN] action=onnx init status=disabled")
     }
 
     // ============================================================
-    // 7. Kafka Source
+    // 8. Kafka Source
     // ============================================================
     val kafkaSource =
       KafkaSource.builder[String]()
@@ -163,7 +205,7 @@ object Article04AdaptiveControlJob {
         .filter(_.isValid)
 
     // ============================================================
-    // 8. Watermarks
+    // 9. Watermarks
     // ============================================================
     val wmStrategy =
       WatermarkManager.build(adaptiveConfig)
@@ -172,20 +214,20 @@ object Article04AdaptiveControlJob {
       geoEventStream.assignTimestampsAndWatermarks(wmStrategy)
 
     // ============================================================
-    // 9. Pipeline
+    // 10. Pipeline
     // ============================================================
     val processedStream =
       AdaptivePipeline.build(env, timedGeoEventStream, adaptiveConfig)
 
     // ============================================================
-    // 10. Output
+    // 11. Output
     // ============================================================
     processedStream
       .map(result => mapper.writeValueAsString(result))
       .print()
 
     // ============================================================
-    // 11. Execute
+    // 12. Execute
     // ============================================================
     env.execute("Article 04: Adaptive Window and Watermark Control")
   }
