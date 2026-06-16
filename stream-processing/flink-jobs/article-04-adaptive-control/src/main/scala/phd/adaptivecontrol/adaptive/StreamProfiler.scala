@@ -226,9 +226,6 @@ object StreamProfiler extends Serializable {
 
     val now = System.currentTimeMillis()
 
-    // IMPORTANT FIX:
-    // previously all events used same timestamp → fake smoothing
-    // now we distribute properly per event
     events.foreach { _ =>
       recentEventTimes.enqueue(now)
     }
@@ -359,15 +356,13 @@ object StreamProfiler extends Serializable {
     accumulatedProcessingLatencyMs += latencyMs
   }
 
-
-  // FIXED: avoid double-counting inflation
   def updateLatency(batch: List[GeoEvent]): Unit = {
 
     val now = System.currentTimeMillis()
 
     if (batch.isEmpty) return
 
-    // compute per-event latency correctly
+    // compute per-event latency
     val latencies =
       batch.map(e => math.max(0L, now - e.timestamp))
 
@@ -405,8 +400,6 @@ object StreamProfiler extends Serializable {
     if (totalWindows == 0) 0.0
     else totalWindowEvents.toDouble / totalWindows
 
-
-  // FIXED: prevents artificial inflation when eventRate is unstable
   def normalizedWindowFillRatio: Double = {
 
     val expectedEvents =
@@ -416,7 +409,6 @@ object StreamProfiler extends Serializable {
     if (expectedEvents <= 0) 0.0
     else averageEventsPerWindow / expectedEvents
   }
-
 
   def interactionRate: Double =
     if (totalEvents == 0) 0.0
@@ -498,7 +490,7 @@ object StreamProfiler extends Serializable {
     val now = System.currentTimeMillis()
     val safeInteractions = math.max(totalInteractions, 1L)
 
-    // Event‑time watermark lag (Layer 3)
+    // Event‑time watermark lag
     val eventTimeWatermarkLag =
       if (currentWatermark == Long.MinValue) 0L
       else math.max(0L, lastEventTimestamp - currentWatermark)

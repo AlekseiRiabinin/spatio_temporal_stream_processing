@@ -8,7 +8,7 @@ import phd.adaptivecontrol.temporal.TrajectoryBuilder
 
 
 /**
- * ConflictDetector (UPDATED)
+ * ConflictDetector
  *
  * Predicts conflicts using:
  *  - trajectory-based velocity estimation

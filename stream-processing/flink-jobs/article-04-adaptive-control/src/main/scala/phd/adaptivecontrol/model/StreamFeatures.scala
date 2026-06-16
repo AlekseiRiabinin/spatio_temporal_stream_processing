@@ -42,17 +42,17 @@ case class StreamFeatures(
   conflictRate: Double,
 
   // ============================================================
-  // System state (Layer 3 decomposition)
+  // System state
   // ============================================================
   watermarkLagMs: Long,
 
   // execution cost of Flink / pipeline
   processingLatencyMs: Double,
 
-  // NEW: ML inference overhead (control plane cost)
+  // ML inference overhead (control plane cost)
   mlInferenceLatencyMs: Double,
 
-  // NEW: ingestion delay / stream disorder delay
+  // ingestion delay / stream disorder delay
   ingestionLagMs: Long,
 
   // ============================================================

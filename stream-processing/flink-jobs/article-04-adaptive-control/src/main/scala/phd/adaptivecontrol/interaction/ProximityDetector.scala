@@ -7,7 +7,7 @@ import phd.adaptivecontrol.spatial.{SpatialIndex, SpatialOperations}
 
 
 /**
- * ProximityDetector (UPDATED)
+ * ProximityDetector
  *
  * Detects spatial proximity interactions with:
  *  - spatial indexing (radius search)

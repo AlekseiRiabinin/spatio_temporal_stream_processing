@@ -101,7 +101,7 @@ object AdaptivePrediction {
     )
 
   /**
-   * Factory for ONNX predictions (recommended usage).
+   * Factory for ONNX predictions.
    */
   def fromONNX(
     window: Long,
@@ -123,8 +123,6 @@ object AdaptivePrediction {
 
 /**
  * Explicit provenance of prediction.
- *
- * This is the missing piece that caused silent regression.
  */
 sealed trait PredictionSource
 object PredictionSource {
