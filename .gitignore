@@ -8,6 +8,7 @@ logs/*.log
 # Experiment outputs
 data/article_3/
 data/maps/
+ml/article_4/notebooks
 
 # ============================================================
 # PARSED DATA (CSV files from log parsing)
