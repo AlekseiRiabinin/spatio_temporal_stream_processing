@@ -6,15 +6,17 @@ logs/
 logs/*.log
 
 # Experiment outputs
-data/article_3/
-data/maps/
-ml/article_4/notebooks
 
 # ============================================================
 # PARSED DATA (CSV files from log parsing)
 # ============================================================
 data/article_4/parsed/
 data/article_4/parsed/*.csv
+data/article_3/
+data/article_2/
+data/maps/
+ml/article_4/notebooks
+parser/figures/
 *.csv
 
 # ============================================================

@@ -104,3 +104,69 @@ Canonical 16‑experiment matrix
 | log            | adaptive       | realtime          | wave              | 0                           |
 | log            | multitrigger   | realtime          | constant          | 0                           |
 +----------------+----------------+-------------------+-------------------+-----------------------------+
+
+
+Canonical experiment matrix
++----------------+--------------------+-------------------+-------------------+------------------+
+| Processing     | Window aggregation | Timestamp         | Event rate        | Geometry region  |
++----------------+--------------------+-------------------+-------------------+------------------+
+| Continuous     | session            | skewed            | constant          | random           |
+| Continuous     | dynamic            | late              | wave              | clustered        |
+| Continuous     | adaptive           | skewed            | wave              | clustered        |
++----------------+--------------------+-------------------+-------------------+------------------+
+| Micro-batch    | session            | realtime          | burst             | random           |
+| Micro-batch    | dynamic            | realtime          | constant          | clustered        |
+| Micro-batch    | adaptive           | realtime          | wave              | clustered        |
++----------------+--------------------+-------------------+-------------------+------------------+
+| Actor-based    | session            | realtime          | constant          | random           |
+| Actor-based    | dynamic            | realtime          | wave              | clustered        |
+| Actor-based    | adaptive           | realtime          | wave              | clustered        |
++----------------+--------------------+-------------------+-------------------+------------------+
+| Log-based      | session            | realtime          | burst             | random           |
+| Log-based      | dynamic            | realtime          | constant          | clustered        |
+| Log-based      | adaptive           | realtime          | wave              | clustered        |
++----------------+--------------------+-------------------+-------------------+------------------+
+
+
++----------------+----------------+-------------------+-------------------+------------------+------------------+
+| Processing     | Window         | EVENT LATENCY (ms)| WATERMARK LAG (ms)| WINDOW LATENCY   | THROUGHPUT       |
+|                | Aggregation    |                   |                   | (ms)             | (windows/s)      |
++----------------+----------------+-------------------+-------------------+------------------+------------------+
+| Continuous     | Session        | 465.51            | 1006.85           | 1219.53          | 1.85             |
+| Continuous     | Dynamic        | 2605.53           | 3400.41           | 3547.76          | 5.05             |
+| Continuous     | Adaptive       | 469.66            | 681.71            | 916.37           | 2.02             |
++----------------+----------------+-------------------+-------------------+------------------+------------------+
+| Micro-batch    | Session        | 178.54            | -                 | 5171.39          | 0.68             |
+| Micro-batch    | Dynamic        | 111.46            | -                 | 5143.85          | 5.02             |
+| Micro-batch    | Adaptive       | 103.99            | -                 | 5220.60          | 2.02             |
++----------------+----------------+-------------------+-------------------+------------------+------------------+
+| Actor-based    | Session        | -                 | -                 | 143.00           | 0.05             |
+| Actor-based    | Dynamic        | -                 | -                 | 165.91           | 5.02             |
+| Actor-based    | Adaptive       | -                 | -                 | 236.05           | 2.02             |
++----------------+----------------+-------------------+-------------------+------------------+------------------+
+| Log-based      | Session        | -                 | -                 | 177.74           | 0.68             |
+| Log-based      | Dynamic        | -                 | -                 | 139.78           | 5.02             |
+| Log-based      | Adaptive       | -                 | -                 | 192.76           | 2.02             |
++----------------+----------------+-------------------+-------------------+------------------+------------------+
+
+
+Updated canonical experiment matrix
++-------------+--------------------+-----------+------------+------------------+
+| Processing  | Window aggregation | Timestamp | Event rate | Geometry region  |
++-------------+--------------------+-----------+------------+------------------+
+| Continuous  | session            | realtime  | constant   | random           |
+| Continuous  | dynamic            | realtime  | burst      | random           |
+| Continuous  | adaptive           | realtime  | wave       | clustered        |
++-------------+--------------------+-----------+------------+------------------+
+| Micro-batch | session            | realtime  | burst      | random           |
+| Micro-batch | dynamic            | realtime  | constant   | clustered        |
+| Micro-batch | adaptive           | skewed    | wave       | clustered        |
++-------------+--------------------+-----------+------------+------------------+
+| Actor-based | session            | realtime  | constant   | random           |
+| Actor-based | dynamic            | realtime  | wave       | clustered        |
+| Actor-based | adaptive           | late      | burst      | clustered        |
++-------------+--------------------+-----------+------------+------------------+
+| Log-based   | session            | realtime  | burst      | random           |
+| Log-based   | dynamic            | realtime  | constant   | clustered        |
+| Log-based   | adaptive           | late      | wave       | clustered        |
++-------------+--------------------+-----------+------------+------------------+

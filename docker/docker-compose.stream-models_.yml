@@ -74,10 +74,6 @@ services:
       DEBUG_TIMESTAMPS: ${DEBUG_TIMESTAMPS:-true}
       DEBUG_WATERMARKS: ${DEBUG_WATERMARKS:-true}
 
-      # --- Experiment identity (NEW) ---
-      EXPERIMENT_ID: ""
-
-
     networks: [kafka-net]
     restart: unless-stopped
 
@@ -153,6 +149,7 @@ services:
       kafka-1:
         condition: service_started
     environment:
+      # --- Flink job configuration ---
       FLINK_MAIN_CLASS: "phd.streammodels.Article02StreamModelsJob"
       FLINK_PARALLELISM: "1"
 
@@ -163,20 +160,13 @@ services:
       WINDOW_STRATEGY: ${WINDOW_STRATEGY:-session}
 
       # --- Window parameters ---
-      WINDOW_SIZE: ${WINDOW_SIZE:-30}
-      COUNT_THRESHOLD: ${COUNT_THRESHOLD:-100}
-      PROCESSING_INTERVAL_MS: ${PROCESSING_INTERVAL_MS:-5000}
-      DENSITY_FACTOR: ${DENSITY_FACTOR:-1.0}
+      WINDOW_SIZE: ${WINDOW_SIZE:-30}                          # seconds
+      COUNT_THRESHOLD: ${COUNT_THRESHOLD:-100}                 # for multitrigger
+      PROCESSING_INTERVAL_MS: ${PROCESSING_INTERVAL_MS:-5000}  # for multitrigger
+      DENSITY_FACTOR: ${DENSITY_FACTOR:-1.0}                   # for dynamic windows
       WATERMARK_OUT_OF_ORDERNESS: ${WATERMARK_OUT_OF_ORDERNESS:-0}
       WATERMARK_MAX_DELAY_MS: ${WATERMARK_MAX_DELAY_MS:-}
 
-      # --- Workload patterns (NEW) ---
-      EVENT_RATE_PATTERN: ${EVENT_RATE_PATTERN:-}
-      GEOMETRY_PATTERN: ${GEOMETRY_PATTERN:-}
-      TIMESTAMP_PATTERN: ${TIMESTAMP_PATTERN:-}
-
-      # --- Experiment identity (NEW) ---
-      EXPERIMENT_ID: ""
 
       # --- Checkpointing & restart strategy ---
       CHECKPOINT_INTERVAL: "15000"
