@@ -150,23 +150,138 @@ Canonical experiment matrix
 +----------------+----------------+-------------------+-------------------+------------------+------------------+
 
 
-Updated canonical experiment matrix
 +-------------+--------------------+-----------+------------+------------------+
 | Processing  | Window aggregation | Timestamp | Event rate | Geometry region  |
 +-------------+--------------------+-----------+------------+------------------+
 | Continuous  | session            | realtime  | constant   | random           |
+| Continuous  | session            | realtime  | burst      | random           |
+| Continuous  | session            | realtime  | wave       | random           |
+| Continuous  | dynamic            | realtime  | constant   | clustered        |
 | Continuous  | dynamic            | realtime  | burst      | random           |
+| Continuous  | dynamic            | realtime  | wave       | clustered        |
+| Continuous  | adaptive           | realtime  | constant   | clustered        |
+| Continuous  | adaptive           | realtime  | burst      | clustered        |
 | Continuous  | adaptive           | realtime  | wave       | clustered        |
+| Continuous  | session            | realtime  | constant   | clustered        | NEW
+| Continuous  | session            | realtime  | burst      | clustered        | NEW
+| Continuous  | session            | realtime  | wave       | clustered        | NEW
+| Continuous  | adaptive           | realtime  | constant   | random           | NEW
+| Continuous  | adaptive           | realtime  | burst      | random           | NEW
+| Continuous  | adaptive           | realtime  | wave       | random           | NEW
 +-------------+--------------------+-----------+------------+------------------+
 | Micro-batch | session            | realtime  | burst      | random           |
+| Micro-batch | session            | realtime  | constant   | random           |
+| Micro-batch | session            | skewed    | wave       | random           |
 | Micro-batch | dynamic            | realtime  | constant   | clustered        |
+| Micro-batch | dynamic            | realtime  | burst      | clustered        |
+| Micro-batch | dynamic            | skewed    | wave       | clustered        |
+| Micro-batch | adaptive           | realtime  | burst      | clustered        |
+| Micro-batch | adaptive           | realtime  | constant   | clustered        |
 | Micro-batch | adaptive           | skewed    | wave       | clustered        |
+| Micro-batch | session            | realtime  | burst      | clustered        | NEW
+| Micro-batch | session            | realtime  | constant   | clustered        | NEW
+| Micro-batch | session            | skewed    | wave       | clustered        | NEW
+| Micro-batch | adaptive           | realtime  | burst      | random           | NEW
+| Micro-batch | adaptive           | realtime  | constant   | random           | NEW
+| Micro-batch | adaptive           | skewed    | wave       | random           | NEW
 +-------------+--------------------+-----------+------------+------------------+
 | Actor-based | session            | realtime  | constant   | random           |
+| Actor-based | session            | realtime  | burst      | random           |
+| Actor-based | session            | realtime  | wave       | random           |
+| Actor-based | dynamic            | realtime  | constant   | clustered        |
+| Actor-based | dynamic            | realtime  | burst      | clustered        |
 | Actor-based | dynamic            | realtime  | wave       | clustered        |
+| Actor-based | adaptive           | realtime  | constant   | clustered        |
 | Actor-based | adaptive           | late      | burst      | clustered        |
+| Actor-based | adaptive           | late      | wave       | clustered        |
+| Actor-based | session            | realtime  | constant   | clustered        | NEW
+| Actor-based | session            | realtime  | burst      | clustered        | NEW
+| Actor-based | session            | realtime  | wave       | clustered        | NEW
+| Actor-based | adaptive           | realtime  | constant   | random           | NEW
+| Actor-based | adaptive           | realtime  | burst      | random           | NEW
+| Actor-based | adaptive           | late      | wave       | random           | NEW
 +-------------+--------------------+-----------+------------+------------------+
 | Log-based   | session            | realtime  | burst      | random           |
+| Log-based   | session            | realtime  | constant   | random           |
+| Log-based   | session            | realtime  | wave       | random           |
 | Log-based   | dynamic            | realtime  | constant   | clustered        |
+| Log-based   | dynamic            | realtime  | burst      | clustered        |
+| Log-based   | dynamic            | realtime  | wave       | clustered        |
+| Log-based   | adaptive           | realtime  | constant   | clustered        |
+| Log-based   | adaptive           | late      | burst      | clustered        |
 | Log-based   | adaptive           | late      | wave       | clustered        |
+| Log-based   | session            | realtime  | burst      | clustered        | NEW
+| Log-based   | session            | realtime  | constant   | clustered        | NEW
+| Log-based   | session            | realtime  | wave       | clustered        | NEW
+| Log-based   | adaptive           | realtime  | constant   | random           | NEW
+| Log-based   | adaptive           | realtime  | burst      | random           | NEW
+| Log-based   | adaptive           | late      | wave       | random           | NEW
 +-------------+--------------------+-----------+------------+------------------+
+
+
+
+Final Matrix
++-------------+--------------------+-----------+------------+------------------+
+| Processing  | Window aggregation | Timestamp | Event rate | Geometry region  |
++-------------+--------------------+-----------+------------+------------------+
+| Continuous  | session            | realtime  | constant   | random           |
+| Continuous  | session            | realtime  | burst      | random           |
+| Continuous  | session            | realtime  | wave       | random           |
+| Continuous  | dynamic            | realtime  | constant   | random           |
+| Continuous  | dynamic            | realtime  | burst      | random           |
+| Continuous  | dynamic            | realtime  | wave       | random           |
+| Continuous  | adaptive           | realtime  | constant   | random           |
+| Continuous  | adaptive           | realtime  | burst      | random           |
+| Continuous  | adaptive           | realtime  | wave       | random           |
++-------------+--------------------+-----------+------------+------------------+
+| Continuous  | session            | skewed    | constant   | random           |
+| Continuous  | session            | skewed    | burst      | random           |
+| Continuous  | session            | skewed    | wave       | random           |
+| Continuous  | dynamic            | skewed    | constant   | random           |
+| Continuous  | dynamic            | skewed    | burst      | random           |
+| Continuous  | dynamic            | skewed    | wave       | random           |
+| Continuous  | adaptive           | skewed    | constant   | random           |
+| Continuous  | adaptive           | skewed    | burst      | random           |
+| Continuous  | adaptive           | skewed    | wave       | random           |
++-------------+--------------------+-----------+------------+------------------+
+| Continuous  | session            | late      | constant   | random           |
+| Continuous  | session            | late      | burst      | random           |
+| Continuous  | session            | late      | wave       | random           |
+| Continuous  | dynamic            | late      | constant   | random           |
+| Continuous  | dynamic            | late      | burst      | random           |
+| Continuous  | dynamic            | late      | wave       | random           |
+| Continuous  | adaptive           | late      | constant   | random           |
+| Continuous  | adaptive           | late      | burst      | random           |
+| Continuous  | adaptive           | late      | wave       | random           |
++-------------+--------------------+-----------+------------+------------------+
+| Continuous  | session            | realtime  | constant   | clustered        |
+| Continuous  | session            | realtime  | burst      | clustered        |
+| Continuous  | session            | realtime  | wave       | clustered        |
+| Continuous  | dynamic            | realtime  | constant   | clustered        |
+| Continuous  | dynamic            | realtime  | burst      | clustered        |
+| Continuous  | dynamic            | realtime  | wave       | clustered        |
+| Continuous  | adaptive           | realtime  | constant   | clustered        |
+| Continuous  | adaptive           | realtime  | burst      | clustered        |
+| Continuous  | adaptive           | realtime  | wave       | clustered        |
++-------------+--------------------+-----------+------------+------------------+
+| Continuous  | session            | skewed    | constant   | clustered        |
+| Continuous  | session            | skewed    | burst      | clustered        |
+| Continuous  | session            | skewed    | wave       | clustered        |
+| Continuous  | dynamic            | skewed    | constant   | clustered        |
+| Continuous  | dynamic            | skewed    | burst      | clustered        |
+| Continuous  | dynamic            | skewed    | wave       | clustered        |
+| Continuous  | adaptive           | skewed    | constant   | clustered        |
+| Continuous  | adaptive           | skewed    | burst      | clustered        |
+| Continuous  | adaptive           | skewed    | wave       | clustered        |
++-------------+--------------------+-----------+------------+------------------+
+| Continuous  | session            | late      | constant   | clustered        |
+| Continuous  | session            | late      | burst      | clustered        |
+| Continuous  | session            | late      | wave       | clustered        |
+| Continuous  | dynamic            | late      | constant   | clustered        |
+| Continuous  | dynamic            | late      | burst      | clustered        |
+| Continuous  | dynamic            | late      | wave       | clustered        |
+| Continuous  | adaptive           | late      | constant   | clustered        |
+| Continuous  | adaptive           | late      | burst      | clustered        |
+| Continuous  | adaptive           | late      | wave       | clustered        |
++-------------+--------------------+-----------+------------+------------------+
+

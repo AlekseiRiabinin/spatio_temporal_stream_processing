@@ -127,7 +127,9 @@ def parse_log_file(path):
             "window",
             "timestamp",
             "eventrate",
-            "geometry"
+            "geometry",
+            "date",
+            "time"
         ]
     )
 
@@ -146,7 +148,9 @@ def parse_log_file(path):
             "window",
             "timestamp",
             "eventrate",
-            "geometry"
+            "geometry",
+            "date",
+            "time"
         ]
     )
 
@@ -163,7 +167,9 @@ def parse_log_file(path):
             "window",
             "timestamp",
             "eventrate",
-            "geometry"
+            "geometry",
+            "date",
+            "time"
         ]
     )
 
