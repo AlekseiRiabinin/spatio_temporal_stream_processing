@@ -2,6 +2,7 @@ package cityrover.sim.graph
 
 import com.typesafe.config.Config
 import scala.util.Random
+import scala.collection.mutable.ArrayBuffer
 
 
 /**
@@ -12,7 +13,7 @@ import scala.util.Random
   *   - retrieving geometry for lat/lon interpolation
   *   - retrieving speed limits
   *
-  * NOTE: This is a simplified version. Replace the dummy loaders with your
+  * NOTE: This is a simplified version. Replace the dummy loaders with the
   *       actual graph-engine outputs (Parquet, JSON, or binary format).
   */
 class GraphService(config: Config) {
@@ -90,7 +91,7 @@ class GraphService(config: Config) {
   /** Generate a random route of N edges starting from a given node. */
   def getRandomRoute(startNode: String, length: Int): Seq[String] = {
     var currentNode = startNode
-    val route = scala.collection.mutable.ArrayBuffer[String]()
+    val route = ArrayBuffer[String]()
 
     for (_ <- 1 to length) {
       val outgoing = nodes(currentNode).outgoingEdges

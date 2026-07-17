@@ -23,7 +23,7 @@ class RoverController(
   private var currentEdgeIndex: Int = 0
   private var positionOnEdge: Double = 0.0
 
-  // Base speed (m/s). You can later add noise or dynamic speed profiles.
+  // Base speed (m/s). We can later add noise or dynamic speed profiles.
   private val baseSpeed: Double = 10.0
 
   /** Advance rover by dtMillis and return updated RoverState. */
