@@ -12,31 +12,52 @@ import scala.collection.mutable.ArrayBuffer
 
 object RoverSimulatorMain extends App {
 
+  // ---------------------------------------------------------------------------
   // Load config
-  private val config: Config = ConfigFactory.load().getConfig("cityrover.sim")
+  // ---------------------------------------------------------------------------
 
-  private val numRovers: Int = config.getInt("numRovers")
-  private val tickMillis: Long = config.getLong("tickMillis")
-  private val durationMinutes: Int = config.getInt("simulationDurationMinutes")
+  private val config: Config =
+    ConfigFactory.load().getConfig("cityrover.sim")
 
-  // Graph service
+  private val numRovers: Int =
+    config.getInt("numRovers")
+
+  private val tickMillis: Long =
+    config.getLong("tickMillis")
+
+  private val durationMinutes: Int =
+    config.getInt("simulationDurationMinutes")
+
+  // ---------------------------------------------------------------------------
+  // Graph service (loads nodes.parquet, edges.parquet, spatial-index.bin)
+  // ---------------------------------------------------------------------------
+
   private val graphCfg = config.getConfig("graph")
   private val graphService = new GraphService(graphCfg)
 
+  // ---------------------------------------------------------------------------
   // Kafka producer
+  // ---------------------------------------------------------------------------
+
   private val kafkaCfg = config.getConfig("kafka")
   private val kafkaProducer = new KafkaTelemetryProducer(
     kafkaCfg.getString("bootstrapServers"),
     kafkaCfg.getString("topic")
   )
 
-  // Telemetry generator
-  private val telemetryGen = new TelemetryGenerator(graphService)
+  // ---------------------------------------------------------------------------
+  // Telemetry generator (no args now)
+  // ---------------------------------------------------------------------------
 
+  private val telemetryGen = new TelemetryGenerator
+
+  // ---------------------------------------------------------------------------
   // Initialize rovers
+  // ---------------------------------------------------------------------------
+
   private val rovers = ArrayBuffer[RoverController]()
 
-  println(s"Initializing $numRovers rovers...")
+  println(s"[Simulator] Initializing $numRovers rovers...")
 
   for (i <- 1 to numRovers) {
     val startNode = graphService.getRandomStartNode()
@@ -51,11 +72,16 @@ object RoverSimulatorMain extends App {
     rovers += rover
   }
 
-  println(s"Starting simulation for $durationMinutes minutes...")
+  println(s"[Simulator] Starting simulation for $durationMinutes minutes...")
 
-  val totalTicks = (durationMinutes.minutes.toMillis / tickMillis).toInt
+  val totalTicks =
+    (durationMinutes.minutes.toMillis / tickMillis).toInt
 
-  for (tick <- 1 to totalTicks) {
+  // ---------------------------------------------------------------------------
+  // Main simulation loop
+  // ---------------------------------------------------------------------------
+
+  for (_ <- 1 to totalTicks) {
 
     val now = System.currentTimeMillis()
 
@@ -69,8 +95,12 @@ object RoverSimulatorMain extends App {
     Thread.sleep(tickMillis)
   }
 
-  println("Simulation completed. Closing Kafka producer...")
+  // ---------------------------------------------------------------------------
+  // Shutdown
+  // ---------------------------------------------------------------------------
+
+  println("[Simulator] Simulation completed. Closing Kafka producer...")
   kafkaProducer.close()
 
-  println("Rover simulator finished.")
+  println("[Simulator] Rover simulator finished.")
 }

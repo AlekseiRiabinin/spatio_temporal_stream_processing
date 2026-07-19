@@ -1,7 +1,6 @@
 package cityrover.sim.telemetry
 
 import cityrover.sim.model.{RoverState, TelemetryEvent}
-import cityrover.sim.graph.GraphService
 
 
 /**
@@ -9,11 +8,11 @@ import cityrover.sim.graph.GraphService
   * into TelemetryEvent (Kafka-ready JSON payload).
   *
   * Responsibilities:
-  *   - ensure lat/lon are consistent with graph geometry
+  *   - ensure lat/lon are consistent with graph geometry (already done in RoverController)
   *   - ensure heading is normalized
   *   - produce a stable, Spark-friendly event schema
   */
-class TelemetryGenerator(graphService: GraphService) {
+class TelemetryGenerator {
 
   /** Convert RoverState → TelemetryEvent */
   def toTelemetry(state: RoverState, timestamp: Long): TelemetryEvent = {

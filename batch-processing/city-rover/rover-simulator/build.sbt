@@ -17,9 +17,25 @@ libraryDependencies ++= Seq(
   "com.typesafe" % "config" % "1.4.3",
 
   // Logging
-  "ch.qos.logback" % "logback-classic" % "1.4.14"
+  "ch.qos.logback" % "logback-classic" % "1.4.14",
+
+  // Parquet + Avro (must match graph-engine)
+  "org.apache.parquet" % "parquet-avro" % "1.13.1",
+  "org.apache.parquet" % "parquet-hadoop" % "1.13.1",
+  "org.apache.avro" % "avro" % "1.11.3",
+
+  // Hadoop FS
+  "org.apache.hadoop" % "hadoop-common" % "3.3.6",
+
+  // JTS geometry
+  "org.locationtech.jts" % "jts-core" % "1.19.0"
 )
 
 fork := true
 
 mainClass in Compile := Some("cityrover.sim.runtime.RoverSimulatorMain")
+
+// ---------------------------------------------------------------------------
+// Resolve Kafka vs Parquet zstd-jni conflict
+// ---------------------------------------------------------------------------
+dependencyOverrides += "com.github.luben" % "zstd-jni" % "1.5.6-3"

@@ -105,6 +105,7 @@ object RoutePlanner {
 
   /** Compute edge weight = length_meters / speed_mps */
   private def computeEdgeWeight(edge: GraphEdge): Double = {
+
     val coords = edge.geometry.map { case (lat, lon) =>
       new Coordinate(lon, lat)
     }.toArray
@@ -116,7 +117,13 @@ object RoutePlanner {
     // Approximate conversion: 1 degree ≈ 111 km
     val lengthMeters = line.getLength * 111000
 
-    val speed = edge.tags.get("speed_mps").map(_.toDouble).getOrElse(13.9) // fallback 50 km/h
+    // Speed selection:
+    // - Postgres mode: tags("speed_mps") may exist
+    // - PBF mode: fallback to 13.9 m/s (50 km/h)
+    val speed =
+      edge.tags.get("speed_mps")
+        .flatMap(s => scala.util.Try(s.toDouble).toOption)
+        .getOrElse(13.9)
 
     lengthMeters / speed
   }

@@ -7,7 +7,8 @@ import scala.collection.mutable
 
 
 /**
-  * RoadGraphBuilder transforms raw OSM nodes + ways into a directed road graph.
+  * RoadGraphBuilder transforms RawOSMData (from Postgres or PBF)
+  * into a directed road graph.
   *
   * Output:
   *   RoadGraph(
@@ -15,7 +16,7 @@ import scala.collection.mutable
   *     edges: Map[String, GraphEdge]
   *   )
   *
-  * Each OSM way becomes one or more directed edges.
+  * Each OSM/Postgres way becomes one or more directed edges.
   */
 object RoadGraphBuilder {
 
@@ -54,7 +55,9 @@ object RoadGraphBuilder {
     val nodes = mutable.Map[String, GraphNode]()
     val edges = mutable.Map[String, GraphEdge]()
 
-    // Build nodes from OSM raw nodes
+    // -------------------------------------------------------------------------
+    // Build graph nodes
+    // -------------------------------------------------------------------------
     osm.nodes.foreach { case (id, raw) =>
       nodes += id.toString -> GraphNode(
         id = id.toString,
@@ -64,14 +67,17 @@ object RoadGraphBuilder {
       )
     }
 
-    // Build edges from OSM ways
+    // -------------------------------------------------------------------------
+    // Build graph edges
+    // -------------------------------------------------------------------------
     osm.ways.foreach { way =>
-      val isOneway = way.tags.get("oneway").contains("yes")
+      val isOneway = way.tags.get("oneway").contains("true") ||
+                     way.tags.get("oneway").contains("yes")
 
-      // Build forward direction
+      // Forward direction
       buildEdgeFromWay(way, forward = true, nodes, edges)
 
-      // Build backward direction if not oneway
+      // Backward direction (if not oneway)
       if (!isOneway)
         buildEdgeFromWay(way, forward = false, nodes, edges)
     }
@@ -95,13 +101,13 @@ object RoadGraphBuilder {
 
     val nodeSeq = if (forward) way.nodeIds else way.nodeIds.reverse
 
-    // Skip degenerate ways
     if (nodeSeq.size < 2) return
 
     val fromId = nodeSeq.head.toString
     val toId   = nodeSeq.last.toString
 
-    val geometry = nodeSeq.flatMap(id => nodes.get(id.toString).map(n => (n.lat, n.lon)))
+    val geometry =
+      nodeSeq.flatMap(id => nodes.get(id.toString).map(n => (n.lat, n.lon)))
 
     val edgeId = s"${way.id}-${if (forward) "f" else "b"}"
 

@@ -1,0 +1,21 @@
+services:
+  graph-engine:
+    build: ./graph-engine
+    volumes:
+      - graph-data:/opt/cityrover/graph-engine/output
+
+  rover-simulator:
+    build: ./rover-simulator
+    depends_on:
+      - graph-engine
+      - kafka
+    volumes:
+      - graph-data:/opt/cityrover/graph-engine/output
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    ports:
+      - "19092:19092"
+
+volumes:
+  graph-data:
