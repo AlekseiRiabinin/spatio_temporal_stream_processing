@@ -1,31 +1,30 @@
-name := "cityrover-graph-engine"
+ThisBuild / scalaVersion := "2.12.18"
+ThisBuild / organization := "cityrover"
+ThisBuild / version := "0.1.0"
 
-version := "0.1.0"
+lazy val root = (project in file("."))
+  .settings(
+    name := "cityrover-graph-engine",
 
-scalaVersion := "2.12.18"
+    libraryDependencies ++= Seq(
+      "org.openstreetmap.osmosis" % "osmosis-osm-binary" % "0.47",
+      "org.locationtech.jts" % "jts-core" % "1.19.0",
+      "org.apache.hadoop" % "hadoop-common" % "3.3.6",
+      "org.apache.hadoop" % "hadoop-mapreduce-client-core" % "3.3.6",
+      "org.apache.parquet" % "parquet-avro" % "1.13.1",
+      "org.apache.parquet" % "parquet-hadoop" % "1.13.1",
+      "com.typesafe" % "config" % "1.4.3",
+      "ch.qos.logback" % "logback-classic" % "1.4.14"
+    ),
 
-libraryDependencies ++= Seq(
-  // OSM4J (complete PBF reader)
-  "org.openstreetmap.osmosis" % "osmosis-osm-binary" % "0.47",
+    fork := true,
 
-  // Geospatial utilities (distance, bearings, projections)
-  "org.locationtech.jts" % "jts-core" % "1.19.0",
+    Compile / mainClass := Some("cityrover.graph.GraphEngineMain"),
 
-  // Hadoop (required for Parquet Path)
-  "org.apache.hadoop" % "hadoop-common" % "3.3.6",
-  "org.apache.hadoop" % "hadoop-mapreduce-client-core" % "3.3.6",
+    assembly / assemblyJarName := "cityrover-graph-engine-assembly-0.1.0.jar",
 
-  // Parquet output for nodes/edges
-  "org.apache.parquet" % "parquet-avro" % "1.13.1",
-  "org.apache.parquet" % "parquet-hadoop" % "1.13.1",
-
-  // Config loader
-  "com.typesafe" % "config" % "1.4.3",
-
-  // Logging
-  "ch.qos.logback" % "logback-classic" % "1.4.14"
-)
-
-fork := true
-
-mainClass in Compile := Some("cityrover.graph.GraphEngineMain")
+    assembly / assemblyMergeStrategy := {
+      case PathList("META-INF", _*) => MergeStrategy.discard
+      case _                        => MergeStrategy.first
+    }
+  )
