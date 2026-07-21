@@ -28,7 +28,17 @@ object GraphEngineMain extends App {
   private val config: Config =
     ConfigFactory.load().getConfig("cityrover.graph-engine")
 
+  // Postgres config (injected via Docker ENV)
+  private val pgHost     = config.getString("postgres.host")
+  private val pgPort     = config.getInt("postgres.port")
+  private val pgDatabase = config.getString("postgres.database")
+  private val pgUser     = config.getString("postgres.user")
+  private val pgPassword = config.getString("postgres.password")
+
+  // PBF fallback
   private val inputPbf: String = config.getString("inputPbf")
+
+  // Output directory (MUST match Docker volume mount)
   private val outputDir: String = config.getString("outputDir")
 
   println("[GraphEngine] Starting graph build pipeline")
@@ -40,12 +50,25 @@ object GraphEngineMain extends App {
 
   println("[GraphEngine] Loading OSM data (Postgres primary, PBF fallback)…")
 
-  val osmData = OSMLoader.load(inputPbf)
+  val osmData =
+    try {
+      OSMLoader.loadFromPostgres(
+        host = pgHost,
+        port = pgPort,
+        db   = pgDatabase,
+        user = pgUser,
+        pass = pgPassword
+      )
+    } catch {
+      case ex: Exception =>
+        println(s"[GraphEngine] PostgreSQL load failed: ${ex.getMessage}")
+        println("[GraphEngine] Falling back to PBF parsing…")
+        OSMLoader.loadFromPbf(inputPbf)
+    }
 
   println(
     s"[GraphEngine] Loaded OSM entities: " +
-    s"nodes=${osmData.nodes.size}, " +
-    s"ways=${osmData.ways.size}"
+    s"nodes=${osmData.nodes.size}, ways=${osmData.ways.size}"
   )
 
   // ---------------------------------------------------------------------------
@@ -56,8 +79,7 @@ object GraphEngineMain extends App {
 
   println(
     s"[GraphEngine] Road graph built: " +
-    s"nodes=${roadGraph.nodes.size}, " +
-    s"edges=${roadGraph.edges.size}"
+    s"nodes=${roadGraph.nodes.size}, edges=${roadGraph.edges.size}"
   )
 
   // ---------------------------------------------------------------------------

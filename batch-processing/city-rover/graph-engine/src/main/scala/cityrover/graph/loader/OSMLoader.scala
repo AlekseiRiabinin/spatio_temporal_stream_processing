@@ -30,18 +30,6 @@ import org.openstreetmap.osmosis.osmbinary.file.BlockInputStream
   */
 object OSMLoader {
 
-  private val config = ConfigFactory.load()
-  private val pg = config.getConfig("cityrover.graph-engine.postgres")
-
-  private val pgHost     = pg.getString("host")
-  private val pgPort     = pg.getInt("port")
-  private val pgDatabase = pg.getString("database")
-  private val pgUser     = pg.getString("user")
-  private val pgPassword = pg.getString("password")
-
-  private val jdbcUrl =
-    s"jdbc:postgresql://$pgHost:$pgPort/$pgDatabase"
-
   // ---------------------------------------------------------------------------
   // Data models
   // ---------------------------------------------------------------------------
@@ -49,50 +37,32 @@ object OSMLoader {
   case class RawNode(id: Long, lat: Double, lon: Double)
 
   case class RawWay(
-      id: Long,
-      nodeIds: Seq[Long],
-      tags: Map[String, String]
+    id: Long,
+    nodeIds: Seq[Long],
+    tags: Map[String, String]
   )
 
   case class RawOSMData(
-      nodes: Map[Long, RawNode],
-      ways: Seq[RawWay]
+    nodes: Map[Long, RawNode],
+    ways: Seq[RawWay]
   )
 
-  // ---------------------------------------------------------------------------
-  // Coordinate conversion helpers (used only in PBF mode)
-  // ---------------------------------------------------------------------------
-
-  private def parseLat(latNano: Long): Double = latNano * 1e-9
-  private def parseLon(lonNano: Long): Double = lonNano * 1e-9
-
   private val wkbReader = new WKBReader()
-
-  // ---------------------------------------------------------------------------
-  // Unified loader entry point
-  // ---------------------------------------------------------------------------
-
-  def load(path: String): RawOSMData = {
-    try {
-      println("OSMLoader: Attempting to load OSM data from PostgreSQL…")
-      loadFromPostgres()
-    } catch {
-      case ex: Exception =>
-        println(
-          s"OSMLoader: PostgreSQL load failed (${ex.getMessage()}). " +
-          s"Falling back to PBF parsing."
-        )
-        loadFromPbf(path)
-    }
-  }
 
   // ---------------------------------------------------------------------------
   // PRIMARY MODE: Load rover-ready OSM data from PostgreSQL
   // ---------------------------------------------------------------------------
 
-  def loadFromPostgres(): RawOSMData = {
+  def loadFromPostgres(
+    host: String,
+    port: Int,
+    db: String,
+    user: String,
+    pass: String
+  ): RawOSMData = {
 
-    val conn = DriverManager.getConnection(jdbcUrl, pgUser, pgPassword)
+    val jdbcUrl = s"jdbc:postgresql://$host:$port/$db"
+    val conn = DriverManager.getConnection(jdbcUrl, user, pass)
 
     val sql =
       """
@@ -121,31 +91,26 @@ object OSMLoader {
     while (rs.next()) {
 
       val roverWayId = rs.getLong("rover_way_id")
-      val osmId      = rs.getLong("osm_id")
-
       val geomBytes  = rs.getBytes("geom_wkb")
       val geom       = wkbReader.read(geomBytes).asInstanceOf[LineString]
 
-      // Convert geometry to node list (RawWay expects node IDs)
       val coords = geom.getCoordinates
-      val nodeIds = coords.indices.map(i => roverWayId * 1000 + i) // synthetic node IDs
+      val nodeIds = coords.indices.map(i => roverWayId * 1000 + i)
 
-      // Populate RawNode map
       coords.zip(nodeIds).foreach { case (c, nid) =>
         nodes += nid -> RawNode(nid, c.y, c.x)
       }
 
-      // Flatten tags into RawWay.tags
       val tags = Map(
-        "highway"       -> rs.getString("highway"),
-        "name"          -> rs.getString("name"),
-        "surface"       -> rs.getString("surface"),
-        "lanes"         -> Option(rs.getInt("lanes")).filter(_ != 0).map(_.toString).orNull,
-        "oneway"        -> rs.getBoolean("oneway").toString,
-        "foot_access"   -> rs.getString("foot_access"),
-        "bicycle_access"-> rs.getString("bicycle_access"),
-        "indoor"        -> rs.getBoolean("indoor").toString,
-        "service"       -> rs.getString("service_type")
+        "highway"        -> rs.getString("highway"),
+        "name"           -> rs.getString("name"),
+        "surface"        -> rs.getString("surface"),
+        "lanes"          -> Option(rs.getInt("lanes")).filter(_ != 0).map(_.toString).orNull,
+        "oneway"         -> rs.getBoolean("oneway").toString,
+        "foot_access"    -> rs.getString("foot_access"),
+        "bicycle_access" -> rs.getString("bicycle_access"),
+        "indoor"         -> rs.getBoolean("indoor").toString,
+        "service"        -> rs.getString("service_type")
       ).filter(_._2 != null)
 
       ways += RawWay(
@@ -187,7 +152,7 @@ object OSMLoader {
           lat += lats.get(i)
           lon += lons.get(i)
 
-          nodes += id -> RawNode(id, parseLat(lat), parseLon(lon))
+          nodes += id -> RawNode(id, lat * 1e-9, lon * 1e-9)
         }
       }
 
@@ -195,8 +160,8 @@ object OSMLoader {
         list.asScala.foreach { n =>
           nodes += n.getId -> RawNode(
             n.getId,
-            parseLat(n.getLat),
-            parseLon(n.getLon)
+            n.getLat * 1e-9,
+            n.getLon * 1e-9
           )
         }
       }
