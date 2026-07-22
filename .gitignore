@@ -15,6 +15,7 @@ data/article_4/parsed/*.csv
 data/article_3/
 data/article_2/
 data/maps/
+graph-data/
 ml/article_4/notebooks
 # Graph-engine generated data
 graph-engine/src/main/scala/cityrover/graph/data/

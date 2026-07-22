@@ -7,6 +7,7 @@ services:
     container_name: cityrover-graph-engine
     volumes:
       - graph-data:/opt/cityrover/graph-engine/output
+      - data/maps:/app/data/maps
     networks:
       - kafka-net
       - postgis-net
@@ -58,10 +59,14 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ${PWD}/../graph-data
+      device: ${PWD}/graph-data
 
 networks:
   kafka-net:
     driver: bridge
   postgis-net:
     driver: bridge
+
+
+# docker compose -f docker/docker-compose.city-rover.yml build graph-engine
+# docker compose -f docker/docker-compose.city-rover.yml build rover-simulator

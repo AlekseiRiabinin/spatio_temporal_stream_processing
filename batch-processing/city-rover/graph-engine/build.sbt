@@ -14,7 +14,8 @@ lazy val root = (project in file("."))
       "org.apache.parquet" % "parquet-avro" % "1.13.1",
       "org.apache.parquet" % "parquet-hadoop" % "1.13.1",
       "com.typesafe" % "config" % "1.4.3",
-      "ch.qos.logback" % "logback-classic" % "1.4.14"
+      "ch.qos.logback" % "logback-classic" % "1.4.14",
+      "org.postgresql" % "postgresql" % "42.7.3"
     ),
 
     fork := true,
