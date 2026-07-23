@@ -50,26 +50,41 @@ object GraphEngineMain extends App {
 
   println("[GraphEngine] Loading OSM data (Postgres primary, PBF fallback)…")
 
+  println(s"[GraphEngine] PostgreSQL host     : $pgHost")
+  println(s"[GraphEngine] PostgreSQL port     : $pgPort")
+  println(s"[GraphEngine] PostgreSQL database : $pgDatabase")
+  println(s"[GraphEngine] PostgreSQL user     : $pgUser")
+  println(s"[GraphEngine] PBF fallback        : $inputPbf")
+
   val osmData =
     try {
-      OSMLoader.loadFromPostgres(
+
+      println("[GraphEngine] Attempting PostgreSQL load...")
+
+      val data = OSMLoader.loadFromPostgres(
         host = pgHost,
         port = pgPort,
         db   = pgDatabase,
         user = pgUser,
         pass = pgPassword
       )
+
+      println("[GraphEngine] PostgreSQL load succeeded.")
+      data
+
     } catch {
-      case ex: Exception =>
-        println(s"[GraphEngine] PostgreSQL load failed: ${ex.getMessage}")
-        println("[GraphEngine] Falling back to PBF parsing…")
+
+      case ex: Throwable =>
+
+        println("[GraphEngine] PostgreSQL load failed!")
+        println(s"[GraphEngine] Exception: ${ex.getClass.getName}")
+        println(s"[GraphEngine] Message  : ${ex.getMessage}")
+        ex.printStackTrace()
+
+        println("[GraphEngine] Falling back to PBF parsing...")
+
         OSMLoader.loadFromPbf(inputPbf)
     }
-
-  println(
-    s"[GraphEngine] Loaded OSM entities: " +
-    s"nodes=${osmData.nodes.size}, ways=${osmData.ways.size}"
-  )
 
   // ---------------------------------------------------------------------------
   // 2. Build directed rover graph

@@ -61,25 +61,41 @@ object OSMLoader {
     pass: String
   ): RawOSMData = {
 
+    // Explicitly register PostgreSQL JDBC driver
+    Class.forName("org.postgresql.Driver")
+
     val jdbcUrl = s"jdbc:postgresql://$host:$port/$db"
-    val conn = DriverManager.getConnection(jdbcUrl, user, pass)
+
+    println(s"[Postgres] JDBC URL : $jdbcUrl")
+    println(s"[Postgres] User     : $user")
+    println(s"[Postgres] Driver   : ${classOf[org.postgresql.Driver].getName}")
+
+    val conn =
+      try {
+        DriverManager.getConnection(jdbcUrl, user, pass)
+      } catch {
+        case e: Exception =>
+          println("[Postgres] Connection failed")
+          e.printStackTrace()
+          throw e
+      }
 
     val sql =
       """
-      SELECT
-        rover_way_id,
-        osm_id,
-        ST_AsBinary(geom) AS geom_wkb,
-        highway,
-        name,
-        surface,
-        lanes,
-        oneway,
-        foot_access,
-        bicycle_access,
-        indoor,
-        service_type
-      FROM api.v_osm_dubai_rover;
+        SELECT
+          rover_way_id,
+          osm_id,
+          ST_AsBinary(geom) AS geom_wkb,
+          highway,
+          name,
+          surface,
+          lanes,
+          oneway,
+          foot_access,
+          bicycle_access,
+          indoor,
+          service_type
+        FROM api.v_osm_dubai_rover;
       """
 
     val stmt = conn.prepareStatement(sql)
@@ -95,7 +111,7 @@ object OSMLoader {
       val geom       = wkbReader.read(geomBytes).asInstanceOf[LineString]
 
       val coords = geom.getCoordinates
-      val nodeIds = coords.indices.map(i => roverWayId * 1000 + i)
+      val nodeIds = coords.indices.map(i => roverWayId * 1000L + i)
 
       coords.zip(nodeIds).foreach { case (c, nid) =>
         nodes += nid -> RawNode(nid, c.y, c.x)
@@ -120,7 +136,10 @@ object OSMLoader {
       )
     }
 
+    rs.close()
+    stmt.close()
     conn.close()
+
     RawOSMData(nodes.toMap, ways.toSeq)
   }
 

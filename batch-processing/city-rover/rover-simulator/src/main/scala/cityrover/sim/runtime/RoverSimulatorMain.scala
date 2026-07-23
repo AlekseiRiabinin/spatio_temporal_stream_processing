@@ -61,7 +61,28 @@ object RoverSimulatorMain extends App {
 
   for (i <- 1 to numRovers) {
     val startNode = graphService.getRandomStartNode()
-    val route = graphService.getRandomRoute(startNode, length = 20)
+
+    val route =
+      graphService.getRandomRoute(
+        startNode,
+        length = 20
+      )
+
+    if (route.isEmpty) {
+      println(
+        s"[Simulator] Warning: empty route for rover-$i, retrying"
+      )
+    }
+    else {
+
+      val rover = new RoverController(
+        roverId = s"rover-$i",
+        route = route,
+        graphService = graphService
+      )
+
+      rovers += rover
+    }
 
     val rover = new RoverController(
       roverId = s"rover-$i",

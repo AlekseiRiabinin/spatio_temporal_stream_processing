@@ -12,4 +12,4 @@ ENV POSTGIS_DB=cre_db
 ENV POSTGIS_USER=cre_user
 ENV POSTGIS_PASSWORD=cre_password
 
-ENTRYPOINT ["java", "-jar", "/app/graph-engine.jar"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/graph-engine.jar"]
