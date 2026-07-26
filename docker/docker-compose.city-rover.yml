@@ -63,10 +63,6 @@ services:
       dockerfile: Dockerfile
     container_name: cityrover-trajectory-visualizer-job
     depends_on:
-      spark-master:
-        condition: service_started
-      spark-worker:
-        condition: service_started
       kafka-1:
         condition: service_started
     environment:
