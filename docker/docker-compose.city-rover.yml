@@ -91,6 +91,7 @@ networks:
     name: city-rover-net
 
 
+# ./run-trajectory-job.sh
 # ./start-system-city-rover.sh
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache graph-engine
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache rover-simulator

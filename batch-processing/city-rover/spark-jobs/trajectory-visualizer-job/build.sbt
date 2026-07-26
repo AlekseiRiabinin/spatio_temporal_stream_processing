@@ -8,11 +8,11 @@ lazy val root = (project in file("."))
 
     libraryDependencies ++= Seq(
       // Spark core + SQL
-      "org.apache.spark" %% "spark-core" % "3.5.0" % "provided",
-      "org.apache.spark" %% "spark-sql"  % "3.5.0" % "provided",
+      "org.apache.spark" %% "spark-core" % "3.5.4" % "provided",
+      "org.apache.spark" %% "spark-sql"  % "3.5.4" % "provided",
 
-      // Kafka + Structured Streaming
-      "org.apache.spark" %% "spark-sql-kafka-0-10" % "3.5.0",
+      // Kafka + Structured Streaming (MUST match Spark version)
+      "org.apache.spark" %% "spark-sql-kafka-0-10" % "3.5.4",
 
       // Geometry (for trajectories, WKT/GeoJSON)
       "org.locationtech.jts" % "jts-core" % "1.19.0",
