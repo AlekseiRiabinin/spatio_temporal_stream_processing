@@ -1,6 +1,8 @@
 package cityrover.spark.trajectory
 
 import org.apache.spark.sql.{SparkSession, DataFrame, functions => F}
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.Column
 import org.apache.spark.sql.streaming.Trigger
 import com.typesafe.config.ConfigFactory
 

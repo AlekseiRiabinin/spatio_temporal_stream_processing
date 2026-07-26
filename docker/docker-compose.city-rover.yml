@@ -57,6 +57,30 @@ services:
       - city-rover-net
     restart: always
 
+  trajectory-visualizer-job:
+    build:
+      context: ../batch-processing/city-rover/spark-jobs/trajectory-visualizer-job
+      dockerfile: Dockerfile
+    container_name: cityrover-trajectory-visualizer-job
+    depends_on:
+      spark-master:
+        condition: service_started
+      spark-worker:
+        condition: service_started
+      kafka-1:
+        condition: service_started
+    environment:
+      SPARK_MASTER_URL: spark://spark-master:7077
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:19092
+      JAVA_OPTS: "-Xmx2g"
+    volumes:
+      - ./spark/pipelines:/opt/spark/work-dir/pipelines
+      - ../spatio_temporal_stream_processing/batch-processing/city-rover/spark-jars:/opt/spark/city-rover-jars
+    networks:
+      - city-rover-net
+    restart: "no"
+
+
 volumes:
   graph-data:
     driver: local
@@ -74,3 +98,4 @@ networks:
 # ./start-system-city-rover.sh
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache graph-engine
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache rover-simulator
+# docker compose -f docker/docker-compose.city-rover.yml build --no-cache trajectory-visualizer-job
