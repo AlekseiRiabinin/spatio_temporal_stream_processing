@@ -72,11 +72,11 @@ services:
     volumes:
       - ./spark/pipelines:/opt/spark/work-dir/pipelines
       - ../spatio_temporal_stream_processing/batch-processing/city-rover/spark-jars:/opt/spark/city-rover-jars
+      - graph-data:/opt/cityrover/graph-engine/output
     networks:
       - city-rover-net
     restart: "no"
-
-
+  
 volumes:
   graph-data:
     driver: local
