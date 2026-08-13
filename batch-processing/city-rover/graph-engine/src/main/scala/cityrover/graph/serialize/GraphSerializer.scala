@@ -62,7 +62,6 @@ object GraphSerializer {
       """
     )
 
-
   private val edgeSchema: Schema =
     new Schema.Parser().parse(
       """
@@ -99,7 +98,6 @@ object GraphSerializer {
       """
     )
 
-
   private val spatialSchema: Schema =
     new Schema.Parser().parse(
       """
@@ -118,7 +116,6 @@ object GraphSerializer {
     )
 
 
-
   // ---------------------------------------------------------------------------
   // Local filesystem OutputFile
   // ---------------------------------------------------------------------------
@@ -130,27 +127,20 @@ object GraphSerializer {
 
         val file = new File(path)
 
-        Option(file.getParentFile)
-          .foreach(_.mkdirs())
+        Option(file.getParentFile).foreach(_.mkdirs())
 
-        val out =
-          new FileOutputStream(file)
-
+        val out = new FileOutputStream(file)
 
         new PositionOutputStream {
 
           private var pos = 0L
 
-
-          override def getPos: Long =
-            pos
-
+          override def getPos: Long = pos
 
           override def write(b: Int): Unit = {
             out.write(b)
             pos += 1
           }
-
 
           override def write(
             b: Array[Byte],
@@ -162,31 +152,20 @@ object GraphSerializer {
             pos += len
           }
 
-
-          override def flush(): Unit =
-            out.flush()
-
-
-          override def close(): Unit =
-            out.close()
+          override def flush(): Unit = out.flush()
+          override def close(): Unit = out.close()
         }
       }
 
-
-      override def createOrOverwrite(
-        blockSizeHint: Long
-      ): PositionOutputStream =
+      override def createOrOverwrite(blockSizeHint: Long): PositionOutputStream =
         create(blockSizeHint)
-
 
       override def supportsBlockSize(): Boolean =
         false
 
-
       override def defaultBlockSize(): Long =
         0L
     }
-
 
 
   // ---------------------------------------------------------------------------
@@ -202,8 +181,7 @@ object GraphSerializer {
 
     val dir = new File(outputDir)
 
-    if (!dir.exists())
-      dir.mkdirs()
+    if (!dir.exists()) dir.mkdirs()
 
     writeNodes(
       outputDir + "/nodes.parquet",
@@ -235,40 +213,28 @@ object GraphSerializer {
     nodes: Map[String, GraphNode]
   ): Unit = {
 
-
     val writer =
       AvroParquetWriter
         .builder[GenericRecord](outputFile(path))
         .withSchema(nodeSchema)
-        .withCompressionCodec(
-          CompressionCodecName.SNAPPY
-        )
-        .withWriteMode(
-          ParquetFileWriter.Mode.OVERWRITE
-        )
+        .withCompressionCodec(CompressionCodecName.SNAPPY)
+        .withWriteMode(ParquetFileWriter.Mode.OVERWRITE)
         .build()
-
 
     nodes.values.foreach { n =>
 
-      val rec =
-        new GenericData.Record(nodeSchema)
+      val rec = new GenericData.Record(nodeSchema)
 
       rec.put("id", n.id)
       rec.put("lat", n.lat)
       rec.put("lon", n.lon)
-      rec.put(
-        "outgoingEdges",
-        n.outgoingEdges.toArray
-      )
+      rec.put("outgoingEdges", n.outgoingEdges.toArray)
 
       writer.write(rec)
     }
 
-
     writer.close()
   }
-
 
 
   // ---------------------------------------------------------------------------

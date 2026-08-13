@@ -68,11 +68,19 @@ echo ""
 echo "4. Starting graph-engine and rover-simulator..."
 docker compose -f "$COMPOSE_FILE" up -d graph-engine rover-simulator
 
+# ------------------------------------------------------------
+# 5. Start rover-map-visualizer
+# ------------------------------------------------------------
+echo ""
+echo "5. Starting rover-map-visualizer..."
+docker compose -f "$COMPOSE_FILE" up -d rover-map-visualizer
+
 echo ""
 echo "=== CityRover System is running ==="
 echo "Services:"
 echo "  - kafka-1"
 echo "  - graph-engine"
 echo "  - rover-simulator"
+echo "  - rover-map-visualizer"
 echo ""
 echo "Graph data volume: graph-data/"

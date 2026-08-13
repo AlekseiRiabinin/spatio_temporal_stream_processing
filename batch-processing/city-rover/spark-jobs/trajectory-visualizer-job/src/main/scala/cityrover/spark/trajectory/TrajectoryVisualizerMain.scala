@@ -1,10 +1,9 @@
 package cityrover.spark.trajectory
 
-import org.apache.spark.sql.{SparkSession, DataFrame, functions => F}
-import org.apache.spark.sql.functions._
-import org.apache.spark.sql.Column
+import org.apache.spark.sql.{SparkSession, DataFrame, Row, functions => F}
 import org.apache.spark.sql.streaming.Trigger
 import com.typesafe.config.ConfigFactory
+import io.circe.Json
 
 
 object TrajectoryVisualizerMain {
@@ -13,6 +12,7 @@ object TrajectoryVisualizerMain {
 
     // Load configuration
     val config = ConfigFactory.load()
+
     val kafkaBootstrap = config.getString("telemetry.kafka.bootstrap")
     val kafkaTopic     = config.getString("telemetry.kafka.topic")
     val graphPath      = config.getString("graph.outputDir")
@@ -23,8 +23,6 @@ object TrajectoryVisualizerMain {
       .appName("cityrover-trajectory-visualizer")
       .getOrCreate()
 
-    import spark.implicits._
-
     // Kafka → telemetry stream
     val telemetryStream = spark.readStream
       .format("kafka")
@@ -32,39 +30,109 @@ object TrajectoryVisualizerMain {
       .option("subscribe", kafkaTopic)
       .option("startingOffsets", "latest")
       .load()
-      .select(F.from_json(F.col("value").cast("string"), TelemetrySchema.schema).as("json"))
+      .select(
+        F.from_json(
+          F.col("value").cast("string"),
+          TelemetrySchema.schema
+        ).as("json")
+      )
       .select("json.*")
 
-    // Load graph-engine output (future use: snapping trajectories to edges)
+    // Load graph-engine output.
+    // Currently loaded for future trajectory/edge processing.
     val nodes = spark.read.parquet(s"$graphPath/nodes.parquet")
     val edges = spark.read.parquet(s"$graphPath/edges.parquet")
 
-    // Build trajectories per rover
+    // Prevent unused-value warnings in some build configurations.
+    nodes.schema
+    edges.schema
+
+    // Build trajectories per rover.
+    //
+    // Result:
+    //   roverId
+    //   coords
+    //   positions
     val trajectories = TrajectoryBuilder.build(telemetryStream)
 
-    // Write GeoJSON + Parquet
+    // Write GeoJSON + replay JSON + Parquet
     val query = trajectories.writeStream
       .foreachBatch { (batchDF: DataFrame, batchId: Long) =>
+
         if (!batchDF.isEmpty) {
 
-          // Write Parquet batch
-          batchDF.write.mode("overwrite")
+          // ------------------------------------------------------------
+          // 1. Write Parquet batch
+          // ------------------------------------------------------------
+          batchDF.write
+            .mode("overwrite")
             .parquet(s"$outputDir/parquet/batch_$batchId")
 
-          // Write GeoJSON per rover
+          // ------------------------------------------------------------
+          // 2. Write trajectory and replay data for each rover
+          // ------------------------------------------------------------
           batchDF.collect().foreach { row =>
-            val roverId = row.getAs[String]("roverId")
-            val coords  = row.getAs[Seq[Seq[Double]]]("coords")
 
-            val geojson = GeoJsonWriter.toLineString(
-              roverId,
-              coords,
-              Map("batchId" -> io.circe.Json.fromLong(batchId))
-            )
+            val roverId = row.getAs[String]("roverId")
+
+            // ----------------------------------------------------------
+            // LineString coordinates
+            // ----------------------------------------------------------
+            val coords =
+              row.getAs[Seq[Seq[Double]]]("coords")
+
+            val trajectoryGeoJson =
+              GeoJsonWriter.toLineString(
+                roverId,
+                coords,
+                Map("batchId" -> Json.fromLong(batchId))
+              )
 
             GeoJsonWriter.writeToFile(
               s"$outputDir/geojson/$roverId.json",
-              geojson
+              trajectoryGeoJson
+            )
+
+            // ----------------------------------------------------------
+            // Timestamped positions for offline replay
+            // ----------------------------------------------------------
+            val positions =
+              row
+                .getAs[Seq[Row]]("positions")
+                .map { position =>
+                  val ts = position.getAs[Long]("ts")
+                  val lat = position.getAs[Double]("lat")
+                  val lon = position.getAs[Double]("lon")
+                  val speed = position.getAs[Double]("speed")
+                  val heading = position.getAs[Double]("heading")
+                  val edgeId = Option(position.getAs[String]("edgeId"))
+                  val routeId = Option(position.getAs[String]("routeId"))
+
+                  Map(
+                    "ts" -> Json.fromLong(ts),
+                    "lat" -> Json.fromDoubleOrNull(lat),
+                    "lon" -> Json.fromDoubleOrNull(lon),
+                    "speed" -> Json.fromDoubleOrNull(speed),
+                    "heading" -> Json.fromDoubleOrNull(heading),
+                    "edgeId" -> edgeId
+                      .map(Json.fromString)
+                      .getOrElse(Json.Null),
+                    "routeId" -> routeId
+                      .map(Json.fromString)
+                      .getOrElse(Json.Null)
+                  )
+                }
+
+            val replayGeoJson =
+              GeoJsonWriter.toPositionFeatureCollection(
+                roverId,
+                positions,
+                Map("batchId" -> Json.fromLong(batchId))
+              )
+
+            GeoJsonWriter.writeToFile(
+              s"$outputDir/replay/$roverId.json",
+              replayGeoJson
             )
           }
         }

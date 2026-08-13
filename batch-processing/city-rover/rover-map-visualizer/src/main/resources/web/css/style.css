@@ -1,0 +1,116 @@
+/* ------------------------------------------------------------
+   Global layout
+------------------------------------------------------------ */
+
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    font-family: Arial, sans-serif;
+    background: #f5f5f5;
+}
+
+/* ------------------------------------------------------------
+   Sidebar
+------------------------------------------------------------ */
+
+#sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 280px;
+    height: 100%;
+    background: #ffffff;
+    border-right: 1px solid #ddd;
+    padding: 20px;
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
+#sidebar h2 {
+    margin-top: 0;
+    font-size: 18px;
+    color: #333;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 8px;
+}
+
+/* Rover list */
+#rover-list {
+    margin-top: 10px;
+}
+
+.rover-item {
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    background: #eee;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.rover-item:hover {
+    background: #e0e0e0;
+}
+
+/* ------------------------------------------------------------
+   Controls
+------------------------------------------------------------ */
+
+#controls {
+    margin-top: 20px;
+}
+
+#controls button {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: #4285f4;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+#controls button:hover {
+    background: #357ae8;
+}
+
+/* ------------------------------------------------------------
+   Map container
+------------------------------------------------------------ */
+
+#map {
+    position: absolute;
+    top: 0;
+    left: 280px; /* matches sidebar width */
+    right: 0;
+    bottom: 0;
+    z-index: 1;
+}
+
+/* ------------------------------------------------------------
+   Replay marker styling (optional)
+------------------------------------------------------------ */
+
+.replay-marker {
+    background: #ff5722;
+    border: 2px solid white;
+    border-radius: 50%;
+}
+
+/* ------------------------------------------------------------
+   Graph overlay styling (Phase 5)
+------------------------------------------------------------ */
+
+.graph-edge {
+    stroke: #444;
+    stroke-width: 2;
+    opacity: 0.7;
+}
+
+.graph-node {
+    background: #222;
+    border: 2px solid #fff;
+    border-radius: 50%;
+}
