@@ -80,11 +80,11 @@ services:
       context: ../batch-processing/city-rover/rover-map-visualizer
       dockerfile: Dockerfile
     container_name: cityrover-map-visualizer
-    depends_on:
-      kafka-1:
-        condition: service_started
-      graph-engine:
-        condition: service_completed_successfully
+    # depends_on:
+    #   kafka-1:
+    #     condition: service_started
+    #   graph-engine:
+    #     condition: service_completed_successfully
     environment:
       VISUALIZER_OUTPUT_DIR: /opt/cityrover/graph-engine/output
       VISUALIZER_WEBROOT: web
@@ -103,7 +103,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ${PWD}/graph-data
+      device: /home/aleksei/Projects/telecom_analytics_4.0/spark/pipelines/trajectory-viewer/output
 
 networks:
   city-rover-net:
@@ -111,8 +111,9 @@ networks:
     name: city-rover-net
 
 
-# ./run-trajectory-job.sh
 # ./start-system-city-rover.sh
+# ./run-trajectory-job.sh
+# ./run-map-visualizer.sh
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache graph-engine
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache rover-simulator
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache trajectory-visualizer-job
