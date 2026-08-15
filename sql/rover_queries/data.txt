@@ -1,0 +1,64 @@
+rovers
+------------------------------------------------
+rover_id | model | status | battery_level
+
+rover_01 | R1    | active | 87
+rover_02 | R1    | idle   | 65
+rover_03 | R2    | active | 92
+
+
+rover_events
+---------------------------------------------------------------
+event_id | rover_id | timestamp | latitude | longitude | speed
+
+
+trajectories
+------------------------------------------------
+rover_id | timestamp | latitude | longitude | speed
+
+
+roads
+------------------------------------------------
+road_id | source | target | road_type | max_speed
+
+
+deliveries
+------------------------------------------------
+delivery_id | rover_id | start_time | end_time | status
+
+
+
+                         CITY ROVER SQL
+                              │
+       ┌──────────────────────┼──────────────────────┐
+       │                      │                      │
+     FILTER                 AGGREGATE             JOIN
+       │                      │                      │
+     WHERE                GROUP BY              rovers
+     CASE                 HAVING                roads
+       │                      │                 events
+       │                      │
+       └──────────────┬───────┘
+                      │
+                      ▼
+                    CTE
+                      │
+                      ▼
+                WINDOW FUNCTIONS
+                      │
+        ┌─────────────┼─────────────┐
+        │             │             │
+     ROW_NUMBER      LAG           LEAD
+        │             │             │
+    latest row    previous       next event
+    top N         position       duration
+    dedup         speed change   gaps
+        │             │             │
+        └─────────────┼─────────────┘
+                      ▼
+               FEATURE ENGINEERING
+                      │
+        ┌─────────────┼─────────────┐
+        │             │             │
+    moving avg    rolling sum   event counts
+    avg speed     distance       speed change
