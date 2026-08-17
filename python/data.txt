@@ -1,0 +1,51 @@
+rover_event = {
+    "rover_id": "R01",
+    "timestamp": 1723716000,
+    "location": {
+        "latitude": 55.7558,
+        "longitude": 37.6173
+    },
+    "speed": 12.5,
+    "battery": 87.0,
+    "sensors": [
+        {"name": "temperature", "value": 42.5},
+        {"name": "motor_current", "value": 3.2}
+    ],
+    "status": "moving"
+}
+
+
+                         CITY ROVER PYTHON
+                                │
+          ┌─────────────────────┼─────────────────────┐
+          │                     │                     │
+       DATA TYPES           DATA PROCESSING       PRODUCTION
+          │                     │                     │
+    list / dict / set       filter / sort          exceptions
+    tuple                   group                  logging
+    nested dict             aggregate              retry
+                            transform              validation
+          │                     │
+          └──────────────┬──────┘
+                         │
+                         ▼
+                    ITERATORS
+                         │
+                    generators
+                         │
+                         ▼
+                  STREAM PROCESSING
+                         │
+             ┌───────────┼───────────┐
+             │           │           │
+          filter      transform   aggregate
+             │           │           │
+             └───────────┼───────────┘
+                         ▼
+                  ML FEATURES
+                         │
+             avg_speed / distance /
+             speed_change / battery
+                         │
+                         ▼
+                     ML MODEL
