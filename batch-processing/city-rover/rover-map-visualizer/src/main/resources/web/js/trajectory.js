@@ -7,7 +7,7 @@ async function showTrajectory(roverId) {
         // Clear previous trajectory
         CityRoverMap.clearTrajectoryLayer();
 
-        const res = await fetch(`/api/rovers/${roverId}/trajectory`);
+        const res = await fetch(`/api/trajectory/${roverId}`);
         const data = await res.json();
 
         if (!data || !data.geojson) {

@@ -15,7 +15,7 @@ async function startReplay(roverId) {
     try {
         stopReplay(); // clear previous replay
 
-        const res = await fetch(`/api/rovers/${roverId}/replay`);
+        const res = await fetch(`/api/replay/${roverId}`);
         const data = await res.json();
 
         replayPositions = data.positions || [];

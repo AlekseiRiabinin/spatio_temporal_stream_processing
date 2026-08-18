@@ -2,7 +2,11 @@ FROM eclipse-temurin:17-jre
 
 WORKDIR /opt/cityrover
 
+# Copy the fat JAR
 COPY target/scala-2.12/rover-map-visualizer-assembly-0.1.0.jar app.jar
+
+# Copy web assets
+COPY src/main/resources/web /opt/cityrover/web
 
 EXPOSE 8080
 

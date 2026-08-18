@@ -86,11 +86,11 @@ services:
     #   graph-engine:
     #     condition: service_completed_successfully
     environment:
-      VISUALIZER_OUTPUT_DIR: /opt/cityrover/graph-engine/output
+      VISUALIZER_OUTPUT_DIR: /opt/spark/work-dir/pipelines/trajectory-viewer/output
       VISUALIZER_WEBROOT: web
       JAVA_OPTS: "-Xmx512m"
     volumes:
-      - graph-data:/opt/cityrover/graph-engine/output
+      - trajectory-data:/opt/spark/work-dir/pipelines/trajectory-viewer/output
     ports:
       - "8080:8080"
     networks:
@@ -99,6 +99,13 @@ services:
 
 volumes:
   graph-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/aleksei/Projects/telecom_analytics_4.0/spark/pipelines/trajectory-viewer/output
+
+  trajectory-data:
     driver: local
     driver_opts:
       type: none
