@@ -1,5 +1,5 @@
 // ------------------------------------------------------------
-// Replay state
+// Replay state (single-rover replay)
 // ------------------------------------------------------------
 
 let replayMarker = null;
@@ -13,7 +13,8 @@ let replayIndex = 0;
 
 async function startReplay(roverId) {
     try {
-        stopReplay(); // clear previous replay
+        // Stop any existing replay
+        stopReplay();
 
         const res = await fetch(`/api/replay/${roverId}`);
         const data = await res.json();
@@ -21,12 +22,13 @@ async function startReplay(roverId) {
         replayPositions = data.positions || [];
 
         if (replayPositions.length === 0) {
-            console.warn("No replay positions available.");
+            console.warn(`No replay positions available for rover ${roverId}.`);
             return;
         }
 
-        // Create marker at first position
+        // First position
         const first = replayPositions[0];
+
         replayMarker = L.circleMarker([first.lat, first.lon], {
             radius: 6,
             color: "#ff5722",
@@ -37,11 +39,11 @@ async function startReplay(roverId) {
 
         replayIndex = 0;
 
-        // Center map on first point
+        // Center map on replay start
         CityRoverMap.map.setView([first.lat, first.lon], 15);
 
-        // Start animation loop
-        replayTimer = setInterval(stepReplay, 120); // 120ms per frame
+        // Start animation
+        replayTimer = setInterval(stepReplay, 120);
 
     } catch (err) {
         console.error(`Failed to start replay for rover ${roverId}:`, err);

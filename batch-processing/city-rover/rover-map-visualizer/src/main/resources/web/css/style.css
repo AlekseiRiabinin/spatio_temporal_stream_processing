@@ -2,13 +2,17 @@
    Global layout
 ------------------------------------------------------------ */
 
-html, body {
+html,
+body {
     margin: 0;
     padding: 0;
     height: 100%;
+
     font-family: Arial, sans-serif;
+
     background: #f5f5f5;
 }
+
 
 /* ------------------------------------------------------------
    Sidebar
@@ -16,41 +20,119 @@ html, body {
 
 #sidebar {
     position: absolute;
+
     top: 0;
     left: 0;
+
     width: 280px;
     height: 100%;
+
     background: #ffffff;
+
     border-right: 1px solid #ddd;
+
     padding: 20px;
+
     box-sizing: border-box;
+
     overflow-y: auto;
+
+    z-index: 1000;
 }
+
 
 #sidebar h2 {
     margin-top: 0;
+    margin-bottom: 12px;
+
     font-size: 18px;
+
     color: #333;
+
     border-bottom: 1px solid #ddd;
+
     padding-bottom: 8px;
 }
 
-/* Rover list */
+
+/* ------------------------------------------------------------
+   Rover list
+------------------------------------------------------------ */
+
 #rover-list {
     margin-top: 10px;
 }
 
-.rover-item {
+
+/* ------------------------------------------------------------
+   Rover selection buttons
+------------------------------------------------------------ */
+
+.rover-button {
+    display: block;
+
+    width: 100%;
+
     padding: 8px 10px;
+
     margin-bottom: 6px;
+
+    box-sizing: border-box;
+
     background: #eee;
+
+    border: none;
+
+    border-left: 4px solid transparent;
+
     border-radius: 4px;
+
     cursor: pointer;
+
+    text-align: left;
+
+    font-family: Arial, sans-serif;
+
+    font-size: 14px;
+
+    color: #333;
+
+    transition:
+        background 0.15s ease,
+        border-color 0.15s ease;
 }
 
-.rover-item:hover {
+
+/* ------------------------------------------------------------
+   Rover button hover
+------------------------------------------------------------ */
+
+.rover-button:hover {
     background: #e0e0e0;
 }
+
+
+/* ------------------------------------------------------------
+   Selected rover
+------------------------------------------------------------ */
+
+.rover-button.selected {
+    background: #c0ffc0;
+
+    border-left: 4px solid #00aa00;
+
+    font-weight: bold;
+}
+
+
+/* ------------------------------------------------------------
+   Selected rover hover
+------------------------------------------------------------ */
+
+.rover-button.selected:hover {
+    background: #aeeaaa;
+}
+
 
 /* ------------------------------------------------------------
    Controls
@@ -58,23 +140,47 @@ html, body {
 
 #controls {
     margin-top: 20px;
+
+    padding-top: 15px;
+
+    border-top: 1px solid #ddd;
 }
 
+
 #controls button {
+    display: block;
+
     width: 100%;
+
     padding: 10px;
+
     margin-bottom: 10px;
+
     background: #4285f4;
+
     color: white;
+
     border: none;
+
     border-radius: 4px;
+
     cursor: pointer;
+
     font-size: 14px;
+
+    transition: background 0.15s ease;
 }
+
 
 #controls button:hover {
     background: #357ae8;
 }
+
+
+#controls button:active {
+    background: #2f6fd1;
+}
+
 
 /* ------------------------------------------------------------
    Map container
@@ -82,35 +188,87 @@ html, body {
 
 #map {
     position: absolute;
+
     top: 0;
-    left: 280px; /* matches sidebar width */
+
+    left: 280px;
+
     right: 0;
+
     bottom: 0;
+
     z-index: 1;
 }
 
+
 /* ------------------------------------------------------------
-   Replay marker styling (optional)
+   Trajectory labels
+------------------------------------------------------------ */
+
+/*
+   Permanent Leaflet tooltip containing the rover ID.
+*/
+
+.trajectory-label {
+    font-size: 12px;
+
+    font-weight: bold;
+
+    color: #000;
+
+    background: rgba(255, 255, 255, 0.90);
+
+    border: 1px solid #333;
+
+    border-radius: 4px;
+
+    padding: 3px 6px;
+
+    white-space: nowrap;
+
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+
+/*
+   Remove Leaflet's default tooltip arrow.
+*/
+
+.trajectory-label::before {
+    display: none;
+}
+
+
+/* ------------------------------------------------------------
+   Replay marker styling
 ------------------------------------------------------------ */
 
 .replay-marker {
     background: #ff5722;
+
     border: 2px solid white;
+
     border-radius: 50%;
 }
 
+
 /* ------------------------------------------------------------
-   Graph overlay styling (Phase 5)
+   Graph overlay styling
 ------------------------------------------------------------ */
 
 .graph-edge {
     stroke: #444;
+
     stroke-width: 2;
+
     opacity: 0.7;
 }
 
+
 .graph-node {
     background: #222;
+
     border: 2px solid #fff;
+
     border-radius: 50%;
 }

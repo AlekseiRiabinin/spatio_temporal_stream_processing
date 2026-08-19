@@ -27,7 +27,12 @@ const graphLayer = L.layerGroup().addTo(map);
 // Utility functions for other modules
 // ------------------------------------------------------------
 
+// ❗ IMPORTANT: Do NOT clear all trajectories globally anymore.
+// Multi‑rover trajectories are managed individually inside trajectory.js.
+
 function clearTrajectoryLayer() {
+    // Keep this function for compatibility, but do NOT use it for multi‑rover mode.
+    // It now only clears the group if someone explicitly calls it.
     trajectoryLayer.clearLayers();
 }
 

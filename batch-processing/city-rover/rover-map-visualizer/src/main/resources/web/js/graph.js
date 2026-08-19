@@ -24,12 +24,21 @@ async function showGraph() {
             nodeById.set(n.id, n);
 
             // Render node as small circle
-            L.circleMarker([n.lat, n.lon], {
+            const marker = L.circleMarker([n.lat, n.lon], {
                 radius: 3,
-                color: "#2196f3",
-                fillColor: "#2196f3",
+                color: "#1e88e5",
+                fillColor: "#1e88e5",
                 fillOpacity: 0.9
-            }).addTo(CityRoverMap.graphLayer);
+            });
+
+            // Add node label (ID)
+            marker.bindTooltip(n.id, {
+                permanent: false,
+                direction: "top",
+                className: "trajectory-label"
+            });
+
+            marker.addTo(CityRoverMap.graphLayer);
         }
 
         // Render edges as polylines
@@ -38,17 +47,19 @@ async function showGraph() {
             const to = nodeById.get(e.to);
             if (!from || !to) continue;
 
-            L.polyline(
+            const polyline = L.polyline(
                 [
                     [from.lat, from.lon],
                     [to.lat, to.lon]
                 ],
                 {
-                    color: "#4caf50",
+                    color: "#43a047",   // green
                     weight: 2,
                     opacity: 0.7
                 }
-            ).addTo(CityRoverMap.graphLayer);
+            );
+
+            polyline.addTo(CityRoverMap.graphLayer);
         }
 
         // Fit map to graph bounds if possible

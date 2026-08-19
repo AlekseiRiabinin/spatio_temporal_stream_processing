@@ -1,0 +1,141 @@
+services:
+
+  postgis-real-deal:
+    image: postgis/postgis:18-3.6
+    container_name: postgis-real-deal
+    environment:
+      POSTGRES_DB: cre_db
+      POSTGRES_USER: cre_user
+      POSTGRES_PASSWORD: cre_password
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgis-real-deal-data:/var/lib/postgresql
+      - ./data/osm-data:/osm-data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cre_user -d cre_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - city-rover-net
+    restart: always
+
+  graph-engine:
+    build:
+      context: ../batch-processing/city-rover/graph-engine
+      dockerfile: Dockerfile
+    container_name: cityrover-graph-engine
+    volumes:
+      - graph-data:/opt/cityrover/graph-engine/output
+      - ../data/maps:/app/data/maps
+    networks:
+      - city-rover-net
+    environment:
+      POSTGIS_HOST: postgis-real-deal
+      POSTGIS_PORT: 5432
+      POSTGIS_DB: cre_db
+      POSTGIS_USER: cre_user
+      POSTGIS_PASSWORD: cre_password
+      JAVA_OPTS: "-Xmx4g"
+    restart: "no"
+
+  rover-simulator:
+    build:
+      context: ../batch-processing/city-rover/rover-simulator
+      dockerfile: Dockerfile
+    container_name: cityrover-rover-simulator
+    depends_on:
+      graph-engine:
+        condition: service_completed_successfully
+      kafka-1:
+        condition: service_started
+    volumes:
+      - graph-data:/opt/cityrover/graph-engine/output
+    networks:
+      - city-rover-net
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:19092
+      JAVA_OPTS: "-Xmx4g"
+
+  kafka-1:
+    image: apache/kafka:3.8.0
+    container_name: kafka-1
+    ports:
+      - "19092:19092"
+      - "19093:19093"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:19093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:19092,CONTROLLER://0.0.0.0:19093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:19092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: d8ce1515-401e-44d4-a444-1b6dba479047
+    networks:
+      - city-rover-net
+    restart: always
+
+  trajectory-visualizer-job:
+    build:
+      context: ../batch-processing/city-rover/spark-jobs/trajectory-visualizer-job
+      dockerfile: Dockerfile
+    container_name: cityrover-trajectory-visualizer-job
+    depends_on:
+      kafka-1:
+        condition: service_started
+    environment:
+      SPARK_MASTER_URL: spark://spark-master:7077
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:19092
+      JAVA_OPTS: "-Xmx2g"
+    volumes:
+      - graph-data:/opt/cityrover/graph-engine/output
+    networks:
+      - city-rover-net
+    restart: "no"
+
+  rover-map-visualizer:
+    build:
+      context: ../batch-processing/city-rover/rover-map-visualizer
+      dockerfile: Dockerfile
+    container_name: cityrover-map-visualizer
+    environment:
+      VISUALIZER_OUTPUT_DIR: /opt/spark/work-dir/pipelines/trajectory-viewer/output
+      VISUALIZER_WEBROOT: web
+      JAVA_OPTS: "-Xmx512m"
+    volumes:
+      - trajectory-data:/opt/spark/work-dir/pipelines/trajectory-viewer/output
+    ports:
+      - "8080:8080"
+    networks:
+      - city-rover-net
+    restart: always
+
+
+volumes:
+  postgis-real-deal-data:
+    name: postgis-real-deal-data
+
+  graph-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/aleksei/Projects/telecom_analytics_4.0/spark/pipelines/trajectory-viewer/output
+
+  trajectory-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/aleksei/Projects/telecom_analytics_4.0/spark/pipelines/trajectory-viewer/output
+
+
+networks:
+  city-rover-net:
+    external: true
+    name: city-rover-net
+
+
