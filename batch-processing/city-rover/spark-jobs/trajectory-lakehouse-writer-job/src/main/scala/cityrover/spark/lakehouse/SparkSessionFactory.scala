@@ -3,44 +3,57 @@ package cityrover.spark.lakehouse
 import com.typesafe.config.Config
 import org.apache.spark.sql.SparkSession
 
-
 object SparkSessionFactory {
 
   def create(config: Config): SparkSession = {
 
-    // ------------------------------------------------------------
-    // 1. Read configuration
-    // ------------------------------------------------------------
+    // ============================================================
+    // 1. Read Iceberg configuration
+    // ============================================================
 
-    val catalogName = config.getString("cityrover.iceberg.catalog")
-    val warehouse = config.getString("cityrover.iceberg.warehouse")
-    val endpoint = config.getString("cityrover.iceberg.s3.endpoint")
-    val accessKey = config.getString("cityrover.iceberg.s3.access-key-id")
-    val secretKey = config.getString("cityrover.iceberg.s3.secret-access-key")
-    val pathStyleAccess = config.getBoolean("cityrover.iceberg.s3.path-style-access")
+    val catalogName =
+      config.getString("cityrover.iceberg.catalog")
 
-    // ------------------------------------------------------------
-    // 2. Build SparkSession
-    //
-    // Iceberg configuration is applied BEFORE the SparkSession is created.
-    // ------------------------------------------------------------
+    val warehouse =
+      config.getString("cityrover.iceberg.warehouse")
+
+    val endpoint =
+      config.getString("cityrover.iceberg.s3.endpoint")
+
+    val accessKey =
+      config.getString("cityrover.iceberg.s3.access-key-id")
+
+    val secretKey =
+      config.getString("cityrover.iceberg.s3.secret-access-key")
+
+    val pathStyleAccess =
+      config.getBoolean(
+        "cityrover.iceberg.s3.path-style-access"
+      )
+
+    // ============================================================
+    // 2. Create SparkSession
+    // ============================================================
 
     SparkSession
       .builder()
-      .appName("cityrover-trajectory-lakehouse-writer-job")
 
-      // ----------------------------------------------------------
+      .appName(
+        "cityrover-trajectory-lakehouse-writer-job"
+      )
+
+      // ==========================================================
       // Iceberg Spark extensions
-      // ----------------------------------------------------------
+      // ==========================================================
 
       .config(
         "spark.sql.extensions",
         "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions"
       )
 
-      // ----------------------------------------------------------
+      // ==========================================================
       // Iceberg catalog
-      // ----------------------------------------------------------
+      // ==========================================================
 
       .config(
         s"spark.sql.catalog.$catalogName",
@@ -57,9 +70,9 @@ object SparkSessionFactory {
         warehouse
       )
 
-      // ----------------------------------------------------------
+      // ==========================================================
       // Iceberg S3FileIO
-      // ----------------------------------------------------------
+      // ==========================================================
 
       .config(
         s"spark.sql.catalog.$catalogName.io-impl",
@@ -86,9 +99,43 @@ object SparkSessionFactory {
         pathStyleAccess.toString
       )
 
-      // ----------------------------------------------------------
-      // Create SparkSession
-      // ----------------------------------------------------------
+      // ==========================================================
+      // Hadoop S3A configuration
+      // ==========================================================
+
+      .config(
+        "spark.hadoop.fs.s3a.endpoint",
+        endpoint
+      )
+
+      .config(
+        "spark.hadoop.fs.s3a.access.key",
+        accessKey
+      )
+
+      .config(
+        "spark.hadoop.fs.s3a.secret.key",
+        secretKey
+      )
+
+      .config(
+        "spark.hadoop.fs.s3a.path.style.access",
+        pathStyleAccess.toString
+      )
+
+      .config(
+        "spark.hadoop.fs.s3a.connection.ssl.enabled",
+        "false"
+      )
+
+      .config(
+        "spark.hadoop.fs.s3a.impl",
+        "org.apache.hadoop.fs.s3a.S3AFileSystem"
+      )
+
+      // ==========================================================
+      // Create session
+      // ==========================================================
 
       .getOrCreate()
   }

@@ -23,12 +23,22 @@ lazy val root = (project in file("."))
 
       // ------------------------------------------------------------
       // Iceberg
-      //
-      // Spark runtime contains the Iceberg Spark integration.
       // ------------------------------------------------------------
 
       "org.apache.iceberg" %% "iceberg-spark-runtime-3.5" % "1.6.0",
+
+      // Iceberg AWS integration
       "org.apache.iceberg" % "iceberg-aws-bundle" % "1.6.0",
+
+      // ------------------------------------------------------------
+      // Hadoop S3A
+      //
+      // IMPORTANT:
+      // Must match the Hadoop version used by Spark.
+      // Spark 3.5.4 here is using Hadoop 3.3.4.
+      // ------------------------------------------------------------
+
+      "org.apache.hadoop" % "hadoop-aws" % "3.3.4",
 
       // ------------------------------------------------------------
       // Typesafe Config
@@ -48,9 +58,7 @@ lazy val root = (project in file("."))
     // --------------------------------------------------------------
 
     Compile / mainClass :=
-      Some(
-        "cityrover.spark.lakehouse.LakehouseWriterMain"
-      ),
+      Some("cityrover.spark.lakehouse.LakehouseWriterMain"),
 
     // --------------------------------------------------------------
     // Assembly
@@ -61,9 +69,17 @@ lazy val root = (project in file("."))
 
     assembly / assemblyMergeStrategy := {
 
-      case PathList("META-INF", _*) => MergeStrategy.discard
-      case PathList("reference.conf") => MergeStrategy.concat
-      case PathList("application.conf") => MergeStrategy.concat
-      case _ => MergeStrategy.first
+      case PathList("META-INF", _*) =>
+        MergeStrategy.discard
+
+      case PathList("reference.conf") =>
+        MergeStrategy.concat
+
+      case PathList("application.conf") =>
+        MergeStrategy.concat
+
+      case _ =>
+        MergeStrategy.first
     }
   )
+  
