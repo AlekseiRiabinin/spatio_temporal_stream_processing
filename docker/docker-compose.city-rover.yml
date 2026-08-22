@@ -123,11 +123,6 @@ services:
       context: ../batch-processing/city-rover/rover-map-visualizer
       dockerfile: Dockerfile
     container_name: cityrover-map-visualizer
-    # depends_on:
-    #   kafka-1:
-    #     condition: service_started
-    #   graph-engine:
-    #     condition: service_completed_successfully
     environment:
       VISUALIZER_OUTPUT_DIR: /opt/spark/work-dir/pipelines/trajectory-viewer/output
       VISUALIZER_WEBROOT: web
@@ -139,6 +134,36 @@ services:
     networks:
       - city-rover-net
     restart: always
+
+  trajectory-lakehouse-writer-job:
+    build:
+      context: ../batch-processing/city-rover/spark-jobs/trajectory-lakehouse-writer-job
+      dockerfile: Dockerfile
+    container_name: cityrover-trajectory-lakehouse-writer-job
+    depends_on:
+      kafka-1:
+        condition: service_started
+      spark-master:
+        condition: service_started
+      minio:
+        condition: service_started
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_EC2_METADATA_DISABLED: "true"
+      CITYROVER_ICEBERG_S3_ENDPOINT: http://minio:9002
+      CITYROVER_ICEBERG_S3_ACCESS_KEY: minioadmin
+      CITYROVER_ICEBERG_S3_SECRET_KEY: minioadmin
+      CITYROVER_KAFKA_BOOTSTRAP: kafka-1:19092
+      CITYROVER_ICEBERG_CATALOG: cityrover
+      CITYROVER_ICEBERG_WAREHOUSE: s3://cityrover-iceberg/warehouse
+      CITYROVER_ICEBERG_NAMESPACE: cityrover
+      CITYROVER_ICEBERG_TABLE: telemetry_raw
+      CITYROVER_ICEBERG_CHECKPOINT: s3://cityrover-iceberg/checkpoints/trajectory-lakehouse-writer
+      CITYROVER_ICEBERG_S3_PATH_STYLE_ACCESS: "true"
+    networks:
+      - city-rover-net
+    restart: "no"
 
 volumes:
   graph-data:
