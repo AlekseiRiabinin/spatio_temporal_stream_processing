@@ -126,7 +126,7 @@ services:
       - city-rover-net
     restart: unless-stopped
 
-  postgres:
+  hive-postgres:
     image: postgres:15.2
     container_name: hive-postgres
     hostname: hive-postgres
@@ -135,7 +135,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5434:5432"
+      - "5435:5432"
     volumes:
       - postgres-azure-data:/var/lib/postgresql/data
       - ../hive-metastore/01-create-hive-metastore.sql:/docker-entrypoint-initdb.d/01-create-hive-metastore.sql:ro
@@ -150,29 +150,29 @@ services:
 
   hive-metastore:
     build:
-      context: ./hive-metastore
+      context: ../hive-metastore
       dockerfile: Dockerfile
     image: alexflames77/custom-hive-metastore:latest
     container_name: hive-metastore
     hostname: hive-metastore
     environment:
-      - SERVICE_NAME=hivemetastore
-      - DB_TYPE=postgres
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=hive_metastore
-      - METASTORE_PORT=9083
-      - METASTORE_THRIFT_PROTOCOL_VERSION=TCompactProtocol
-      - METASTORE_HANDLER_RETRY_ATTEMPTS=5
-      - METASTORE_STARTUP_DELAY=30
-      - HIVE_CONF_DIR=/opt/hive/conf
-      - HIVE_AUX_JARS_PATH=/opt/hive/lib
-      - HIVE_METASTORE_DB_TYPE=postgres
-      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
-      - HADOOP_HOME=/opt/hadoop
-      - HADOOP_CLASSPATH=/opt/hadoop/share/hadoop/common/lib/*:/opt/hadoop/share/hadoop/common/*:/opt/hadoop/share/hadoop/hdfs/*:/opt/hadoop/share/hadoop/hdfs/lib/*:/opt/hadoop/share/hadoop/mapreduce/*:/opt/hadoop/share/hadoop/yarn/*:/opt/hadoop/share/hadoop/yarn/lib/*
+      SERVICE_NAME: hivemetastore
+      DB_TYPE: postgres
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: hive-postgres
+      DB_PORT: 5432
+      DB_NAME: hive_metastore
+      METASTORE_PORT: 9083
+      METASTORE_THRIFT_PROTOCOL_VERSION: TCompactProtocol
+      METASTORE_HANDLER_RETRY_ATTEMPTS: 5
+      METASTORE_STARTUP_DELAY: 30
+      HIVE_CONF_DIR: /opt/hive/conf
+      HIVE_AUX_JARS_PATH: /opt/hive/lib
+      HIVE_METASTORE_DB_TYPE: postgres
+      HADOOP_HOME: /opt/hadoop
+      HADOOP_CONF_DIR: /opt/hadoop/etc/hadoop
+      HADOOP_CLASSPATH: /opt/hadoop/share/hadoop/common/lib/*:/opt/hadoop/share/hadoop/common/*:/opt/hadoop/share/hadoop/hdfs/*:/opt/hadoop/share/hadoop/hdfs/lib/*:/opt/hadoop/share/hadoop/mapreduce/*:/opt/hadoop/share/hadoop/yarn/*:/opt/hadoop/share/hadoop/yarn/lib/*
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 9083"]
       interval: 30s
@@ -180,13 +180,13 @@ services:
       retries: 3
       start_period: 30s
     depends_on:
-      postgres:
+      hive-postgres:
         condition: service_healthy
     ports:
       - "9096:9083"
     volumes:
-      - ./hadoop-conf/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
-      - ./hive-conf/hive-site.xml:/opt/hive/conf/hive-site.xml
+      - ../hadoop-conf/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+      - ../hive-conf/hive-site.xml:/opt/hive/conf/hive-site.xml:ro
     networks:
       - city-rover-net
     restart: unless-stopped

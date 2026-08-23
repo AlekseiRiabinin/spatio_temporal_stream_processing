@@ -1,10 +1,14 @@
+<?xml version="1.0"?>
+
 <configuration>
 
-  <!-- PostgreSQL -->
+  <!-- ============================================================
+       PostgreSQL Hive Metastore
+       ============================================================ -->
 
   <property>
     <name>javax.jdo.option.ConnectionURL</name>
-    <value>jdbc:postgresql://postgres:5432/hive_metastore</value>
+    <value>jdbc:postgresql://hive-postgres:5432/hive_metastore</value>
   </property>
 
   <property>
@@ -23,7 +27,9 @@
   </property>
 
 
-  <!-- Schema -->
+  <!-- ============================================================
+       Schema
+       ============================================================ -->
 
   <property>
     <name>hive.metastore.schema.verification</name>
@@ -40,8 +46,15 @@
     <value>false</value>
   </property>
 
+  <property>
+    <name>datanucleus.autoStartMechanismMode</name>
+    <value>ignored</value>
+  </property>
 
-  <!-- Metastore server -->
+
+  <!-- ============================================================
+       Hive Metastore Server
+       ============================================================ -->
 
   <property>
     <name>hive.metastore.uris</name>
@@ -54,16 +67,13 @@
   </property>
 
 
-  <!-- SQL optimization -->
+  <!-- ============================================================
+       SQL optimization
+       ============================================================ -->
 
   <property>
     <name>hive.metastore.try.direct.sql</name>
     <value>true</value>
-  </property>
-
-  <property>
-    <name>datanucleus.autoStartMechanismMode</name>
-    <value>ignored</value>
   </property>
 
 </configuration>
