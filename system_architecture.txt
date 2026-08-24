@@ -1,5 +1,6 @@
                          ┌─────────────────────┐
                          │        Kafka        │
+                         │   rover-telemetry   │
                          └──────────┬──────────┘
                                     │
                                     ▼
@@ -7,27 +8,32 @@
                          │  Spark Streaming    │
                          │       3.5.4         │
                          │                     │
-                         │   Iceberg 1.6.0     │
-                         │   Hadoop AWS 3.3.4  │
+                         │  Iceberg Spark      │
+                         │  Extensions 1.6.0   │
+                         │                     │
+                         │  • KafkaSource      │
+                         │    failOnDataLoss   │
+                         │  • Telemetry ETL    │
+                         │  • Iceberg Writer   │
                          └──────────┬──────────┘
                                     │
-                              S3A / Iceberg
+                           S3FileIO (Iceberg)
                                     │
                                     ▼
                          ┌─────────────────────┐
                          │       MinIO         │
+                         │   S3 API :9002      │
+                         │   Console :9001     │
                          │                     │
-                         │ S3 API :9002        │
-                         │ Console :9001       │
+                         │ Iceberg Warehouse:  │
+                         │  /tables/telemetry  │
                          │                     │
-                         │ Iceberg data:       │
-                         │  • metadata         │
-                         │  • manifests        │
-                         │  • Parquet files    │
+                         │  • metadata/        │
+                         │  • manifests/       │
+                         │  • data/*.parquet   │
                          └──────────▲──────────┘
                                     │
-                                    │
-                         reads/writes metadata
+                                    │  metadata ops
                                     │
                          ┌──────────┴──────────┐
                          │   Hive Metastore    │
@@ -35,6 +41,11 @@
                          │                     │
                          │   PostgreSQL DB     │
                          │   Thrift :9083      │
+                         │                     │
+                         │ Iceberg Catalog:    │
+                         │  • schemas          │
+                         │  • snapshots        │
+                         │  • partition specs  │
                          └──────────▲──────────┘
                                     │
                               catalog metadata
@@ -42,12 +53,12 @@
                                     ▼
                          ┌─────────────────────┐
                          │      Trino 422      │
+                         │   Iceberg Connector │
                          │                     │
-                         │  Iceberg connector  │
-                         └──────────┬──────────┘
-                                    │
-                                    ▼
-                         ┌─────────────────────┐
-                         │    SQL / REST       │
-                         │      :8090          │
+                         │ SQL / REST :8090    │
+                         │                     │
+                         │  • Time Travel      │
+                         │  • Incremental Scans│
+                         │  • Partition Pruning│
+                         │  • BI / Analytics   │
                          └─────────────────────┘
