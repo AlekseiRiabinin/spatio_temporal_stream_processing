@@ -13,9 +13,6 @@ object TelemetrySchemas {
 
   // ----------------------------------------------------------------
   // Raw telemetry schema
-  //
-  // This schema represents the JSON payload produced by the
-  // CityRover telemetry producer.
   // ----------------------------------------------------------------
 
   val rawSchema: StructType =

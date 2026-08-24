@@ -8,9 +8,8 @@ echo "=== Starting CityRover System ==="
 echo "Compose file: $COMPOSE_FILE"
 echo ""
 
-
 # ============================================================
-# Helper functions
+# Helper: wait for container readiness
 # ============================================================
 
 wait_for_container() {
@@ -24,39 +23,25 @@ wait_for_container() {
     echo "Waiting for $description..."
 
     for i in $(seq 1 "$retries"); do
-
-        if docker exec "$container" bash -c "$command" \
-            >/dev/null 2>&1; then
-
+        if docker exec "$container" bash -c "$command" >/dev/null 2>&1; then
             echo "$description is ready."
             return 0
         fi
 
         echo "$description not ready yet... retrying ($i/$retries)"
-
         sleep "$sleep_seconds"
     done
 
-    echo ""
     echo "ERROR: $description did not become ready."
-    echo ""
-    echo "Container status:"
-    docker ps -a --filter "name=$container"
-
-    echo ""
-    echo "$description logs:"
     docker logs --tail 100 "$container"
-
     exit 1
 }
-
 
 # ============================================================
 # 1. Start Kafka
 # ============================================================
 
 echo "1. Starting Kafka..."
-
 docker compose -f "$COMPOSE_FILE" up -d kafka-1
 
 wait_for_container \
@@ -65,7 +50,6 @@ wait_for_container \
     "Kafka" \
     20 \
     2
-
 
 # ============================================================
 # 2. Create Kafka topics
@@ -83,21 +67,15 @@ docker exec kafka-1 bash -c '
     )
 
     for topic in "${topics[@]}"; do
-
         IFS=":" read -r name partitions <<< "$topic"
 
         if /opt/kafka/bin/kafka-topics.sh \
             --bootstrap-server kafka-1:19092 \
             --describe \
-            --topic "$name" \
-            >/dev/null 2>&1; then
-
+            --topic "$name" >/dev/null 2>&1; then
             echo "Topic exists: $name"
-
         else
-
             echo "Creating topic: $name"
-
             /opt/kafka/bin/kafka-topics.sh \
                 --create \
                 --topic "$name" \
@@ -110,184 +88,99 @@ docker exec kafka-1 bash -c '
 
 echo "Kafka topics initialized."
 
-
 # ============================================================
 # 3. Start MinIO
 # ============================================================
 
 echo ""
 echo "3. Starting MinIO..."
-
 docker compose -f "$COMPOSE_FILE" up -d minio
 
 echo ""
 echo "Initializing MinIO..."
-
 docker compose -f "$COMPOSE_FILE" up minio-setup
 
 echo "MinIO initialized."
 
-
-# ------------------------------------------------------------
-# 4. Start PostgreSQL
-# ------------------------------------------------------------
+# ============================================================
+# 4. Start PostgreSQL (Hive Metastore DB)
+# ============================================================
 
 echo ""
 echo "4. Starting PostgreSQL..."
-
 docker compose -f "$COMPOSE_FILE" up -d hive-postgres
 
-echo ""
-echo "Waiting for PostgreSQL..."
+wait_for_container \
+    "hive-postgres" \
+    "pg_isready -U postgres" \
+    "PostgreSQL" \
+    30 \
+    2
 
-for i in {1..30}; do
-
-    if docker exec hive-postgres \
-        pg_isready \
-        -U postgres \
-        >/dev/null 2>&1; then
-
-        echo "PostgreSQL is ready."
-        break
-    fi
-
-    echo "PostgreSQL not ready yet... retrying ($i/30)"
-
-    sleep 2
-
-    if [ "$i" -eq 30 ]; then
-        echo "ERROR: PostgreSQL did not become ready."
-        docker logs --tail 100 hive-postgres
-        exit 1
-    fi
-done
-
-
-# ------------------------------------------------------------
-# Create Hive Metastore database if it does not exist
-# ------------------------------------------------------------
+# ============================================================
+# 5. Ensure Hive Metastore database exists
+# ============================================================
 
 echo ""
 echo "Checking Hive Metastore database..."
 
 if docker exec hive-postgres \
     psql -U postgres -tAc \
-    "SELECT 1 FROM pg_database WHERE datname='hive_metastore'" \
-    | grep -q 1; then
-
+    "SELECT 1 FROM pg_database WHERE datname='hive_metastore'" | grep -q 1; then
     echo "Hive Metastore database already exists."
-
 else
-
     echo "Creating Hive Metastore database..."
-
     docker exec hive-postgres \
         psql -U postgres \
         -c "CREATE DATABASE hive_metastore;"
-
     echo "Hive Metastore database created."
 fi
 
-
 # ============================================================
-# 5. Start Hive Metastore
+# 6. Start Hive Metastore
 # ============================================================
 
 echo ""
-echo "5. Starting Hive Metastore..."
-
+echo "6. Starting Hive Metastore..."
 docker compose -f "$COMPOSE_FILE" up -d hive-metastore
 
-echo ""
-echo "Waiting for Hive Metastore..."
-
-for i in $(seq 1 30); do
-
-    if docker exec hive-metastore \
-        nc -z localhost 9083 \
-        >/dev/null 2>&1; then
-
-        echo "Hive Metastore is ready."
-        break
-    fi
-
-    echo "Hive Metastore not ready yet... retrying ($i/30)"
-
-    sleep 3
-
-    if [ "$i" -eq 30 ]; then
-
-        echo ""
-        echo "ERROR: Hive Metastore did not become ready."
-        echo ""
-
-        echo "Hive Metastore logs:"
-        docker logs --tail 150 hive-metastore
-
-        exit 1
-    fi
-done
-
+wait_for_container \
+    "hive-metastore" \
+    "nc -z localhost 9083" \
+    "Hive Metastore" \
+    30 \
+    3
 
 # ============================================================
-# 6. Start Trino
+# 7. Start Trino
 # ============================================================
 
 echo ""
-echo "6. Starting Trino..."
-
+echo "7. Starting Trino..."
 docker compose -f "$COMPOSE_FILE" up -d trino
 
-echo ""
-echo "Waiting for Trino..."
-
-for i in $(seq 1 30); do
-
-    if curl -sf \
-        http://localhost:8090/v1/info \
-        >/dev/null 2>&1; then
-
-        echo "Trino is ready."
-        break
-    fi
-
-    echo "Trino not ready yet... retrying ($i/30)"
-
-    sleep 3
-
-    if [ "$i" -eq 30 ]; then
-
-        echo ""
-        echo "ERROR: Trino did not become ready."
-        echo ""
-
-        echo "Trino logs:"
-        docker logs --tail 150 trino
-
-        exit 1
-    fi
-done
-
+wait_for_container \
+    "trino" \
+    "curl -sf http://localhost:8080/v1/info" \
+    "Trino" \
+    30 \
+    3
 
 # ============================================================
-# 7. Start Graph Engine
+# 8. Start Graph Engine
 # ============================================================
 
 echo ""
-echo "7. Starting graph-engine..."
-
+echo "8. Starting graph-engine..."
 docker compose -f "$COMPOSE_FILE" up -d graph-engine
 
-
 # ============================================================
-# 8. Start Rover Simulator
+# 9. Start Rover Simulator
 # ============================================================
 
 echo ""
-echo "8. Starting rover-simulator..."
-
+echo "9. Starting rover-simulator..."
 docker compose -f "$COMPOSE_FILE" up -d rover-simulator
-
 
 # ============================================================
 # Done
@@ -298,7 +191,6 @@ echo "============================================================"
 echo "=== CityRover System is running ============================"
 echo "============================================================"
 echo ""
-
 echo "Services:"
 echo "  - kafka-1"
 echo "  - minio"
@@ -307,26 +199,10 @@ echo "  - hive-metastore"
 echo "  - trino"
 echo "  - graph-engine"
 echo "  - rover-simulator"
-
 echo ""
-
-echo "MinIO Console:"
-echo "  http://localhost:9001"
-
-echo ""
-echo "MinIO S3 API:"
-echo "  http://localhost:9002"
-
-echo ""
-echo "Hive Metastore:"
-echo "  thrift://localhost:9096"
-
-echo ""
-echo "Trino UI:"
-echo "  http://localhost:8090"
-
-echo ""
-echo "Kafka:"
-echo "  kafka-1:19092"
-
+echo "MinIO Console: http://localhost:9001"
+echo "MinIO S3 API: http://localhost:9002"
+echo "Hive Metastore: thrift://localhost:9096"
+echo "Trino UI: http://localhost:8090"
+echo "Kafka: kafka-1:19092"
 echo ""

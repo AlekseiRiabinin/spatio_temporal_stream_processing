@@ -28,7 +28,7 @@
 
 
   <!-- ============================================================
-       Schema
+       Schema initialization
        ============================================================ -->
 
   <property>
@@ -64,6 +64,16 @@
   <property>
     <name>hive.metastore.port</name>
     <value>9083</value>
+  </property>
+
+
+  <!-- ============================================================
+       Warehouse directory (CRITICAL FIX)
+       ============================================================ -->
+
+  <property>
+    <name>hive.metastore.warehouse.dir</name>
+    <value>/opt/hive/warehouse</value>
   </property>
 
 

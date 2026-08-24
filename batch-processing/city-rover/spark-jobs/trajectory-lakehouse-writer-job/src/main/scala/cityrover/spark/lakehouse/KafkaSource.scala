@@ -24,6 +24,7 @@ object KafkaSource {
       .option("kafka.bootstrap.servers", bootstrapServers)
       .option("subscribe", topic)
       .option("startingOffsets", startingOffsets)
+      .option("failOnDataLoss", "false")
       .load()
       .selectExpr("CAST(value AS STRING) AS json")
   }
@@ -33,14 +34,8 @@ object KafkaSource {
   // ----------------------------------------------------------------
 
   def rawTelemetry(spark: SparkSession, config: Config): DataFrame = {
-
     val topic = config.getString("cityrover.kafka.topics.raw-telemetry")
-
-    readTopic(
-      spark = spark,
-      config = config,
-      topic = topic
-    )
+    readTopic(spark, config, topic)
   }
 
   // ----------------------------------------------------------------
@@ -48,14 +43,8 @@ object KafkaSource {
   // ----------------------------------------------------------------
 
   def enrichedTelemetry(spark: SparkSession, config: Config): DataFrame = {
-
     val topic = config.getString("cityrover.kafka.topics.enriched-telemetry")
-
-    readTopic(
-      spark = spark,
-      config = config,
-      topic = topic
-    )
+    readTopic(spark, config, topic)
   }
 
   // ----------------------------------------------------------------
@@ -63,13 +52,7 @@ object KafkaSource {
   // ----------------------------------------------------------------
 
   def analyticsStream(spark: SparkSession, config: Config): DataFrame = {
-
     val topic = config.getString("cityrover.kafka.topics.analytics")
-
-    readTopic(
-      spark = spark,
-      config = config,
-      topic = topic
-    )
+    readTopic(spark, config, topic)
   }
 }

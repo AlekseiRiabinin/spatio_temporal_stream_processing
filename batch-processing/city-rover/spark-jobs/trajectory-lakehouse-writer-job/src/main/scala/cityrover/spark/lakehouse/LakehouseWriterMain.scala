@@ -41,7 +41,7 @@ object LakehouseWriterMain {
       )
 
       println(
-        s"Iceberg warehouse: ${config.getString("cityrover.iceberg.warehouse")}"
+        s"Iceberg metastore URI: ${config.getString("cityrover.iceberg.metastore-uri")}"
       )
 
       // ----------------------------------------------------------
@@ -71,20 +71,17 @@ object LakehouseWriterMain {
     } catch {
 
       case exception: Throwable =>
-
         System.err.println("CityRover Lakehouse Writer failed.")
         exception.printStackTrace()
-
         throw exception
 
     } finally {
-
       spark.stop()
     }
   }
 
   // ----------------------------------------------------------------
-  // Configuration validation
+  // Configuration validation (HiveCatalog version)
   // ----------------------------------------------------------------
 
   private def validateConfig(config: Config): Unit = {
@@ -93,7 +90,7 @@ object LakehouseWriterMain {
       "cityrover.kafka.bootstrap",
       "cityrover.kafka.topics.raw-telemetry",
       "cityrover.iceberg.catalog",
-      "cityrover.iceberg.warehouse",
+      "cityrover.iceberg.metastore-uri",
       "cityrover.iceberg.namespace",
       "cityrover.iceberg.table",
       "cityrover.iceberg.checkpoint",
@@ -104,7 +101,6 @@ object LakehouseWriterMain {
     )
 
     requiredPaths.foreach { path =>
-
       require(
         config.hasPath(path),
         s"Missing required configuration: $path"

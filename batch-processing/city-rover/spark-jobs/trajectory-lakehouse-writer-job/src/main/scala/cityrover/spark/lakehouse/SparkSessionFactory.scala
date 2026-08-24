@@ -3,6 +3,7 @@ package cityrover.spark.lakehouse
 import com.typesafe.config.Config
 import org.apache.spark.sql.SparkSession
 
+
 object SparkSessionFactory {
 
   def create(config: Config): SparkSession = {
@@ -14,8 +15,8 @@ object SparkSessionFactory {
     val catalogName =
       config.getString("cityrover.iceberg.catalog")
 
-    val warehouse =
-      config.getString("cityrover.iceberg.warehouse")
+    val metastoreUri =
+      config.getString("cityrover.iceberg.metastore-uri")
 
     val endpoint =
       config.getString("cityrover.iceberg.s3.endpoint")
@@ -37,10 +38,7 @@ object SparkSessionFactory {
 
     SparkSession
       .builder()
-
-      .appName(
-        "cityrover-trajectory-lakehouse-writer-job"
-      )
+      .appName("cityrover-trajectory-lakehouse-writer-job")
 
       // ==========================================================
       // Iceberg Spark extensions
@@ -52,86 +50,57 @@ object SparkSessionFactory {
       )
 
       // ==========================================================
-      // Iceberg catalog
+      // Iceberg HiveCatalog
       // ==========================================================
 
       .config(
         s"spark.sql.catalog.$catalogName",
         "org.apache.iceberg.spark.SparkCatalog"
       )
-
       .config(
         s"spark.sql.catalog.$catalogName.type",
-        "hadoop"
+        "hive"
       )
-
       .config(
-        s"spark.sql.catalog.$catalogName.warehouse",
-        warehouse
+        s"spark.sql.catalog.$catalogName.uri",
+        metastoreUri
       )
 
       // ==========================================================
-      // Iceberg S3FileIO
+      // Iceberg S3FileIO (MinIO)
       // ==========================================================
 
       .config(
         s"spark.sql.catalog.$catalogName.io-impl",
         "org.apache.iceberg.aws.s3.S3FileIO"
       )
-
       .config(
         s"spark.sql.catalog.$catalogName.s3.endpoint",
         endpoint
       )
-
       .config(
         s"spark.sql.catalog.$catalogName.s3.access-key-id",
         accessKey
       )
-
       .config(
         s"spark.sql.catalog.$catalogName.s3.secret-access-key",
         secretKey
       )
-
       .config(
         s"spark.sql.catalog.$catalogName.s3.path-style-access",
         pathStyleAccess.toString
       )
 
       // ==========================================================
-      // Hadoop S3A configuration
+      // Hadoop S3A configuration (required for Spark)
       // ==========================================================
 
-      .config(
-        "spark.hadoop.fs.s3a.endpoint",
-        endpoint
-      )
-
-      .config(
-        "spark.hadoop.fs.s3a.access.key",
-        accessKey
-      )
-
-      .config(
-        "spark.hadoop.fs.s3a.secret.key",
-        secretKey
-      )
-
-      .config(
-        "spark.hadoop.fs.s3a.path.style.access",
-        pathStyleAccess.toString
-      )
-
-      .config(
-        "spark.hadoop.fs.s3a.connection.ssl.enabled",
-        "false"
-      )
-
-      .config(
-        "spark.hadoop.fs.s3a.impl",
-        "org.apache.hadoop.fs.s3a.S3AFileSystem"
-      )
+      .config("spark.hadoop.fs.s3a.endpoint", endpoint)
+      .config("spark.hadoop.fs.s3a.access.key", accessKey)
+      .config("spark.hadoop.fs.s3a.secret.key", secretKey)
+      .config("spark.hadoop.fs.s3a.path.style.access", pathStyleAccess.toString)
+      .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
+      .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
 
       // ==========================================================
       // Create session

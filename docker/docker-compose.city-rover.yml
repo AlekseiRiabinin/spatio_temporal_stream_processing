@@ -87,44 +87,18 @@ services:
       - -c
       - |
         echo "Waiting for MinIO..."
-
         until mc alias set local http://minio:9002 minioadmin minioadmin >/dev/null 2>&1; do
           echo "MinIO not ready yet..."
           sleep 2
         done
-
         echo "MinIO is ready."
-
-        mc mb --ignore-existing local/trino-data-lake
-        mc mb --ignore-existing local/trino-warehouse
-        mc mb --ignore-existing local/trino-catalog
+        mc mb --ignore-existing local/cityrover-iceberg
         mc mb --ignore-existing local/spark-data
         mc mb --ignore-existing local/airflow-logs
-        mc mb --ignore-existing local/cityrover-iceberg
-
         echo "All MinIO buckets initialized successfully."
-
     networks:
       - city-rover-net
     restart: "no"
-
-  trino:
-    image: trinodb/trino:422
-    container_name: trino
-    hostname: trino
-    ports:
-      - "8090:8080"
-    volumes:
-      - ../trino/etc:/etc/trino:ro
-      - ../trino/data:/var/trino
-    depends_on:
-      hive-metastore:
-        condition: service_healthy
-      minio:
-        condition: service_started
-    networks:
-      - city-rover-net
-    restart: unless-stopped
 
   hive-postgres:
     image: postgres:15.2
@@ -191,6 +165,54 @@ services:
       - city-rover-net
     restart: unless-stopped
 
+  trino:
+    image: trinodb/trino:422
+    container_name: trino
+    hostname: trino
+    ports:
+      - "8090:8080"
+    volumes:
+      - ../trino/etc:/etc/trino:ro
+      - ../trino/data:/var/trino
+    depends_on:
+      hive-metastore:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    networks:
+      - city-rover-net
+    restart: unless-stopped
+
+  trajectory-lakehouse-writer-job:
+    build:
+      context: ../batch-processing/city-rover/spark-jobs/trajectory-lakehouse-writer-job
+      dockerfile: Dockerfile
+    container_name: cityrover-trajectory-lakehouse-writer-job
+    depends_on:
+      hive-metastore:
+        condition: service_healthy
+      kafka-1:
+        condition: service_started
+      minio:
+        condition: service_started
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_EC2_METADATA_DISABLED: "true"
+      CITYROVER_KAFKA_BOOTSTRAP: kafka-1:19092
+      CITYROVER_ICEBERG_CATALOG: cityrover
+      CITYROVER_ICEBERG_NAMESPACE: cityrover
+      CITYROVER_ICEBERG_TABLE: telemetry_raw
+      CITYROVER_ICEBERG_METASTORE_URI: thrift://hive-metastore:9083
+      CITYROVER_ICEBERG_CHECKPOINT: s3://cityrover-iceberg/checkpoints/trajectory-lakehouse-writer
+      CITYROVER_ICEBERG_S3_ENDPOINT: http://minio:9002
+      CITYROVER_ICEBERG_S3_ACCESS_KEY: minioadmin
+      CITYROVER_ICEBERG_S3_SECRET_KEY: minioadmin
+      CITYROVER_ICEBERG_S3_PATH_STYLE_ACCESS: "true"
+    networks:
+      - city-rover-net
+    restart: "no"
+
   trajectory-visualizer-job:
     build:
       context: ../batch-processing/city-rover/spark-jobs/trajectory-visualizer-job
@@ -226,29 +248,6 @@ services:
       - city-rover-net
     restart: always
 
-  trajectory-lakehouse-writer-job:
-    build:
-      context: ../batch-processing/city-rover/spark-jobs/trajectory-lakehouse-writer-job
-      dockerfile: Dockerfile
-    container_name: cityrover-trajectory-lakehouse-writer-job
-    environment:
-      AWS_ACCESS_KEY_ID: minioadmin
-      AWS_SECRET_ACCESS_KEY: minioadmin
-      AWS_EC2_METADATA_DISABLED: "true"
-      CITYROVER_KAFKA_BOOTSTRAP: kafka-1:19092
-      CITYROVER_ICEBERG_CATALOG: cityrover
-      CITYROVER_ICEBERG_NAMESPACE: cityrover
-      CITYROVER_ICEBERG_TABLE: telemetry_raw
-      CITYROVER_ICEBERG_WAREHOUSE: s3://cityrover-iceberg/warehouse
-      CITYROVER_ICEBERG_CHECKPOINT: s3://cityrover-iceberg/checkpoints/trajectory-lakehouse-writer
-      CITYROVER_ICEBERG_S3_ENDPOINT: http://minio:9002
-      CITYROVER_ICEBERG_S3_ACCESS_KEY: minioadmin
-      CITYROVER_ICEBERG_S3_SECRET_KEY: minioadmin
-      CITYROVER_ICEBERG_S3_PATH_STYLE_ACCESS: "true"
-    networks:
-      - city-rover-net
-    restart: "no"
-
 volumes:
   minio-data:
     driver: local
@@ -274,6 +273,7 @@ networks:
   city-rover-net:
     external: true
     name: city-rover-net
+
 
 
 # ./start-system-city-rover.sh
