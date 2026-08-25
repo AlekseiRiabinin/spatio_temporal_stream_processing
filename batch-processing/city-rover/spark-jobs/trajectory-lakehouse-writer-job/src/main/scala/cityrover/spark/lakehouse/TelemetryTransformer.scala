@@ -1,7 +1,7 @@
 package cityrover.spark.lakehouse
 
-import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.DataFrame
 
 
 object TelemetryTransformer {
