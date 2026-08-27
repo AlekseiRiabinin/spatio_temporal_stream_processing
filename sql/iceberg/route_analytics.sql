@@ -1,21 +1,21 @@
 -- 1. Most frequently used edges
-SELECT edgeid, COUNT(*) AS cnt
+SELECT edge_id, COUNT(*) AS cnt
 FROM iceberg.cityrover.telemetry_raw
-GROUP BY edgeid
+GROUP BY edge_id
 ORDER BY cnt DESC
 LIMIT 20;
 
 -- 2. Most common routes
-SELECT routeid, COUNT(*) AS cnt
+SELECT route_id, COUNT(*) AS cnt
 FROM iceberg.cityrover.telemetry_raw
-GROUP BY routeid
+GROUP BY route_id
 ORDER BY cnt DESC
 LIMIT 20;
 
 -- 3. Average speed per route
-SELECT routeid, AVG(speed_kmh) AS avg_speed
+SELECT route_id, AVG(speed_kmh) AS avg_speed
 FROM iceberg.cityrover.telemetry_raw
-GROUP BY routeid
+GROUP BY route_id
 ORDER BY avg_speed DESC;
 
 

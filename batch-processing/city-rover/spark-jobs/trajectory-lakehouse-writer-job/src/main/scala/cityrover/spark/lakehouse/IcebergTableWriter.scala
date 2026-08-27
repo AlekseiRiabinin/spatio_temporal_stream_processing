@@ -21,27 +21,21 @@ object IcebergTableWriter {
     println(s"Checkpoint location: $checkpointLocation")
     println(s"Iceberg table location: $tableLocation")
 
-    // --------------------------------------------------------------
-    // Ensure namespace exists
-    // --------------------------------------------------------------
     telemetry.sparkSession.sql(
       s"CREATE NAMESPACE IF NOT EXISTS $catalog.$namespace"
     )
 
-    // --------------------------------------------------------------
-    // Create Iceberg table with explicit schema
-    // --------------------------------------------------------------
     telemetry.sparkSession.sql(
       s"""
          |CREATE TABLE IF NOT EXISTS $tableIdentifier (
-         |  roverId STRING,
+         |  rover_id STRING,
          |  ts BIGINT,
          |  lat DOUBLE,
          |  lon DOUBLE,
          |  speed DOUBLE,
          |  heading DOUBLE,
-         |  edgeId STRING,
-         |  routeId STRING,
+         |  edge_id STRING,
+         |  route_id STRING,
          |  event_time TIMESTAMP,
          |  event_date DATE,
          |  speed_kmh DOUBLE
@@ -50,14 +44,11 @@ object IcebergTableWriter {
          |LOCATION '$tableLocation'
          |""".stripMargin)
 
-    // --------------------------------------------------------------
-    // Write streaming data into Iceberg table
-    // --------------------------------------------------------------
     telemetry.writeStream
       .format("iceberg")
-      .outputMode("append")
+      .option("path", tableIdentifier)
       .option("checkpointLocation", checkpointLocation)
       .trigger(Trigger.ProcessingTime("5 seconds"))
-      .toTable(tableIdentifier)
+      .start()
   }
 }

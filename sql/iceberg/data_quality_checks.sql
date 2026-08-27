@@ -1,28 +1,28 @@
 -- 1. Duplicate detection
 -- (confirming/quantifying what we saw earlier)
-SELECT roverid, event_time, COUNT(*) AS cnt
+SELECT rover_id, event_time, COUNT(*) AS cnt
 FROM iceberg.cityrover.telemetry_raw
-GROUP BY roverid, event_time
+GROUP BY rover_id, event_time
 HAVING COUNT(*) > 1
 ORDER BY cnt DESC;
 
 -- 2. Duplicates isolated to a specific append
 -- (using the diff pattern from before, but counting)
-SELECT roverid, event_time, COUNT(*) AS cnt
+SELECT rover_id, event_time, COUNT(*) AS cnt
 FROM iceberg.cityrover.telemetry_raw
 FOR VERSION AS OF 1442785148312161673
-GROUP BY roverid, event_time
+GROUP BY rover_id, event_time
 HAVING COUNT(*) > 1
 LIMIT 10;
 
 -- 3. Gaps in telemetry per rover
 -- (missed heartbeats — useful if you expect ~5s cadence)
 WITH ordered AS (
-  SELECT roverid, event_time,
-         LAG(event_time) OVER (PARTITION BY roverid ORDER BY event_time) AS prev_time
+  SELECT rover_id, event_time,
+         LAG(event_time) OVER (PARTITION BY rover_id ORDER BY event_time) AS prev_time
   FROM iceberg.cityrover.telemetry_raw
 )
-SELECT roverid, prev_time, event_time,
+SELECT rover_id, prev_time, event_time,
        (event_time - prev_time) AS gap
 FROM ordered
 WHERE (event_time - prev_time) > INTERVAL '10' SECOND
@@ -45,7 +45,7 @@ SELECT rover_id,
        AVG(speed) AS avg_speed,
        AVG(battery) AS avg_battery
 FROM iceberg.cityrover.telemetry_raw
-GROUP BY roverid
+GROUP BY rover_id
 ORDER BY pings DESC;
 
 

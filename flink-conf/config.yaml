@@ -1,0 +1,39 @@
+blob:
+  server:
+    port: '6124'
+taskmanager:
+  memory:
+    process:
+      size: 4096m
+  jvm:
+    options: -XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=30 -XX:G1ReservePercent=15 -XX:ConcGCThreads=4 -XX:ParallelGCThreads=8 -XX:+AlwaysPreTouch -XX:+UseNUMA -XX:+UseStringDeduplication -XX:+UseCompressedOops -XX:+TieredCompilation -XX:CompileThreshold=10000 -Xlog:gc*:file=/var/log/flink/gc.log:tags,uptime,time,level
+  cpu:
+    cores: 2
+  rpc:
+    bind-port: 6122
+    port: 6122
+  host: flink-taskmanager
+  numberOfTaskSlots: 2
+metrics:
+  reporter:
+    prom:
+      port: 9090
+      class: org.apache.flink.metrics.prometheus.PrometheusReporter
+  system-resource: true
+  reporters: prom
+jobmanager:
+  rpc:
+    address: flink-jobmanager
+    port: 6123
+    bind-port: 6123
+  memory:
+    process:
+      size: 1536m
+query:
+  server:
+    port: '6125'
+rest:
+  port: 8081
+  address: flink-jobmanager
+parallelism:
+  default: 2

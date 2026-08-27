@@ -7,10 +7,10 @@ SELECT
 FROM iceberg.cityrover.telemetry_raw;
 
 -- 2. Detect stationary rovers
-SELECT roverid, COUNT(*) AS stationary_points
+SELECT rover_id, COUNT(*) AS stationary_points
 FROM iceberg.cityrover.telemetry_raw
 WHERE speed_kmh < 1
-GROUP BY roverid
+GROUP BY rover_id
 ORDER BY stationary_points DESC;
 
 

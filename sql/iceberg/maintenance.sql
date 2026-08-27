@@ -26,4 +26,4 @@ WHERE t.epoch_ms IN (
 
 -- 6. Rollback to a known-good snapshot
 -- (if a bad batch got committed)
-ALTER TABLE iceberg.cityrover.telemetry_raw EXECUTE rollback_to_snapshot(885918832154791160);
+ALTER TABLE iceberg.cityrover.telemetry_raw EXECUTE rollback_to_snapshot(5570832836674481445);

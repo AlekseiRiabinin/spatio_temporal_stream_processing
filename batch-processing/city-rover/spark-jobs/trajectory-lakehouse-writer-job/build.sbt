@@ -68,9 +68,11 @@ lazy val root = (project in file("."))
       "cityrover-trajectory-lakehouse-writer-job-assembly-0.1.0.jar",
 
     assembly / assemblyMergeStrategy := {
+      case PathList("META-INF", "services", _*) =>
+        MergeStrategy.concat
 
       case PathList("META-INF", _*) =>
-        MergeStrategy.discard
+        MergeStrategy.first
 
       case PathList("reference.conf") =>
         MergeStrategy.concat

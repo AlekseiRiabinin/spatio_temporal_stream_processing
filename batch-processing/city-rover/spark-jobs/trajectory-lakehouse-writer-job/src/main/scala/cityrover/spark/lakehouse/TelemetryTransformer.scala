@@ -6,10 +6,6 @@ import org.apache.spark.sql.DataFrame
 
 object TelemetryTransformer {
 
-  // ----------------------------------------------------------------
-  // Transform raw Kafka telemetry JSON into a structured DataFrame
-  // ----------------------------------------------------------------
-
   def transform(rawTelemetry: DataFrame): DataFrame = {
 
     rawTelemetry
@@ -22,9 +18,10 @@ object TelemetryTransformer {
         when(
           col("speed").isNotNull && col("speed") >= lit(0.0),
           col("speed") * lit(3.6)
-        ).otherwise(
-          lit(null)
-        )
+        ).otherwise(lit(null))
       )
+      .withColumnRenamed("roverId", "rover_id")
+      .withColumnRenamed("edgeId", "edge_id")
+      .withColumnRenamed("routeId", "route_id")
   }
 }

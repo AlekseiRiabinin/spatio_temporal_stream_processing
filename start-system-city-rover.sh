@@ -23,7 +23,7 @@ wait_for_container() {
     echo "Waiting for $description..."
 
     for i in $(seq 1 "$retries"); do
-        if docker exec "$container" bash -c "$command" >/dev/null 2>&1; then
+        if docker exec "$container" sh -c "$command" >/dev/null 2>&1; then
             echo "$description is ready."
             return 0
         fi
@@ -167,20 +167,64 @@ wait_for_container \
     3
 
 # ============================================================
-# 8. Start Graph Engine
+# 8. Start Flink JobManager
 # ============================================================
 
 echo ""
-echo "8. Starting graph-engine..."
-docker compose -f "$COMPOSE_FILE" up -d graph-engine
+echo "8. Starting Flink JobManager..."
+docker compose -f "$COMPOSE_FILE" up -d flink-jobmanager
+
+wait_for_container \
+    "flink-jobmanager" \
+    "curl -sf http://localhost:8081" \
+    "Flink JobManager (REST API)" \
+    30 \
+    3
 
 # ============================================================
-# 9. Start Rover Simulator
+# 9. Start Flink TaskManager
 # ============================================================
 
 echo ""
-echo "9. Starting rover-simulator..."
-docker compose -f "$COMPOSE_FILE" up -d rover-simulator
+echo "9. Starting Flink TaskManager..."
+docker compose -f "$COMPOSE_FILE" up -d flink-taskmanager
+
+wait_for_container \
+    "flink-taskmanager" \
+    "curl -sf http://flink-jobmanager:8081/v1/taskmanagers" \
+    "Flink TaskManager registration" \
+    30 \
+    3
+
+# ============================================================
+# 10. Start Prometheus
+# ============================================================
+
+echo ""
+echo "10. Starting Prometheus..."
+docker compose -f "$COMPOSE_FILE" up -d prometheus
+
+wait_for_container \
+    "prometheus" \
+    "wget -qO- http://localhost:9090/-/ready" \
+    "Prometheus" \
+    20 \
+    2
+
+# ============================================================
+# 11. Start Grafana
+# ============================================================
+
+echo ""
+echo "11. Starting Grafana..."
+docker compose -f "$COMPOSE_FILE" up -d grafana
+
+wait_for_container \
+    "grafana" \
+    "curl -sf http://localhost:3000/api/health" \
+    "Grafana" \
+    20 \
+    2
 
 # ============================================================
 # Done
@@ -197,12 +241,22 @@ echo "  - minio"
 echo "  - hive-postgres"
 echo "  - hive-metastore"
 echo "  - trino"
-echo "  - graph-engine"
-echo "  - rover-simulator"
+echo "  - flink-jobmanager"
+echo "  - flink-taskmanager"
+echo "  - prometheus"
+echo "  - grafana"
 echo ""
-echo "MinIO Console: http://localhost:9001"
-echo "MinIO S3 API: http://localhost:9002"
-echo "Hive Metastore: thrift://localhost:9096"
-echo "Trino UI: http://localhost:8090"
-echo "Kafka: kafka-1:19092"
+echo "Endpoints:"
+echo "  MinIO Console:        http://localhost:9001"
+echo "  MinIO S3 API:         http://localhost:9002"
+echo "  Hive Metastore:       thrift://localhost:9096"
+echo "  Trino UI:             http://localhost:8090"
+echo "  Kafka Broker:         kafka-1:19092"
+echo "  Flink Dashboard:      http://localhost:8081"
+echo "  Flink JM Metrics:     http://localhost:9090/metrics"
+echo "  Flink TM Metrics:     http://localhost:9091/metrics"
+echo "  Prometheus UI:        http://localhost:9095"
+echo "  Grafana UI:           http://localhost:3000"
+echo ""
+echo "CityRover system startup complete."
 echo ""

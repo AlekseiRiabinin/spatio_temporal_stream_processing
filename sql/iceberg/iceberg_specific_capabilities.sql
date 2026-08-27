@@ -11,7 +11,7 @@ FOR VERSION AS OF 885918832154791160;
 -- 3. Time travel by timestamp instead of snapshot ID
 SELECT *
 FROM iceberg.cityrover.telemetry_raw
-FOR TIMESTAMP AS OF TIMESTAMP '2026-08-24 03:08:12.088 Europe/Sofia';
+FOR TIMESTAMP AS OF TIMESTAMP '2026-08-27 21:18:15.286 Europe/Sofia';
 
 -- 4. Snapshot history with size/record deltas
 -- (see how each append grew the table)

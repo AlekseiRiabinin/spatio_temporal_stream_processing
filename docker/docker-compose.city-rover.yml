@@ -195,10 +195,14 @@ services:
     container_name: flink-jobmanager
     hostname: flink-jobmanager
     command: jobmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
     ports:
       - "8081:8081"
+      - "9090:9090"
     volumes:
-      - ./flink-conf:/opt/flink/conf
+      - ../flink-conf:/opt/flink/conf
     networks:
       - city-rover-net
     restart: unless-stopped
@@ -208,11 +212,44 @@ services:
     container_name: flink-taskmanager
     hostname: flink-taskmanager
     command: taskmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+    ports:
+      - "9091:9090"
     depends_on:
       flink-jobmanager:
         condition: service_started
     volumes:
-      - ./flink-conf:/opt/flink/conf
+      - ../flink-conf:/opt/flink/conf
+    networks:
+      - city-rover-net
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9095:9090"
+    networks:
+      - city-rover-net
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_started
     networks:
       - city-rover-net
     restart: unless-stopped
@@ -316,6 +353,9 @@ volumes:
   postgres-azure-data:
     driver: local
 
+  grafana-data:
+    driver: local
+
   graph-data:
     driver: local
     driver_opts:
@@ -338,6 +378,7 @@ networks:
 
 
 # ./start-system-city-rover.sh
+# ./run-rover-simulator.sh
 # ./run-trajectory-job.sh
 # ./run-map-visualizer.sh
 # ./run-lakehouse-job.sh
@@ -346,3 +387,4 @@ networks:
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache trajectory-visualizer-job
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache rover-map-visualizer
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache trajectory-lakehouse-writer-job
+# docker compose -f docker/docker-compose.city-rover.yml build --no-cache rover-flink-latency-job
