@@ -2,7 +2,7 @@ package cityrover.pipeline
 
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.streaming.api.datastream.{DataStream, SingleOutputStreamOperator}
-import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows
+import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow
 import org.apache.flink.streaming.api.functions.windowing.WindowFunction
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
@@ -23,7 +23,7 @@ object ProcessingPipeline {
   def build(env: StreamExecutionEnvironment): Unit = {
 
     // --------------------------------------------------------------------
-    // Kafka source
+    // Kafka source (no watermarks → lowest latency)
     // --------------------------------------------------------------------
     val kafkaSource = KafkaSource.builder[String]()
       .setBootstrapServers(ConfigLoader.kafkaBootstrap)
@@ -35,7 +35,7 @@ object ProcessingPipeline {
     val rawStream: DataStream[String] =
       env.fromSource(
         kafkaSource,
-        WatermarkStrategy.noWatermarks(),
+        WatermarkStrategy.noWatermarks(),   // no event-time → no delay
         "raw-telemetry-source"
       )
 
@@ -49,19 +49,17 @@ object ProcessingPipeline {
       })
 
     // --------------------------------------------------------------------
-    // Assign event-time + watermarks
+    // Pure processing-time pipeline (no event-time watermarks)
     // --------------------------------------------------------------------
-    val withWatermarks: DataStream[GeoEvent] =
-      parsed.assignTimestampsAndWatermarks(Watermarking.strategy)
+    val processingTimeStream: DataStream[GeoEvent] = parsed
 
     // --------------------------------------------------------------------
-    // Annotate sampled events with processingStartNs
-    // + lazily register latency metrics
+    // Annotate events + register latency metrics
     // --------------------------------------------------------------------
     val indexed: DataStream[(GeoEvent, Long)] =
-      withWatermarks.map(new RichMapFunction[GeoEvent, (GeoEvent, Long)] {
+      processingTimeStream.map(new RichMapFunction[GeoEvent, (GeoEvent, Long)] {
 
-        private var counter    = 0L
+        private var counter     = 0L
         private var initialized = false
 
         override def map(event: GeoEvent): (GeoEvent, Long) = {
@@ -84,14 +82,14 @@ object ProcessingPipeline {
       })
 
     // --------------------------------------------------------------------
-    // Windowed metric: count events per roverId
+    // Processing-time tumbling window (lowest latency)
     // --------------------------------------------------------------------
     val windowSizeMs = ConfigLoader.windowSizeMs
 
     val windowedCounts: SingleOutputStreamOperator[(String, Long)] =
       profiled
         .keyBy(_.roverId)
-        .window(TumblingEventTimeWindows.of(Duration.ofMillis(windowSizeMs)))
+        .window(TumblingProcessingTimeWindows.of(Duration.ofMillis(windowSizeMs)))
         .apply(new WindowFunction[GeoEvent, (String, Long), String, TimeWindow] {
 
           override def apply(
@@ -100,17 +98,15 @@ object ProcessingPipeline {
             input: java.lang.Iterable[GeoEvent],
             out: Collector[(String, Long)]
           ): Unit = {
-
             val count = input.spliterator().getExactSizeIfKnown
             out.collect((key, count))
           }
         })
 
     // --------------------------------------------------------------------
-    // WindowMetrics: rolling latency statistics (same window size)
+    // WindowMetrics: ensure this uses processing-time windows internally
     // --------------------------------------------------------------------
-    val latencyWindow =
-      WindowMetrics.build(profiled, windowSizeMs)
+    val latencyWindow = WindowMetrics.build(profiled, windowSizeMs)
 
     // --------------------------------------------------------------------
     // Sinks

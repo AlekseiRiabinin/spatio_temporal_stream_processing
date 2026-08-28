@@ -202,7 +202,7 @@ services:
       - "8081:8081"
       - "9090:9090"
     volumes:
-      - ../flink-conf:/opt/flink/conf
+      - ../flink-conf/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml
     networks:
       - city-rover-net
     restart: unless-stopped
@@ -221,7 +221,7 @@ services:
       flink-jobmanager:
         condition: service_started
     volumes:
-      - ../flink-conf:/opt/flink/conf
+      - ../flink-conf/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml
     networks:
       - city-rover-net
     restart: unless-stopped
@@ -382,6 +382,7 @@ networks:
 # ./run-trajectory-job.sh
 # ./run-map-visualizer.sh
 # ./run-lakehouse-job.sh
+# ./run-latency-job.sh
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache graph-engine
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache rover-simulator
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache trajectory-visualizer-job

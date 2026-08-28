@@ -1,79 +1,116 @@
-// ------------------------------------------------------------
+import sbtprotoc.ProtocPlugin.autoImport._
+import scalapb.compiler.Version.scalapbVersion
+
+// ============================================================
 // Global versions
-// ------------------------------------------------------------
+// ============================================================
+
 ThisBuild / scalaVersion := "3.3.8"
 ThisBuild / version      := "0.1.0"
 ThisBuild / organization := "cityrover.flink"
 
-// ------------------------------------------------------------
+// ============================================================
 // Dependency versions
-// ------------------------------------------------------------
-lazy val flinkVersion        = "2.3.0"
-lazy val flinkKafkaVersion   = "3.1.0-1.18"  // Kafka connector
-lazy val magnoliaVersion     = "1.3.0"
-lazy val jacksonVersion      = "2.17.2"
-lazy val kryoVersion         = "5.6.0"
-lazy val log4jVersion        = "2.23.1"
-lazy val scalatestVersion    = "3.2.19"
+// ============================================================
 
-// ------------------------------------------------------------
-// Project definition
-// ------------------------------------------------------------
+lazy val flinkVersion      = "2.3.0"
+lazy val flinkKafkaVersion = "3.1.0-1.18"
+
+lazy val jacksonVersion   = "2.17.2"
+lazy val kryoVersion      = "5.6.0"
+lazy val log4jVersion     = "2.23.1"
+lazy val scalatestVersion = "3.2.19"
+lazy val scalapbVersion   = "0.11.13"
+
+// ============================================================
+// Project
+// ============================================================
+
 lazy val root = (project in file("."))
   .settings(
+
     name := "rover-flink-latency",
 
+    // ========================================================
+    // Flink
+    // ========================================================
+
     libraryDependencies ++= Seq(
-      // ------------------------------------------------------------
-      // Flink Core (Java API only)
-      // ------------------------------------------------------------
-      "org.apache.flink" % "flink-streaming-java"      % flinkVersion,
-      "org.apache.flink" % "flink-clients"             % flinkVersion,
-      "org.apache.flink" % "flink-runtime"             % flinkVersion,
-      "org.apache.flink" % "flink-core"                % flinkVersion,
-      "org.apache.flink" % "flink-metrics-prometheus"  % flinkVersion,
 
-      // ------------------------------------------------------------
-      // Kafka Source (correct connector for Flink 2.x)
-      // ------------------------------------------------------------
-      "org.apache.flink" % "flink-connector-kafka"     % flinkKafkaVersion,
+      // Flink Java APIs
+      "org.apache.flink" % "flink-streaming-java"     % flinkVersion,
+      "org.apache.flink" % "flink-clients"            % flinkVersion,
+      "org.apache.flink" % "flink-runtime"            % flinkVersion,
+      "org.apache.flink" % "flink-core"               % flinkVersion,
+      "org.apache.flink" % "flink-metrics-prometheus" % flinkVersion,
 
-      // ------------------------------------------------------------
-      // Kryo + Magnolia Serialization
-      // ------------------------------------------------------------
-      "com.esotericsoftware" % "kryo"                  % kryoVersion,
-      "com.softwaremill.magnolia1_3" %% "magnolia"     % magnoliaVersion,
+      // ======================================================
+      // Kafka connector
+      // ======================================================
 
-      // ------------------------------------------------------------
-      // JSON (Jackson)
-      // ------------------------------------------------------------
-      "com.fasterxml.jackson.core" % "jackson-databind"          % jacksonVersion,
-      "com.fasterxml.jackson.module" %% "jackson-module-scala"   % jacksonVersion,
+      "org.apache.flink" % "flink-connector-kafka" % flinkKafkaVersion,
 
-      // ------------------------------------------------------------
-      // Typesafe Config (required for ConfigLoader.scala)
-      // ------------------------------------------------------------
+      // ======================================================
+      // Kryo
+      // ======================================================
+
+      "com.esotericsoftware" % "kryo" % kryoVersion,
+
+      // ======================================================
+      // Jackson
+      // ======================================================
+
+      "com.fasterxml.jackson.core"   % "jackson-databind"      % jacksonVersion,
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % jacksonVersion,
+
+      // ======================================================
+      // Typesafe Config
+      // ======================================================
+
       "com.typesafe" % "config" % "1.4.3",
 
-      // ------------------------------------------------------------
+      // ======================================================
       // Logging
-      // ------------------------------------------------------------
-      "org.apache.logging.log4j" % "log4j-api"          % log4jVersion,
-      "org.apache.logging.log4j" % "log4j-core"         % log4jVersion,
+      // ======================================================
 
-      // ------------------------------------------------------------
-      // Testing
-      // ------------------------------------------------------------
+      "org.apache.logging.log4j" % "log4j-api"  % log4jVersion,
+      "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
+
+      // ======================================================
+      // ScalaPB runtime
+      // ======================================================
+
+      "com.thesamet.scalapb" %% "scalapb-runtime" % scalapbVersion % "protobuf",
+
+      // ======================================================
+      // Tests
+      // ======================================================
+
       "org.scalatest" %% "scalatest" % scalatestVersion % Test
     ),
 
-    // ------------------------------------------------------------
-    // Assembly settings
-    // ------------------------------------------------------------
+    // ========================================================
+    // ScalaPB / Protobuf code generation
+    // ========================================================
+
+    Compile / PB.targets := Seq(
+      scalapb.gen() ->
+        (Compile / sourceManaged).value / "scalapb"
+    ),
+
+    // ========================================================
+    // Assembly
+    // ========================================================
+
     assembly / assemblyMergeStrategy := {
-      case PathList("META-INF", xs @ _*)             => MergeStrategy.discard
-      case PathList("META-INF", "services", xs @ _*) => MergeStrategy.concat
-      case PathList("META-INF", "MANIFEST.MF")       => MergeStrategy.discard
-      case _                                         => MergeStrategy.first
+
+      case PathList("META-INF", "services", _*) =>
+        MergeStrategy.concat
+
+      case PathList("META-INF", _*) =>
+        MergeStrategy.discard
+
+      case _ =>
+        MergeStrategy.first
     }
   )

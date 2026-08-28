@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+message GeoEvent {
+  string roverId = 1;
+  int64 ts = 2;
+  double lat = 3;
+  double lon = 4;
+  double speed = 5;
+  double heading = 6;
+  string edgeId = 7;
+  string routeId = 8;
+}
