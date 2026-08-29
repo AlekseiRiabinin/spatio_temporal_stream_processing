@@ -1,0 +1,21 @@
+{
+  "name": "json-to-protobuf-telemetry",
+  "config": {
+    "connector.class": "org.apache.kafka.connect.mirror.MirrorSourceConnector",
+    "tasks.max": "1",
+
+    "source.cluster.alias": "local",
+    "target.cluster.alias": "local",
+
+    "topics": "raw-telemetry",
+
+    "value.converter": "io.confluent.connect.protobuf.ProtobufConverter",
+    "value.converter.schema.registry.url": "http://schema-registry:8081",
+
+    "transforms": "Hoist",
+    "transforms.Hoist.type": "org.apache.kafka.connect.transforms.HoistField$Value",
+    "transforms.Hoist.field": "payload",
+
+    "target.topic": "raw-telemetry-proto"
+  }
+}
