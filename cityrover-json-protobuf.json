@@ -1,0 +1,12 @@
+{
+  "name": "cityrover-json-protobuf",
+  "config": {
+    "connector.class": "cityrover.connect.JsonToProtobufConnector",
+    "tasks.max": "1",
+
+    "topics": "raw-telemetry",
+    "output.topic": "raw-telemetry-proto",
+
+    "bootstrap.servers": "kafka-1:19092"
+  }
+}

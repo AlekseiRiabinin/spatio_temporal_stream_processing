@@ -1,8 +1,6 @@
 package cityrover.connect
 
-import cityrover.telemetry.Telemetry
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
-
 import scala.util.Try
 
 
@@ -10,18 +8,16 @@ object JsonToTelemetry {
 
   private val mapper = new ObjectMapper()
 
-  def parse(json: String): Either[String, Telemetry] = {
+  def parse(json: String): Either[String, TelemetryData] = {
 
     Try(mapper.readTree(json)).toEither.left
       .map(error => s"Invalid JSON: ${error.getMessage}")
       .flatMap(parseNode)
   }
 
-  /**
-   * Convert an already parsed JsonNode into the generated
-   * ScalaPB Telemetry protobuf message.
-   */
-  private def parseNode(node: JsonNode): Either[String, Telemetry] = {
+  private def parseNode(
+    node: JsonNode
+  ): Either[String, TelemetryData] = {
 
     if (node == null || !node.isObject) {
       return Left("Telemetry JSON must be a JSON object")
@@ -32,7 +28,7 @@ object JsonToTelemetry {
       ts      <- requiredLong(node, "ts")
     } yield {
 
-      Telemetry(
+      TelemetryData(
         roverId = roverId,
         ts = ts,
         lat = optionalDouble(node, "lat"),
@@ -44,10 +40,6 @@ object JsonToTelemetry {
       )
     }
   }
-
-  // ============================================================
-  // Required fields
-  // ============================================================
 
   private def requiredString(
     node: JsonNode,
@@ -80,10 +72,6 @@ object JsonToTelemetry {
       Right(value.asLong())
     }
   }
-
-  // ============================================================
-  // Optional fields
-  // ============================================================
 
   private def optionalString(
     node: JsonNode,

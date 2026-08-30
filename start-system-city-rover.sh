@@ -203,30 +203,11 @@ docker exec kafka-1 bash -c '
 echo "Kafka topics initialized."
 
 # ============================================================
-# 3. Start Schema Registry
+# 3. Start Kafka Connect
 # ============================================================
 
 echo ""
-echo "3. Starting Schema Registry..."
-
-docker compose \
-    -f "$COMPOSE_FILE" \
-    up -d schema-registry
-
-verify_network "schema-registry"
-
-wait_for_http \
-    "http://localhost:8084/subjects" \
-    "Schema Registry" \
-    60 \
-    2
-
-# ============================================================
-# 4. Start Kafka Connect
-# ============================================================
-
-echo ""
-echo "4. Starting Kafka Connect..."
+echo "3. Starting Kafka Connect..."
 
 docker compose \
     -f "$COMPOSE_FILE" \
@@ -241,11 +222,11 @@ wait_for_http \
     2
 
 # ============================================================
-# 5. Start MinIO
+# 4. Start MinIO
 # ============================================================
 
 echo ""
-echo "5. Starting MinIO..."
+echo "4. Starting MinIO..."
 
 docker compose \
     -f "$COMPOSE_FILE" \
@@ -263,11 +244,11 @@ docker compose \
 echo "MinIO initialized."
 
 # ============================================================
-# 6. Start PostgreSQL (Hive Metastore DB)
+# 5. Start PostgreSQL (Hive Metastore DB)
 # ============================================================
 
 echo ""
-echo "6. Starting PostgreSQL..."
+echo "5. Starting PostgreSQL..."
 
 docker compose \
     -f "$COMPOSE_FILE" \
@@ -283,11 +264,11 @@ wait_for_container \
     2
 
 # ============================================================
-# 7. Ensure Hive Metastore database exists
+# 6. Ensure Hive Metastore database exists
 # ============================================================
 
 echo ""
-echo "Checking Hive Metastore database..."
+echo "6. Checking Hive Metastore database..."
 
 if docker exec hive-postgres \
     psql -U postgres -tAc \
@@ -309,11 +290,11 @@ else
 fi
 
 # ============================================================
-# 8. Start Hive Metastore
+# 7. Start Hive Metastore
 # ============================================================
 
 echo ""
-echo "8. Starting Hive Metastore..."
+echo "7. Starting Hive Metastore..."
 
 docker compose \
     -f "$COMPOSE_FILE" \
@@ -329,11 +310,11 @@ wait_for_container \
     3
 
 # ============================================================
-# 9. Start Trino
+# 8. Start Trino
 # ============================================================
 
 echo ""
-echo "9. Starting Trino..."
+echo "8. Starting Trino..."
 
 docker compose \
     -f "$COMPOSE_FILE" \
@@ -349,11 +330,11 @@ wait_for_container \
     3
 
 # ============================================================
-# 10. Start Flink JobManager
+# 9. Start Flink JobManager
 # ============================================================
 
 echo ""
-echo "10. Starting Flink JobManager..."
+echo "9. Starting Flink JobManager..."
 
 docker compose \
     -f "$COMPOSE_FILE" \
@@ -369,11 +350,11 @@ wait_for_container \
     3
 
 # ============================================================
-# 11. Start Flink TaskManager
+# 10. Start Flink TaskManager
 # ============================================================
 
 echo ""
-echo "11. Starting Flink TaskManager..."
+echo "10. Starting Flink TaskManager..."
 
 docker compose \
     -f "$COMPOSE_FILE" \
@@ -389,11 +370,11 @@ wait_for_container \
     3
 
 # ============================================================
-# 12. Start Prometheus
+# 11. Start Prometheus
 # ============================================================
 
 echo ""
-echo "12. Starting Prometheus..."
+echo "11. Starting Prometheus..."
 
 docker compose \
     -f "$COMPOSE_FILE" \
@@ -409,11 +390,11 @@ wait_for_container \
     2
 
 # ============================================================
-# 13. Start Grafana
+# 12. Start Grafana
 # ============================================================
 
 echo ""
-echo "13. Starting Grafana..."
+echo "12. Starting Grafana..."
 
 docker compose \
     -f "$COMPOSE_FILE" \
@@ -452,7 +433,6 @@ echo ""
 
 echo "Services:"
 echo "  - kafka-1"
-echo "  - schema-registry"
 echo "  - kafka-connect"
 echo "  - minio"
 echo "  - hive-postgres"
@@ -466,7 +446,6 @@ echo "  - grafana"
 echo ""
 echo "Endpoints:"
 echo "  Kafka:                 localhost:19092"
-echo "  Schema Registry:       http://localhost:8084"
 echo "  Kafka Connect:         http://localhost:8083"
 echo "  MinIO Console:         http://localhost:9001"
 echo "  MinIO S3 API:          http://localhost:9002"
