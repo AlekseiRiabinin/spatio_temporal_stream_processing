@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package cityrover.telemetry;
+
+import "scalapb/scalapb.proto";
+
+option (scalapb.options) = {
+  flat_package: true
+};
+
+message Telemetry {
+  string roverId = 1;
+  int64 ts = 2;
+
+  optional double lat = 3;
+  optional double lon = 4;
+  optional double speed = 5;
+  optional double heading = 6;
+
+  optional string edgeId = 7;
+  optional string routeId = 8;
+}

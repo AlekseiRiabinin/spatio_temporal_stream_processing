@@ -88,15 +88,18 @@ services:
       CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
       CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
       CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.storage.StringConverter"
-      CONNECT_VALUE_CONVERTER: "io.confluent.connect.protobuf.ProtobufConverter"
-      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
-      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components,/opt/connect-plugins"
+      CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.storage.StringConverter"
+      CONNECT_PLUGIN_PATH: "/usr/share/java"
+      CONNECT_LOG4J_LOGGERS: "org.reflections=ERROR"
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: "http://schema-registry:8084"
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: "http://schema-registry:8084"
     ports:
       - "8083:8083"
     volumes:
-      - ./connect-plugins:/opt/connect-plugins
+      - ./connect-plugins:/usr/share/java
     networks:
       - city-rover-net
+    restart: unless-stopped
 
   schema-registry:
     image: confluentinc/cp-schema-registry:7.6.0
@@ -436,3 +439,26 @@ networks:
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache rover-map-visualizer
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache trajectory-lakehouse-writer-job
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache rover-flink-latency-job
+
+# 1. Deploy kafka-connector:
+# curl -X POST -H "Content-Type: application/json" \
+#      --data @json-to-protobuf-smt.json \
+#      http://localhost:8083/connectors
+#
+# 2. Check status:
+# curl http://localhost:8083/connectors/json-to-protobuf-telemetry/status
+#
+# 3. Verify schema registry:
+# curl http://localhost:8084/subjects
+#
+# 4. Verify Protobuf messages in Kafka:
+# kafka-console-consumer \
+#   --bootstrap-server localhost:19092 \
+#   --topic raw-telemetry-proto \
+#   --from-beginning
+
+# wget https://repo1.maven.org/maven2/io/debezium/debezium-connector-kafka/2.5.0.Final/debezium-connector-kafka-2.5.0.Final-plugin.zip \
+#      -O debezium-kafka.zip
+# or https://repo1.maven.org/maven2/io/debezium/debezium-connector-kafka/2.5.0.Final/
+#
+# unzip debezium-kafka.zip -d connect-plugins/
