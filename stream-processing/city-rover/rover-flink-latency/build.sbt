@@ -14,7 +14,7 @@ ThisBuild / organization := "cityrover.flink"
 // ============================================================
 
 lazy val flinkVersion      = "2.3.0"
-lazy val flinkKafkaVersion = "3.1.0-1.18"
+lazy val flinkKafkaVersion = "5.0.0-2.2"
 
 lazy val jacksonVersion   = "2.17.2"
 lazy val kryoVersion      = "5.6.0"
