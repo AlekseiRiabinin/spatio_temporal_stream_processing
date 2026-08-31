@@ -19,7 +19,6 @@ object FlinkEnvironment {
 
     env.setParallelism(parallelism)
     env.enableCheckpointing(5000)
-
     env.getConfig.enableObjectReuse()
 
     env

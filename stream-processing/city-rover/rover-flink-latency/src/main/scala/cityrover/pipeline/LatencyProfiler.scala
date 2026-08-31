@@ -1,18 +1,18 @@
 package cityrover.pipeline
 
-import cityrover.model.GeoEvent
 import cityrover.util.ConfigLoader
 
 
 /**
   * Lightweight latency profiler for operator‑chain measurements.
   *
-  * The profiler samples every Nth event (configurable) and attaches
-  * a processing timestamp. Downstream operators can compute:
+  * The profiler samples every Nth event (configurable) and returns
+  * an optional processingStartNs timestamp. Downstream operators compute:
   *
-  *   latency = System.nanoTime() - event.processingStartNs
+  *   latency = System.nanoTime() - processingStartNs
   *
-  * This avoids allocations and keeps GC pressure minimal.
+  * GeoEvent is a ScalaPB message and cannot be mutated or copied.
+  * Latency metadata is therefore external.
   */
 object LatencyProfiler {
 
@@ -23,20 +23,17 @@ object LatencyProfiler {
     ConfigLoader.latencyProfilerSampleRate
 
   /**
-    * Annotate event with processing timestamp if sampling is enabled.
+    * Compute processingStartNs if sampling is enabled.
     *
-    * @param event Incoming GeoEvent
     * @param index Position in stream (monotonic counter)
-    * @return GeoEvent with optional processingStartNs set
+    * @return Some(timestamp) if sampled, otherwise None
     */
-  def annotate(event: GeoEvent, index: Long): GeoEvent = {
-    if (!enabled) return event
+  def annotate(index: Long): Option[Long] = {
+    if (!enabled) return None
 
-    // Sample every Nth event
-    if (index % sampleRate == 0) {
-      event.copy(processingStartNs = Some(System.nanoTime()))
-    } else {
-      event
-    }
+    if (index % sampleRate == 0)
+      Some(System.nanoTime())
+    else
+      None
   }
 }

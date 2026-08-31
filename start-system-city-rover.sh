@@ -171,6 +171,7 @@ docker exec kafka-1 bash -c '
     topics=(
         "rover-telemetry-raw:4"
         "rover-telemetry-enriched:4"
+        "rover-telemetry-protobuf:4"
         "rover-analytics:4"
         "cityrover-spark-metrics:1"
     )
@@ -209,6 +210,76 @@ echo "Kafka topics initialized."
 echo ""
 echo "3. Starting Kafka Connect..."
 
+# ------------------------------------------------------------
+# CityRover JSON → Protobuf Kafka Connect plugin
+# ------------------------------------------------------------
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$SCRIPT_DIR"
+
+CITYROVER_PLUGIN_DIR="$PROJECT_ROOT/custom-plugins/cityrover-json-protobuf"
+CITYROVER_JAR="$CITYROVER_PLUGIN_DIR/target/scala-3.3.8/cityrover-json-protobuf-connect-assembly-0.1.0.jar"
+
+CONNECT_PLUGINS_DIR="$PROJECT_ROOT/connect-plugins"
+DESTINATION_JAR="$CONNECT_PLUGINS_DIR/cityrover-json-protobuf-connect-assembly-0.1.0.jar"
+
+echo "Checking CityRover JSON → Protobuf Kafka Connect plugin..."
+
+# ------------------------------------------------------------
+# Check source JAR
+# ------------------------------------------------------------
+
+if [ ! -f "$CITYROVER_JAR" ]; then
+
+    echo "CityRover connector JAR not found:"
+    echo "  $CITYROVER_JAR"
+    echo ""
+    echo "Building connector..."
+
+    (
+        cd "$CITYROVER_PLUGIN_DIR" || exit 1
+        sbt clean assembly
+    )
+
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Failed to build CityRover connector."
+        exit 1
+    fi
+fi
+
+# ------------------------------------------------------------
+# Copy JAR only if the same version is not already present
+# ------------------------------------------------------------
+
+mkdir -p "$CONNECT_PLUGINS_DIR"
+
+if [ -f "$DESTINATION_JAR" ]; then
+
+    echo "CityRover connector JAR already exists:"
+    echo "  $DESTINATION_JAR"
+    echo "Skipping copy."
+
+else
+
+    echo "Copying CityRover connector JAR..."
+    echo "  From: $CITYROVER_JAR"
+    echo "  To:   $DESTINATION_JAR"
+
+    cp "$CITYROVER_JAR" "$DESTINATION_JAR"
+
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Failed to copy CityRover connector JAR."
+        exit 1
+    fi
+
+    echo "CityRover connector JAR copied successfully."
+
+fi
+
+# ------------------------------------------------------------
+# Start Kafka Connect
+# ------------------------------------------------------------
+
 docker compose \
     -f "$COMPOSE_FILE" \
     up -d kafka-connect
@@ -220,6 +291,31 @@ wait_for_http \
     "Kafka Connect" \
     60 \
     2
+
+# ------------------------------------------------------------
+# Verify CityRover connector discovery
+# ------------------------------------------------------------
+
+echo ""
+echo "Checking Kafka Connect plugin discovery..."
+
+CONNECTOR_CLASS="cityrover.connect.JsonToProtobufConnector"
+
+if curl -fsS "http://localhost:8083/connector-plugins" \
+    | jq -e --arg class "$CONNECTOR_CLASS" \
+    '.[] | select(.class == $class)' >/dev/null; then
+
+    echo "CityRover JSON → Protobuf connector detected:"
+    echo "  $CONNECTOR_CLASS"
+
+else
+
+    echo "ERROR: CityRover JSON → Protobuf connector was not detected."
+    echo ""
+    echo "Available connector plugins:"
+    curl -fsS "http://localhost:8083/connector-plugins" | jq
+    exit 1
+fi
 
 # ============================================================
 # 4. Start MinIO

@@ -35,23 +35,47 @@ lazy val root = (project in file("."))
 
     libraryDependencies ++= Seq(
 
+      // ------------------------------------------------------
+      // Kafka Connect API
+      // ------------------------------------------------------
+
       "org.apache.kafka" % "connect-api" %
-        connectVersion,
+        connectVersion % Provided,
 
       "org.apache.kafka" % "connect-transforms" %
-        connectVersion,
+        connectVersion % Provided,
+
+      // ------------------------------------------------------
+      // Kafka client
+      // ------------------------------------------------------
 
       "org.apache.kafka" % "kafka-clients" %
-        kafkaVersion,
+        kafkaVersion % Provided,
+
+      // ------------------------------------------------------
+      // Jackson
+      // ------------------------------------------------------
 
       "com.fasterxml.jackson.core" % "jackson-databind" %
         jacksonVersion,
 
+      // ------------------------------------------------------
+      // Protobuf
+      // ------------------------------------------------------
+
       "com.google.protobuf" % "protobuf-java" %
         protobufVersion,
 
+      // ------------------------------------------------------
+      // ScalaPB runtime
+      // ------------------------------------------------------
+
       "com.thesamet.scalapb" %% "scalapb-runtime" %
         scalapbVersion_ % "protobuf",
+
+      // ------------------------------------------------------
+      // Tests
+      // ------------------------------------------------------
 
       "org.scalatest" %% "scalatest" %
         scalatestVersion % Test
@@ -71,9 +95,11 @@ lazy val root = (project in file("."))
 
     assembly / assemblyMergeStrategy := {
 
+      // Kafka Connect plugin discovery
       case PathList("META-INF", "services", _*) =>
         MergeStrategy.concat
 
+      // Standard metadata
       case PathList("META-INF", _*) =>
         MergeStrategy.discard
 

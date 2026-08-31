@@ -6,28 +6,23 @@ import org.apache.flink.streaming.api.windowing.windows.TimeWindow
 import org.apache.flink.streaming.api.functions.windowing.WindowFunction
 import org.apache.flink.util.Collector
 import java.time.Duration
-import cityrover.model.GeoEvent
+
+import cityrover.telemetry.Telemetry
 
 
 object WindowMetrics {
 
-  /**
-    * Build a windowed metrics stream.
-    *
-    * Output tuple:
-    *   (roverId, count, minNs, maxNs, avgNs)
-    */
   def build(
-    stream: DataStream[GeoEvent],
+    stream: DataStream[(Telemetry, Option[Long])],
     windowSizeMs: Long
   ): SingleOutputStreamOperator[(String, Long, Long, Long, Double)] = {
 
     stream
-      .keyBy(_.roverId)
+      .keyBy { case (event, _) => event.roverId }
       .window(TumblingProcessingTimeWindows.of(Duration.ofMillis(windowSizeMs)))
       .apply(
         new WindowFunction[
-          GeoEvent,
+          (Telemetry, Option[Long]),
           (String, Long, Long, Long, Double),
           String,
           TimeWindow
@@ -36,7 +31,7 @@ object WindowMetrics {
           override def apply(
             key: String,
             window: TimeWindow,
-            input: java.lang.Iterable[GeoEvent],
+            input: java.lang.Iterable[(Telemetry, Option[Long])],
             out: Collector[(String, Long, Long, Long, Double)]
           ): Unit = {
 
@@ -47,8 +42,9 @@ object WindowMetrics {
 
             val it = input.iterator()
             while (it.hasNext) {
-              val event = it.next()
-              event.processingStartNs.foreach { start =>
+              val (_, tsOpt) = it.next()
+
+              tsOpt.foreach { start =>
                 val latency = System.nanoTime() - start
                 count += 1
                 sumNs += latency

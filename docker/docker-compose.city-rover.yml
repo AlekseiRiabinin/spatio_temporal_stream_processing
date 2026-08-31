@@ -88,12 +88,12 @@ services:
       CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
       CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.storage.StringConverter"
       CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.storage.StringConverter"
-      CONNECT_PLUGIN_PATH: "/usr/share/java"
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/java/cityrover"
       CONNECT_LOG4J_LOGGERS: "org.reflections=ERROR"
     ports:
       - "8083:8083"
     volumes:
-      - ./custom-plugins/cityrover-json-protobuf/target/scala-3.3.8:/usr/share/java/cityrover-json-protobuf
+      - ../connect-plugins:/usr/share/java/cityrover
     networks:
       - city-rover-net
     restart: unless-stopped
@@ -425,18 +425,21 @@ networks:
 
 
 # 1. Verify plugin discovery
-# curl http://localhost:8083/connector-plugins | jq
+# curl http://localhost:8083/connector-plugins
 #
 # 2. Deploy kafka-connector:
-# curl -X POST -H "Content-Type: application/json" \
-#      --data @cityrover-json-protobuf.json \
-#      http://localhost:8083/connectors
+# curl -s -X POST \
+#   http://localhost:8083/connectors \
+#   -H 'Content-Type: application/json' \
+#   --data @json-to-protobuf-telemetry.json | jq
 #
 # 3. Check status:
-# curl http://localhost:8083/connectors/cityrover-json-protobuf/status
+# curl -s http://localhost:8083/connectors/json-to-protobuf-telemetry/status | jq
 #
 # 4. Verify Protobuf messages in Kafka:
-# kafka-console-consumer \
-#   --bootstrap-server localhost:19092 \
-#   --topic raw-telemetry-proto \
-#   --from-beginning
+# docker exec -it kafka-1 bash
+#
+# docker exec kafka-1 \
+#   /opt/kafka/bin/kafka-topics.sh \
+#   --list \
+#   --bootstrap-server kafka-1:19092

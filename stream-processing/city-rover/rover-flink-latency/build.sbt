@@ -44,48 +44,27 @@ lazy val root = (project in file("."))
       "org.apache.flink" % "flink-core"               % flinkVersion,
       "org.apache.flink" % "flink-metrics-prometheus" % flinkVersion,
 
-      // ======================================================
       // Kafka connector
-      // ======================================================
-
       "org.apache.flink" % "flink-connector-kafka" % flinkKafkaVersion,
 
-      // ======================================================
       // Kryo
-      // ======================================================
-
       "com.esotericsoftware" % "kryo" % kryoVersion,
 
-      // ======================================================
-      // Jackson
-      // ======================================================
-
+      // Jackson (still used for config)
       "com.fasterxml.jackson.core"   % "jackson-databind"      % jacksonVersion,
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % jacksonVersion,
 
-      // ======================================================
       // Typesafe Config
-      // ======================================================
-
       "com.typesafe" % "config" % "1.4.3",
 
-      // ======================================================
       // Logging
-      // ======================================================
-
       "org.apache.logging.log4j" % "log4j-api"  % log4jVersion,
       "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
 
-      // ======================================================
       // ScalaPB runtime
-      // ======================================================
-
       "com.thesamet.scalapb" %% "scalapb-runtime" % scalapbVersion % "protobuf",
 
-      // ======================================================
       // Tests
-      // ======================================================
-
       "org.scalatest" %% "scalatest" % scalatestVersion % Test
     ),
 
@@ -94,8 +73,7 @@ lazy val root = (project in file("."))
     // ========================================================
 
     Compile / PB.targets := Seq(
-      scalapb.gen() ->
-        (Compile / sourceManaged).value / "scalapb"
+      scalapb.gen() -> (Compile / sourceManaged).value
     ),
 
     // ========================================================

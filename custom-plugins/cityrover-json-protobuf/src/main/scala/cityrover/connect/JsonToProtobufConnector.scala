@@ -2,12 +2,12 @@ package cityrover.connect
 
 import org.apache.kafka.common.config.ConfigDef
 import org.apache.kafka.connect.connector.Task
-import org.apache.kafka.connect.connector.Connector
+import org.apache.kafka.connect.sink.SinkConnector
 
 import java.util
 
 
-class JsonToProtobufConnector extends Connector {
+class JsonToProtobufConnector extends SinkConnector {
 
   private var props: util.Map[String, String] = _
 
@@ -19,8 +19,12 @@ class JsonToProtobufConnector extends Connector {
     classOf[JsonToProtobufTask]
   }
 
-  override def taskConfigs(maxTasks: Int): util.List[util.Map[String, String]] = {
-    val configs = new util.ArrayList[util.Map[String, String]](maxTasks)
+  override def taskConfigs(
+      maxTasks: Int
+  ): util.List[util.Map[String, String]] = {
+
+    val configs =
+      new util.ArrayList[util.Map[String, String]](maxTasks)
 
     var i = 0
     while (i < maxTasks) {
@@ -48,5 +52,6 @@ object JsonToProtobufConnector {
 
   val VERSION = "0.1.0"
 
-  val CONFIG_DEF: ConfigDef = new ConfigDef()
+  val CONFIG_DEF: ConfigDef =
+    new ConfigDef()
 }

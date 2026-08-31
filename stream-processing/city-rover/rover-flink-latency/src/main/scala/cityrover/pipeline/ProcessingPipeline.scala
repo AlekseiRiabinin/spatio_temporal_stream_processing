@@ -7,15 +7,16 @@ import org.apache.flink.streaming.api.windowing.windows.TimeWindow
 import org.apache.flink.streaming.api.functions.windowing.WindowFunction
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
 import org.apache.flink.api.common.functions.{MapFunction, RichMapFunction}
-import org.apache.flink.api.common.serialization.SimpleStringSchema
 import org.apache.flink.connector.kafka.source.KafkaSource
 import org.apache.flink.util.Collector
 
 import java.time.Duration
 
-import cityrover.model.GeoEvent
+import cityrover.telemetry.Telemetry
 import cityrover.util.ConfigLoader
 import cityrover.metrics.{LatencyMetrics, WindowMetrics}
+import cityrover.pipeline.LatencyProfiler
+import cityrover.serialization.ByteArraySchema
 
 
 object ProcessingPipeline {
@@ -23,46 +24,47 @@ object ProcessingPipeline {
   def build(env: StreamExecutionEnvironment): Unit = {
 
     // --------------------------------------------------------------------
-    // Kafka source (no watermarks → lowest latency)
+    // Kafka source (Protobuf bytes, no watermarks → lowest latency)
     // --------------------------------------------------------------------
-    val kafkaSource = KafkaSource.builder[String]()
-      .setBootstrapServers(ConfigLoader.kafkaBootstrap)
-      .setTopics(ConfigLoader.kafkaRawTelemetryTopic)
-      .setGroupId("cityrover-latency")
-      .setValueOnlyDeserializer(SimpleStringSchema())
-      .build()
+    val kafkaSource =
+      KafkaSource.builder[Array[Byte]]()
+        .setBootstrapServers(ConfigLoader.kafkaBootstrap)
+        .setTopics(ConfigLoader.kafkaRawTelemetryTopic)
+        .setGroupId("cityrover-latency")
+        .setValueOnlyDeserializer(new ByteArraySchema())
+        .build()
 
-    val rawStream: DataStream[String] =
+    val rawStream: DataStream[Array[Byte]] =
       env.fromSource(
         kafkaSource,
-        WatermarkStrategy.noWatermarks(),   // no event-time → no delay
-        "raw-telemetry-source"
+        WatermarkStrategy.noWatermarks(),
+        "protobuf-telemetry-source"
       )
 
     // --------------------------------------------------------------------
-    // Parse JSON → GeoEvent
+    // Protobuf bytes → Telemetry (ScalaPB)
     // --------------------------------------------------------------------
-    val parsed: DataStream[GeoEvent] =
-      rawStream.map(new MapFunction[String, GeoEvent] {
-        override def map(value: String): GeoEvent =
-          EventParser.parse(value)
+    val parsed: DataStream[Telemetry] =
+      rawStream.map(new MapFunction[Array[Byte], Telemetry] {
+        override def map(value: Array[Byte]): Telemetry =
+          Telemetry.parseFrom(value)
       })
 
     // --------------------------------------------------------------------
     // Pure processing-time pipeline (no event-time watermarks)
     // --------------------------------------------------------------------
-    val processingTimeStream: DataStream[GeoEvent] = parsed
+    val processingTimeStream: DataStream[Telemetry] = parsed
 
     // --------------------------------------------------------------------
     // Annotate events + register latency metrics
     // --------------------------------------------------------------------
-    val indexed: DataStream[(GeoEvent, Long)] =
-      processingTimeStream.map(new RichMapFunction[GeoEvent, (GeoEvent, Long)] {
+    val indexed: DataStream[(Telemetry, Long)] =
+      processingTimeStream.map(new RichMapFunction[Telemetry, (Telemetry, Long)] {
 
         private var counter     = 0L
         private var initialized = false
 
-        override def map(event: GeoEvent): (GeoEvent, Long) = {
+        override def map(event: Telemetry): (Telemetry, Long) = {
           if (!initialized) {
             LatencyMetrics.register(getRuntimeContext.getMetricGroup)
             initialized = true
@@ -72,12 +74,13 @@ object ProcessingPipeline {
         }
       })
 
-    val profiled: DataStream[GeoEvent] =
-      indexed.map(new MapFunction[(GeoEvent, Long), GeoEvent] {
-        override def map(value: (GeoEvent, Long)): GeoEvent = {
-          val event = LatencyProfiler.annotate(value._1, value._2)
-          LatencyMetrics.update(event)
-          event
+    val profiled: DataStream[(Telemetry, Option[Long])] =
+      indexed.map(new MapFunction[(Telemetry, Long), (Telemetry, Option[Long])] {
+        override def map(value: (Telemetry, Long)): (Telemetry, Option[Long]) = {
+          val (event, index) = value
+          val tsOpt = LatencyProfiler.annotate(index)
+          LatencyMetrics.update(tsOpt)
+          (event, tsOpt)
         }
       })
 
@@ -88,14 +91,14 @@ object ProcessingPipeline {
 
     val windowedCounts: SingleOutputStreamOperator[(String, Long)] =
       profiled
-        .keyBy(_.roverId)
+        .keyBy { case (event, _) => event.roverId }
         .window(TumblingProcessingTimeWindows.of(Duration.ofMillis(windowSizeMs)))
-        .apply(new WindowFunction[GeoEvent, (String, Long), String, TimeWindow] {
+        .apply(new WindowFunction[(Telemetry, Option[Long]), (String, Long), String, TimeWindow] {
 
           override def apply(
             key: String,
             window: TimeWindow,
-            input: java.lang.Iterable[GeoEvent],
+            input: java.lang.Iterable[(Telemetry, Option[Long])],
             out: Collector[(String, Long)]
           ): Unit = {
             val count = input.spliterator().getExactSizeIfKnown
@@ -104,9 +107,10 @@ object ProcessingPipeline {
         })
 
     // --------------------------------------------------------------------
-    // WindowMetrics: ensure this uses processing-time windows internally
+    // WindowMetrics: processing-time windows
     // --------------------------------------------------------------------
-    val latencyWindow = WindowMetrics.build(profiled, windowSizeMs)
+    val latencyWindow: SingleOutputStreamOperator[(String, Long, Long, Long, Double)] =
+      WindowMetrics.build(profiled, windowSizeMs)
 
     // --------------------------------------------------------------------
     // Sinks

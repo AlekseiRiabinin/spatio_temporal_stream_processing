@@ -11,11 +11,10 @@ class KryoSerializer[T](using ser: Serializer[T]) extends Serializer[T] {
     ser.write(kryo, output, value)
 
   override def read(kryo: Kryo, input: Input, tpe: Class[_ <: T]): T =
-    ser.read(kryo, input, tpe)
+    ser.read(kryo, input, tpe.asInstanceOf[Class[T]])
 }
 
 object KryoSerializer {
-
   inline def apply[T](using s: Serializer[T]): KryoSerializer[T] =
     new KryoSerializer[T]
 }

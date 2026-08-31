@@ -1,8 +1,17 @@
 package cityrover.metrics
 
 import org.apache.flink.metrics.{Gauge, MetricGroup}
-import cityrover.model.GeoEvent
 
+
+/**
+  * Operator‑chain latency metrics exposed to Prometheus.
+  *
+  * Latency is computed externally:
+  *
+  *   latency = System.nanoTime() - processingStartNs
+  *
+  * GeoEvent is a ScalaPB message and does not carry timestamps.
+  */
 object LatencyMetrics {
 
   @volatile private var lastLatencyNs: Long = 0L
@@ -32,10 +41,12 @@ object LatencyMetrics {
   }
 
   /**
-    * Update latency for a processed event.
+    * Update latency using externally provided processingStartNs.
+    *
+    * @param processingStartNs Optional timestamp from LatencyProfiler
     */
-  def update(event: GeoEvent): Unit = {
-    event.processingStartNs.foreach { start =>
+  def update(processingStartNs: Option[Long]): Unit = {
+    processingStartNs.foreach { start =>
       lastLatencyNs = System.nanoTime() - start
     }
   }
