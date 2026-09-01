@@ -27,9 +27,7 @@ object LatencyMetrics {
       "operator_chain_latency_ms",
       new Gauge[java.lang.Double] {
         override def getValue: java.lang.Double =
-          java.lang.Double.valueOf(
-            state.lastLatencyNs / 1_000_000.0
-          )
+          java.lang.Double.valueOf(state.lastLatencyNs / 1_000_000.0)
       }
     )
 

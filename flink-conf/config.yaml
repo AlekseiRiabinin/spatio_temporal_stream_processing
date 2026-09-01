@@ -5,7 +5,7 @@ taskmanager:
   memory:
     process:
       size: 1728m
-  numberOfTaskSlots: 2
+  numberOfTaskSlots: 4
 metrics:
   reporter:
     prom:
@@ -24,7 +24,7 @@ jobmanager:
 env:
   java:
     opts:
-      all: -XX:+UseG1GC -XX:MaxGCPauseMillis=50 -XX:+ParallelRefProcEnabled
+      all: -XX:+UseZGC -XX:+ZGenerational -XX:ZUncommitDelay=30 -XX:+AlwaysPreTouch
 query:
   server:
     port: '6125'

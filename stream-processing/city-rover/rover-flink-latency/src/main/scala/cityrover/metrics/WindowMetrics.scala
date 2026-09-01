@@ -61,10 +61,7 @@ object WindowMetrics {
           ): Unit = {
 
             if (metrics == null) {
-              metrics =
-                new WindowMetricState(
-                  getRuntimeContext.getMetricGroup
-                )
+              metrics = new WindowMetricState(getRuntimeContext.getMetricGroup)
             }
 
             var count = 0L
@@ -78,20 +75,12 @@ object WindowMetrics {
 
               val (_, tsOpt) = it.next()
 
-              tsOpt.foreach { start =>
-
-                val latencyNs = System.nanoTime() - start
-
+              tsOpt.foreach { latencyNs =>
                 count += 1
                 sumNs += latencyNs
 
-                if (latencyNs < minNs) {
-                  minNs = latencyNs
-                }
-
-                if (latencyNs > maxNs) {
-                  maxNs = latencyNs
-                }
+                if (latencyNs < minNs) minNs = latencyNs
+                if (latencyNs > maxNs) maxNs = latencyNs
               }
             }
 
@@ -100,24 +89,16 @@ object WindowMetrics {
             // ------------------------------------------------------------
 
             val minMs =
-              if (count == 0L)
-                0.0
-              else
-                minNs / 1_000_000.0
+              if (count == 0L) 0.0
+              else minNs / 1_000_000.0
 
             val maxMs =
-              if (count == 0L)
-                0.0
-              else
-                maxNs / 1_000_000.0
+              if (count == 0L) 0.0
+              else maxNs / 1_000_000.0
 
             val avgMs =
-              if (count == 0L)
-                0.0
-              else
-                sumNs.toDouble /
-                  count.toDouble /
-                  1_000_000.0
+              if (count == 0L) 0.0
+              else sumNs.toDouble / count.toDouble / 1_000_000.0
 
             // ------------------------------------------------------------
             // Update Prometheus gauges.
@@ -131,9 +112,7 @@ object WindowMetrics {
             )
 
             // ------------------------------------------------------------
-            // Emit window result.
-            //
-            // All latency values are milliseconds.
+            // Emit window result (latency values are milliseconds).
             // ------------------------------------------------------------
 
             out.collect(

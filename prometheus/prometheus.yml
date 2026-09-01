@@ -4,14 +4,69 @@ global:
 
 scrape_configs:
 
+  # ------------------------------------------------------------
+  # Flink JobManager metrics (PrometheusReporter, port 9090)
+  # ------------------------------------------------------------
   - job_name: 'flink-jobmanager'
+    metrics_path: '/metrics'
     static_configs:
       - targets: ['flink-jobmanager:9090']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - source_labels: [__address__]
+        target_label: job
+        regex: '([^:]+):\d+'
+        replacement: '$1'
 
+  # ------------------------------------------------------------
+  # Flink TaskManager metrics (PrometheusReporter, port 9090)
+  # ------------------------------------------------------------
   - job_name: 'flink-taskmanager'
+    metrics_path: '/metrics'
     static_configs:
       - targets: ['flink-taskmanager:9090']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - source_labels: [__address__]
+        target_label: job
+        regex: '([^:]+):\d+'
+        replacement: '$1'
 
+  # ------------------------------------------------------------
+  # Flink REST API metrics (CRITICAL for operator/window metrics)
+  # ------------------------------------------------------------
+  - job_name: 'flink-rest'
+    metrics_path: '/jobs/metrics'
+    static_configs:
+      - targets: ['flink-jobmanager:8081']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - source_labels: [__address__]
+        target_label: job
+        regex: '([^:]+):\d+'
+        replacement: '$1'
+
+  # ------------------------------------------------------------
+  # Flink TaskManager REST metrics (optional but useful)
+  # ------------------------------------------------------------
+  - job_name: 'flink-operators'
+    metrics_path: '/taskmanagers/metrics'
+    static_configs:
+      - targets: ['flink-jobmanager:8081']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - source_labels: [__address__]
+        target_label: job
+        regex: '([^:]+):\d+'
+        replacement: '$1'
+
+  # ------------------------------------------------------------
+  # MinIO metrics (unchanged)
+  # ------------------------------------------------------------
   - job_name: 'minio'
     metrics_path: /minio/v2/metrics/cluster
     static_configs:
