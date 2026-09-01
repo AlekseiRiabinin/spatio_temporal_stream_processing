@@ -1,21 +1,26 @@
 package cityrover.pipeline
 
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
-import org.apache.flink.streaming.api.datastream.{DataStream, SingleOutputStreamOperator}
+import org.apache.flink.streaming.api.datastream.{
+  DataStream,
+  SingleOutputStreamOperator
+}
 import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow
 import org.apache.flink.streaming.api.functions.windowing.WindowFunction
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
-import org.apache.flink.api.common.functions.{MapFunction, RichMapFunction}
+import org.apache.flink.api.common.functions.{
+  MapFunction,
+  RichMapFunction
+}
 import org.apache.flink.connector.kafka.source.KafkaSource
 import org.apache.flink.util.Collector
 
 import java.time.Duration
 
-import cityrover.telemetry.Telemetry
+import cityrover.telemetry.{Telemetry, TelemetryEvent}
 import cityrover.util.ConfigLoader
 import cityrover.metrics.{LatencyMetrics, WindowMetrics}
-import cityrover.pipeline.LatencyProfiler
 import cityrover.serialization.ByteArraySchema
 
 
@@ -24,8 +29,9 @@ object ProcessingPipeline {
   def build(env: StreamExecutionEnvironment): Unit = {
 
     // --------------------------------------------------------------------
-    // Kafka source (Protobuf bytes, no watermarks → lowest latency)
+    // Kafka source
     // --------------------------------------------------------------------
+
     val kafkaSource =
       KafkaSource.builder[Array[Byte]]()
         .setBootstrapServers(ConfigLoader.kafkaBootstrap)
@@ -42,80 +48,181 @@ object ProcessingPipeline {
       )
 
     // --------------------------------------------------------------------
-    // Protobuf bytes → Telemetry (ScalaPB)
+    // Protobuf bytes -> Telemetry
     // --------------------------------------------------------------------
-    val parsed: DataStream[Telemetry] =
-      rawStream.map(new MapFunction[Array[Byte], Telemetry] {
-        override def map(value: Array[Byte]): Telemetry =
-          Telemetry.parseFrom(value)
-      })
+
+    val parsedProto: DataStream[Telemetry] =
+      rawStream.map(
+        new MapFunction[Array[Byte], Telemetry] {
+          override def map(value: Array[Byte]): Telemetry =
+            Telemetry.parseFrom(value)
+        }
+      )
 
     // --------------------------------------------------------------------
-    // Pure processing-time pipeline (no event-time watermarks)
+    // Telemetry -> TelemetryEvent
     // --------------------------------------------------------------------
-    val processingTimeStream: DataStream[Telemetry] = parsed
+
+    val parsed: DataStream[TelemetryEvent] =
+      parsedProto.map(
+        new MapFunction[Telemetry, TelemetryEvent] {
+          override def map(proto: Telemetry): TelemetryEvent =
+            TelemetryEvent(
+              roverId = proto.roverId,
+              lat     = proto.lat.getOrElse(0.0),
+              lon     = proto.lon.getOrElse(0.0),
+              ts      = proto.ts,
+              speed   = proto.speed.getOrElse(0.0),
+              heading = proto.heading.getOrElse(0.0),
+              edgeId  = proto.edgeId.getOrElse(""),
+              routeId = proto.routeId.getOrElse("")
+            )
+        }
+      )
+
 
     // --------------------------------------------------------------------
-    // Annotate events + register latency metrics
+    // Processing-time pipeline
     // --------------------------------------------------------------------
-    val indexed: DataStream[(Telemetry, Long)] =
-      processingTimeStream.map(new RichMapFunction[Telemetry, (Telemetry, Long)] {
 
-        private var counter     = 0L
-        private var initialized = false
+    val processingTimeStream: DataStream[TelemetryEvent] = parsed
 
-        override def map(event: Telemetry): (Telemetry, Long) = {
-          if (!initialized) {
-            LatencyMetrics.register(getRuntimeContext.getMetricGroup)
-            initialized = true
+    // --------------------------------------------------------------------
+    // Index events + register latency metric
+    // --------------------------------------------------------------------
+
+    val indexed: DataStream[(TelemetryEvent, Long)] =
+
+      processingTimeStream.map(
+        new RichMapFunction[TelemetryEvent, (TelemetryEvent, Long)] {
+
+          private var counter = 0L
+          private var latencyUpdater: LatencyMetrics.Updater = null
+
+          override def map(event: TelemetryEvent): (TelemetryEvent, Long) = {
+
+            if (latencyUpdater == null) {
+
+              latencyUpdater =
+                LatencyMetrics.register(getRuntimeContext.getMetricGroup)
+            }
+
+            counter += 1
+
+            (event, counter)
           }
-          counter += 1
-          (event, counter)
         }
-      })
-
-    val profiled: DataStream[(Telemetry, Option[Long])] =
-      indexed.map(new MapFunction[(Telemetry, Long), (Telemetry, Option[Long])] {
-        override def map(value: (Telemetry, Long)): (Telemetry, Option[Long]) = {
-          val (event, index) = value
-          val tsOpt = LatencyProfiler.annotate(index)
-          LatencyMetrics.update(tsOpt)
-          (event, tsOpt)
-        }
-      })
+      )
 
     // --------------------------------------------------------------------
-    // Processing-time tumbling window (lowest latency)
+    // Update Prometheus operator-chain latency.
+    //
+    // LatencyMetrics is registered inside the previous operator, so the
+    // updater belongs to that operator's runtime context.
+    //
+    // Therefore this metric should be updated in the same operator where
+    // it was registered.
     // --------------------------------------------------------------------
-    val windowSizeMs = ConfigLoader.windowSizeMs
+
+    // The current pipeline structure needs the profiler timestamp and
+    // metric update to live in the same RichMapFunction.
+    //
+    // This is addressed below by using a dedicated profiling operator.
+
+    val profiledWithMetrics: DataStream[(TelemetryEvent, Option[Long])] =
+
+      indexed.map(
+        new RichMapFunction[(TelemetryEvent, Long), (TelemetryEvent, Option[Long])] {
+
+          private var latencyUpdater: LatencyMetrics.Updater = null
+
+          override def map(
+            value: (TelemetryEvent, Long)
+          ): (TelemetryEvent, Option[Long]) = {
+
+            if (latencyUpdater == null) {
+              latencyUpdater =
+                LatencyMetrics.register(getRuntimeContext.getMetricGroup)
+            }
+
+            val (event, index) = value
+
+            val processingStartNs =
+              LatencyProfiler.annotate(index)
+
+            latencyUpdater.update(processingStartNs)
+
+            (event, processingStartNs)
+          }
+        }
+      )
+
+    // --------------------------------------------------------------------
+    // Processing-time tumbling windows
+    // --------------------------------------------------------------------
+
+    val windowSizeMs =
+      ConfigLoader.windowSizeMs
 
     val windowedCounts: SingleOutputStreamOperator[(String, Long)] =
-      profiled
+      profiledWithMetrics
         .keyBy { case (event, _) => event.roverId }
-        .window(TumblingProcessingTimeWindows.of(Duration.ofMillis(windowSizeMs)))
-        .apply(new WindowFunction[(Telemetry, Option[Long]), (String, Long), String, TimeWindow] {
+        .window(
+          TumblingProcessingTimeWindows.of(
+            Duration.ofMillis(windowSizeMs)
+          )
+        )
+        .apply(
+          new WindowFunction[
+            (TelemetryEvent, Option[Long]),
+            (String, Long),
+            String,
+            TimeWindow
+          ] {
 
-          override def apply(
-            key: String,
-            window: TimeWindow,
-            input: java.lang.Iterable[(Telemetry, Option[Long])],
-            out: Collector[(String, Long)]
-          ): Unit = {
-            val count = input.spliterator().getExactSizeIfKnown
-            out.collect((key, count))
+            override def apply(
+              key: String,
+              window: TimeWindow,
+              input: java.lang.Iterable[(TelemetryEvent, Option[Long])],
+              out: Collector[(String, Long)]
+            ): Unit = {
+
+              var count = 0L
+
+              val it = input.iterator()
+
+              while (it.hasNext) {
+                it.next()
+                count += 1
+              }
+
+              out.collect(
+                (key, count)
+              )
+            }
           }
-        })
+        )
 
     // --------------------------------------------------------------------
-    // WindowMetrics: processing-time windows
+    // Window latency metrics
+    //
+    // Output:
+    //
+    //   roverId
+    //   count
+    //   min latency [ms]
+    //   max latency [ms]
+    //   avg latency [ms]
     // --------------------------------------------------------------------
-    val latencyWindow: SingleOutputStreamOperator[(String, Long, Long, Long, Double)] =
-      WindowMetrics.build(profiled, windowSizeMs)
+
+    val latencyWindow: SingleOutputStreamOperator[(String, Long, Double, Double, Double)] =
+      WindowMetrics.build(profiledWithMetrics, windowSizeMs)
 
     // --------------------------------------------------------------------
     // Sinks
     // --------------------------------------------------------------------
+
     windowedCounts.print("windowed-counts")
-    latencyWindow.print("latency-window")
+    latencyWindow.print("latency-window-ms")
   }
 }

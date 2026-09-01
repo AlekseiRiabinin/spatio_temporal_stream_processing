@@ -11,8 +11,7 @@ import cityrover.util.ConfigLoader
   *
   *   latency = System.nanoTime() - processingStartNs
   *
-  * GeoEvent is a ScalaPB message and cannot be mutated or copied.
-  * Latency metadata is therefore external.
+  * TelemetryEvent is immutable; latency metadata is therefore external.
   */
 object LatencyProfiler {
 

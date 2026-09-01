@@ -17,7 +17,6 @@ lazy val flinkVersion      = "2.3.0"
 lazy val flinkKafkaVersion = "5.0.0-2.2"
 
 lazy val jacksonVersion   = "2.17.2"
-lazy val kryoVersion      = "5.6.0"
 lazy val log4jVersion     = "2.23.1"
 lazy val scalatestVersion = "3.2.19"
 lazy val scalapbVersion   = "0.11.13"
@@ -47,9 +46,6 @@ lazy val root = (project in file("."))
       // Kafka connector
       "org.apache.flink" % "flink-connector-kafka" % flinkKafkaVersion,
 
-      // Kryo
-      "com.esotericsoftware" % "kryo" % kryoVersion,
-
       // Jackson (still used for config)
       "com.fasterxml.jackson.core"   % "jackson-databind"      % jacksonVersion,
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % jacksonVersion,
@@ -61,7 +57,7 @@ lazy val root = (project in file("."))
       "org.apache.logging.log4j" % "log4j-api"  % log4jVersion,
       "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
 
-      // ScalaPB runtime
+      // ScalaPB runtime (needed for Telemetry.parseFrom)
       "com.thesamet.scalapb" %% "scalapb-runtime" % scalapbVersion % "protobuf",
 
       // Tests

@@ -4,50 +4,52 @@ import org.apache.flink.metrics.{Gauge, MetricGroup}
 
 
 /**
-  * Operator‑chain latency metrics exposed to Prometheus.
+  * Operator-chain latency metrics exposed to Prometheus.
   *
-  * Latency is computed externally:
+  * Latency is measured internally using System.nanoTime()
+  * and exposed to Prometheus in milliseconds.
   *
-  *   latency = System.nanoTime() - processingStartNs
-  *
-  * GeoEvent is a ScalaPB message and does not carry timestamps.
+  * The pipeline provides processingStartNs via LatencyProfiler.
   */
 object LatencyMetrics {
 
-  @volatile private var lastLatencyNs: Long = 0L
-
   /**
-    * Register Prometheus‑visible gauges.
+    * Register Prometheus-visible operator latency metric.
+    *
+    * Metric state belongs to this registration instance,
+    * i.e. to one Flink operator/subtask.
     */
-  def register(group: MetricGroup): Unit = {
+  def register(group: MetricGroup): Updater = {
 
-    // Nanoseconds gauge (boxed type required)
-    group.gauge(
-      "operator_chain_latency_ns",
-      new Gauge[java.lang.Long] {
-        override def getValue: java.lang.Long =
-          java.lang.Long.valueOf(lastLatencyNs)
-      }
-    )
+    val state = new LatencyState
 
-    // Milliseconds gauge (boxed Double)
     group.gauge(
       "operator_chain_latency_ms",
       new Gauge[java.lang.Double] {
         override def getValue: java.lang.Double =
-          java.lang.Double.valueOf(lastLatencyNs / 1_000_000.0)
+          java.lang.Double.valueOf(
+            state.lastLatencyNs / 1_000_000.0
+          )
       }
     )
+
+    new Updater {
+      override def update(processingStartNs: Option[Long]): Unit = {
+        processingStartNs.foreach { start =>
+          state.lastLatencyNs =
+            System.nanoTime() - start
+        }
+      }
+    }
   }
 
-  /**
-    * Update latency using externally provided processingStartNs.
-    *
-    * @param processingStartNs Optional timestamp from LatencyProfiler
-    */
-  def update(processingStartNs: Option[Long]): Unit = {
-    processingStartNs.foreach { start =>
-      lastLatencyNs = System.nanoTime() - start
-    }
+  private final class LatencyState {
+
+    @volatile
+    var lastLatencyNs: Long = 0L
+  }
+
+  trait Updater {
+    def update(processingStartNs: Option[Long]): Unit
   }
 }

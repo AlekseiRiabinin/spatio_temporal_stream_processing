@@ -236,7 +236,7 @@ services:
       - "8081:8081"
       - "9090:9090"
     volumes:
-      - ../flink-conf/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml
+      - ../flink-conf/config.yaml:/opt/flink/conf/config.yaml
     networks:
       - city-rover-net
     restart: unless-stopped
@@ -255,7 +255,7 @@ services:
       flink-jobmanager:
         condition: service_started
     volumes:
-      - ../flink-conf/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml
+      - ../flink-conf/config.yaml:/opt/flink/conf/config.yaml
     networks:
       - city-rover-net
     restart: unless-stopped
@@ -264,7 +264,7 @@ services:
     image: prom/prometheus:v2.54.1
     container_name: prometheus
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
       - "9095:9090"
     networks:
