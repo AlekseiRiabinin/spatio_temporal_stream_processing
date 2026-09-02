@@ -288,6 +288,33 @@ services:
       - city-rover-net
     restart: unless-stopped
 
+  cassandra:
+    image: cassandra:4.1
+    container_name: cassandra
+    hostname: cassandra
+    ports:
+      - "9042:9042"        # CQL port
+    environment:
+      CASSANDRA_CLUSTER_NAME: "CityRoverCluster"
+      CASSANDRA_NUM_TOKENS: 16
+      CASSANDRA_START_RPC: "true"
+      CASSANDRA_RPC_ADDRESS: 0.0.0.0
+      CASSANDRA_BROADCAST_ADDRESS: cassandra
+      CASSANDRA_BROADCAST_RPC_ADDRESS: cassandra
+      CASSANDRA_SEEDS: cassandra
+      MAX_HEAP_SIZE: "2G"
+      HEAP_NEWSIZE: "512M"
+    volumes:
+      - cassandra-data:/var/lib/cassandra
+    networks:
+      - city-rover-net
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh cassandra 9042 -e 'describe keyspaces'"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
   # ----
   # JOBS
   # ----
@@ -389,6 +416,9 @@ volumes:
   grafana-data:
     driver: local
 
+  cassandra-data:
+    driver: local
+
   graph-data:
     driver: local
     driver_opts:
@@ -402,6 +432,7 @@ volumes:
       type: none
       o: bind
       device: /home/aleksei/Projects/telecom_analytics_4.0/spark/pipelines/trajectory-viewer/output
+
 
 networks:
   city-rover-net:

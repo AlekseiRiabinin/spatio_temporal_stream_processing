@@ -406,11 +406,34 @@ wait_for_container \
     3
 
 # ============================================================
-# 8. Start Trino
+# 8. Start Cassandra
 # ============================================================
 
 echo ""
-echo "8. Starting Trino..."
+echo "8. Starting Cassandra..."
+
+docker compose \
+    -f "$COMPOSE_FILE" \
+    up -d cassandra
+
+verify_network "cassandra"
+
+echo "Waiting for Cassandra to become ready..."
+wait_for_container \
+    "cassandra" \
+    "cqlsh cassandra 9042 -e 'DESCRIBE KEYSPACES'" \
+    "Cassandra" \
+    20 \
+    10
+
+echo "Cassandra is ready."
+
+# ============================================================
+# 9. Start Trino
+# ============================================================
+
+echo ""
+echo "9. Starting Trino..."
 
 docker compose \
     -f "$COMPOSE_FILE" \
@@ -426,11 +449,11 @@ wait_for_container \
     3
 
 # ============================================================
-# 9. Start Flink JobManager
+# 10. Start Flink JobManager
 # ============================================================
 
 echo ""
-echo "9. Starting Flink JobManager..."
+echo "10. Starting Flink JobManager..."
 
 docker compose \
     -f "$COMPOSE_FILE" \
@@ -446,11 +469,11 @@ wait_for_container \
     3
 
 # ============================================================
-# 10. Start Flink TaskManager
+# 11. Start Flink TaskManager
 # ============================================================
 
 echo ""
-echo "10. Starting Flink TaskManager..."
+echo "11. Starting Flink TaskManager..."
 
 docker compose \
     -f "$COMPOSE_FILE" \
@@ -466,11 +489,11 @@ wait_for_container \
     3
 
 # ============================================================
-# 11. Start Prometheus
+# 12. Start Prometheus
 # ============================================================
 
 echo ""
-echo "11. Starting Prometheus..."
+echo "12. Starting Prometheus..."
 
 docker compose \
     -f "$COMPOSE_FILE" \
@@ -486,11 +509,11 @@ wait_for_container \
     2
 
 # ============================================================
-# 12. Start Grafana
+# 13. Start Grafana
 # ============================================================
 
 echo ""
-echo "12. Starting Grafana..."
+echo "13. Starting Grafana..."
 
 docker compose \
     -f "$COMPOSE_FILE" \
@@ -533,6 +556,7 @@ echo "  - kafka-connect"
 echo "  - minio"
 echo "  - hive-postgres"
 echo "  - hive-metastore"
+echo "  - cassandra"
 echo "  - trino"
 echo "  - flink-jobmanager"
 echo "  - flink-taskmanager"
@@ -546,6 +570,7 @@ echo "  Kafka Connect:         http://localhost:8083"
 echo "  MinIO Console:         http://localhost:9001"
 echo "  MinIO S3 API:          http://localhost:9002"
 echo "  Hive Metastore:        thrift://localhost:9096"
+echo "  Cassandra CQL:         http://localhost:9042"
 echo "  Trino UI:              http://localhost:8090"
 echo "  Flink Dashboard:       http://localhost:8081"
 echo "  Flink JM Metrics:      http://localhost:9090/metrics"

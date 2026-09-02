@@ -20,6 +20,7 @@ lazy val jacksonVersion   = "2.17.2"
 lazy val log4jVersion     = "2.23.1"
 lazy val scalatestVersion = "3.2.19"
 lazy val scalapbVersion   = "0.11.13"
+lazy val cassandraDriverVersion = "4.17.0"
 
 // ============================================================
 // Project
@@ -59,6 +60,11 @@ lazy val root = (project in file("."))
 
       // ScalaPB runtime (needed for Telemetry.parseFrom)
       "com.thesamet.scalapb" %% "scalapb-runtime" % scalapbVersion % "protobuf",
+
+      // Cassandra Driver (DataStax Java Driver 4.x)
+      "com.datastax.oss" % "java-driver-core" % cassandraDriverVersion,
+      "com.datastax.oss" % "java-driver-query-builder" % cassandraDriverVersion,
+      "com.datastax.oss" % "java-driver-mapper-runtime" % cassandraDriverVersion,
 
       // Tests
       "org.scalatest" %% "scalatest" % scalatestVersion % Test
