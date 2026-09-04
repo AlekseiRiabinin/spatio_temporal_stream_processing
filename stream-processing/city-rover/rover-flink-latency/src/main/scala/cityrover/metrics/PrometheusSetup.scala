@@ -4,10 +4,10 @@ import org.apache.flink.metrics.prometheus.PrometheusReporter
 import org.apache.flink.configuration.Configuration
 
 
-object PrometheusSetup {
+object PrometheusSetup:
 
-  def config: Configuration = {
-    val cfg = new Configuration()
+  def config: Configuration =
+    val cfg = Configuration()
 
     // Enable Prometheus reporter
     cfg.setString("metrics.reporters", "prometheus")
@@ -31,5 +31,5 @@ object PrometheusSetup {
     )
 
     cfg
-  }
-}
+
+end PrometheusSetup

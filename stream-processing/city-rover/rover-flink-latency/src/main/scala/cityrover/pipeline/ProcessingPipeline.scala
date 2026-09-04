@@ -12,15 +12,19 @@ import org.apache.flink.util.Collector
 
 import java.time.Duration
 
-import cityrover.telemetry.{Telemetry, TelemetryEvent}
+import cityrover.telemetry.{Telemetry, TelemetryEvent, EnrichedTelemetryEvent}
 import cityrover.util.ConfigLoader
 import cityrover.metrics.{LatencyMetrics, WindowMetrics}
 import cityrover.serialization.ByteArraySchema
+import cityrover.cassandra.{CassandraSink, CassandraConnectorConfig}
 
 
-object ProcessingPipeline {
+object ProcessingPipeline:
 
-  def build(env: StreamExecutionEnvironment): Unit = {
+  def build(
+    env: StreamExecutionEnvironment,
+    cassandraCfg: CassandraConnectorConfig
+  ): Unit =
 
     // --------------------------------------------------------------------
     // Kafka source
@@ -30,7 +34,7 @@ object ProcessingPipeline {
         .setBootstrapServers(ConfigLoader.kafkaBootstrap)
         .setTopics(ConfigLoader.kafkaRawTelemetryTopic)
         .setGroupId("cityrover-latency")
-        .setValueOnlyDeserializer(new ByteArraySchema())
+        .setValueOnlyDeserializer(ByteArraySchema())
         .build()
 
     val rawStream: DataStream[Array[Byte]] =
@@ -44,56 +48,63 @@ object ProcessingPipeline {
     // Protobuf bytes -> Telemetry
     // --------------------------------------------------------------------
     val parsedProto: DataStream[Telemetry] =
-      rawStream.map(new MapFunction[Array[Byte], Telemetry] {
-        override def map(value: Array[Byte]): Telemetry =
-          Telemetry.parseFrom(value)
-      })
+      rawStream.map { bytes => Telemetry.parseFrom(bytes) }
 
     // --------------------------------------------------------------------
     // Telemetry -> TelemetryEvent + processingStartNs
     // --------------------------------------------------------------------
     val parsed: DataStream[(TelemetryEvent, Long)] =
-      parsedProto.map(new MapFunction[Telemetry, (TelemetryEvent, Long)] {
-        override def map(proto: Telemetry): (TelemetryEvent, Long) = {
-          val event = TelemetryEvent(
-            roverId = proto.roverId,
-            lat     = proto.lat.getOrElse(0.0),
-            lon     = proto.lon.getOrElse(0.0),
-            ts      = proto.ts,
-            speed   = proto.speed.getOrElse(0.0),
-            heading = proto.heading.getOrElse(0.0),
-            edgeId  = proto.edgeId.getOrElse(""),
-            routeId = proto.routeId.getOrElse("")
-          )
-          (event, System.nanoTime())   // timestamp HERE!
-        }
-      })
+      parsedProto.map { proto =>
+        val event = TelemetryEvent(
+          roverId = proto.roverId,
+          lat     = proto.lat.getOrElse(0.0),
+          lon     = proto.lon.getOrElse(0.0),
+          ts      = proto.ts,
+          speed   = proto.speed.getOrElse(0.0),
+          heading = proto.heading.getOrElse(0.0),
+          edgeId  = proto.edgeId.getOrElse(""),
+          routeId = proto.routeId.getOrElse("")
+        )
+        (event, System.nanoTime())
+      }
 
     // --------------------------------------------------------------------
     // Register metrics + compute latency using original timestamp
     // --------------------------------------------------------------------
     val profiledWithMetrics: DataStream[(TelemetryEvent, Option[Long])] =
-      parsed.map(new RichMapFunction[(TelemetryEvent, Long), (TelemetryEvent, Option[Long])] {
+      parsed.map(new RichMapFunction[(TelemetryEvent, Long), (TelemetryEvent, Option[Long])]:
 
         private var latencyUpdater: LatencyMetrics.Updater = null
 
-        override def map(value: (TelemetryEvent, Long)): (TelemetryEvent, Option[Long]) = {
-
-          if (latencyUpdater == null) {
+        override def map(value: (TelemetryEvent, Long)): (TelemetryEvent, Option[Long]) =
+          if latencyUpdater == null then
             latencyUpdater = LatencyMetrics.register(getRuntimeContext.getMetricGroup)
-          }
 
           val (event, startNs) = value
           val latencyNs = Some(System.nanoTime() - startNs)
 
           latencyUpdater.update(latencyNs)
-
           (event, latencyNs)
-        }
-      })
+      )
 
     // --------------------------------------------------------------------
-    // Processing-time tumbling windows
+    // Convert to EnrichedTelemetryEvent for Cassandra sink
+    // --------------------------------------------------------------------
+    val enriched: DataStream[EnrichedTelemetryEvent] =
+      profiledWithMetrics.map { case (event, latencyOpt) =>
+        EnrichedTelemetryEvent(
+          roverId = event.roverId,
+          ts      = event.ts,
+          lat     = event.lat,
+          lon     = event.lon,
+          speed   = event.speed,
+          heading = event.heading,
+          latencyNs = latencyOpt.getOrElse(0L)
+        )
+      }
+
+    // --------------------------------------------------------------------
+    // Processing-time tumbling windows (still needed for metrics)
     // --------------------------------------------------------------------
     val windowSizeMs = ConfigLoader.windowSizeMs
 
@@ -107,25 +118,19 @@ object ProcessingPipeline {
             (String, Long),
             String,
             TimeWindow
-          ] {
+          ]:
             override def apply(
               key: String,
               window: TimeWindow,
               input: java.lang.Iterable[(TelemetryEvent, Option[Long])],
               out: Collector[(String, Long)]
-            ): Unit = {
-
+            ): Unit =
               var count = 0L
               val it = input.iterator()
-
-              while (it.hasNext) {
+              while it.hasNext do
                 it.next()
                 count += 1
-              }
-
               out.collect((key, count))
-            }
-          }
         )
 
     // --------------------------------------------------------------------
@@ -135,9 +140,8 @@ object ProcessingPipeline {
       WindowMetrics.build(profiledWithMetrics, windowSizeMs)
 
     // --------------------------------------------------------------------
-    // Sinks
+    // Final sink: Cassandra
     // --------------------------------------------------------------------
-    windowedCounts.print("windowed-counts")
-    latencyWindow.print("latency-window-ms")
-  }
-}
+    enriched.sinkTo(new CassandraSink(cassandraCfg))
+
+end ProcessingPipeline

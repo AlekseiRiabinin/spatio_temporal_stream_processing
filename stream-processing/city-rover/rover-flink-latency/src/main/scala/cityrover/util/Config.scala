@@ -1,12 +1,11 @@
 package cityrover.util
 
-import com.typesafe.config.{ConfigFactory, Config}
+import com.typesafe.config.{Config, ConfigFactory}
 
 
-object ConfigLoader {
+object ConfigLoader:
 
-  private val config: Config =
-    ConfigFactory.load()
+  private val config: Config = ConfigFactory.load()
 
   // ------------------------------------------------------------
   // Kafka configuration
@@ -39,8 +38,9 @@ object ConfigLoader {
     config.getInt("cityrover.latency.profiler.sample-rate")
 
   // ------------------------------------------------------------
-  // Generic accessor
+  // Generic accessor (public)
   // ------------------------------------------------------------
 
-  def raw: Config = config
-}
+  def rawConfig: Config = config
+
+end ConfigLoader

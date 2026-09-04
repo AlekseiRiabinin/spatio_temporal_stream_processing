@@ -1,24 +1,16 @@
 package cityrover.cassandra
 
 import com.datastax.oss.driver.api.core.CqlSession
-import com.datastax.oss.driver.api.core.cql.{PreparedStatement, BoundStatement}
+import com.datastax.oss.driver.api.core.cql.{BoundStatement, PreparedStatement}
 import com.typesafe.config.Config
 
 import java.net.InetSocketAddress
 
 
-/**
-  * CassandraConnector is responsible for:
-  *   - Creating a CqlSession
-  *   - Preparing statements
-  *   - Providing access to the session for sinks
-  *
-  * It is intentionally lightweight and safe to use inside Flink operators.
-  */
 final class CassandraConnector(
-    val session: CqlSession,
-    val insertTelemetryStmt: PreparedStatement
-) {
+  val session: CqlSession,
+  val insertTelemetryStmt: PreparedStatement
+):
 
   /** Bind values to the prepared statement */
   def bindTelemetry(
@@ -27,57 +19,75 @@ final class CassandraConnector(
     lat: Double,
     lon: Double,
     speed: Double,
-    heading: Double
+    heading: Double,
+    latencyNs: Long
   ): BoundStatement =
-    insertTelemetryStmt.bind(roverId, Long.box(ts), Double.box(lat), Double.box(lon), Double.box(speed), Double.box(heading))
+    insertTelemetryStmt.bind(
+      roverId,
+      Long.box(ts),
+      Double.box(lat),
+      Double.box(lon),
+      Double.box(speed),
+      Double.box(heading),
+      Long.box(latencyNs)
+    )
 
   /** Close session when shutting down the Flink job */
   def close(): Unit =
-    if (session != null) session.close()
-}
+    if session != null then session.close()
 
-object CassandraConnector {
+end CassandraConnector
 
-  /**
-    * Build connector from Typesafe Config.
-    *
-    * Expected config:
-    *
-    * cityrover.cassandra {
-    *   host = "cassandra"
-    *   port = 9042
-    *   keyspace = "cityrover"
-    *   table = "telemetry"
-    * }
-    */
-  def fromConfig(config: Config): CassandraConnector = {
 
+object CassandraConnector:
+
+  // ---------------------------------------------------------------------------
+  // 1. Bootstrap session (NO keyspace)
+  // ---------------------------------------------------------------------------
+  def createBootstrapSession(config: Config): CqlSession =
+    val host = config.getString("cityrover.cassandra.host")
+    val port = config.getInt("cityrover.cassandra.port")
+
+    CqlSession.builder()
+      .addContactPoint(InetSocketAddress(host, port))
+      .withLocalDatacenter("datacenter1")
+      .build()
+
+  // ---------------------------------------------------------------------------
+  // 2. Runtime session (WITH keyspace)
+  // ---------------------------------------------------------------------------
+  def createRuntimeSession(config: Config): CqlSession =
     val host     = config.getString("cityrover.cassandra.host")
     val port     = config.getInt("cityrover.cassandra.port")
     val keyspace = config.getString("cityrover.cassandra.keyspace")
-    val table    = config.getString("cityrover.cassandra.table")
 
-    val session =
-      CqlSession.builder()
-        .addContactPoint(new InetSocketAddress(host, port))
-        .withLocalDatacenter("datacenter1") // Cassandra default DC name
-        .withKeyspace(keyspace)
-        .build()
+    CqlSession.builder()
+      .addContactPoint(InetSocketAddress(host, port))
+      .withLocalDatacenter("datacenter1")
+      .withKeyspace(keyspace)
+      .build()
 
-    val insertStmt =
-      session.prepare(
-        s"""
-           |INSERT INTO $table (
-           |  rover_id,
-           |  ts,
-           |  lat,
-           |  lon,
-           |  speed,
-           |  heading
-           |) VALUES (?, ?, ?, ?, ?, ?)
-           |""".stripMargin
-      )
+  // ---------------------------------------------------------------------------
+  // 3. Runtime connector (session + prepared statement)
+  // ---------------------------------------------------------------------------
+  def createRuntimeConnector(config: Config): CassandraConnector =
+    val session = createRuntimeSession(config)
+    val table   = config.getString("cityrover.cassandra.table")
 
-    new CassandraConnector(session, insertStmt)
-  }
-}
+    val insertStmt = session.prepare(
+      s"""
+         |INSERT INTO $table (
+         |  rover_id,
+         |  ts,
+         |  lat,
+         |  lon,
+         |  speed,
+         |  heading,
+         |  latency_ns
+         |) VALUES (?, ?, ?, ?, ?, ?, ?)
+         |""".stripMargin
+    )
+
+    CassandraConnector(session, insertStmt)
+
+end CassandraConnector

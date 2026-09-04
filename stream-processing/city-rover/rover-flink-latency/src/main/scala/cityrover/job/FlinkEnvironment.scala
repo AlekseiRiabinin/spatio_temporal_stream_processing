@@ -6,11 +6,10 @@ import org.apache.flink.configuration.RestartStrategyOptions
 import java.time.Duration
 
 
-object FlinkEnvironment {
+object FlinkEnvironment:
 
-  def create(parallelism: Int = 1): StreamExecutionEnvironment = {
-
-    val cfg = new Configuration()
+  def create(parallelism: Int = 1): StreamExecutionEnvironment =
+    val cfg = Configuration()
     cfg.set(RestartStrategyOptions.RESTART_STRATEGY, "fixed-delay")
     cfg.set(RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_ATTEMPTS, 3)
     cfg.set(RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(10))
@@ -22,5 +21,5 @@ object FlinkEnvironment {
     env.getConfig.enableObjectReuse()
 
     env
-  }
-}
+
+end FlinkEnvironment
