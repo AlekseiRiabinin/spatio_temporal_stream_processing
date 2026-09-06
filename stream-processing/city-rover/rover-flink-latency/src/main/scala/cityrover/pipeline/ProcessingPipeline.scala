@@ -9,6 +9,7 @@ import org.apache.flink.api.common.eventtime.WatermarkStrategy
 import org.apache.flink.api.common.functions.{MapFunction, RichMapFunction}
 import org.apache.flink.connector.kafka.source.KafkaSource
 import org.apache.flink.util.Collector
+import org.apache.flink.api.common.typeinfo.TypeInformation
 
 import java.time.Duration
 
@@ -48,60 +49,68 @@ object ProcessingPipeline:
     // Protobuf bytes -> Telemetry
     // --------------------------------------------------------------------
     val parsedProto: DataStream[Telemetry] =
-      rawStream.map { bytes => Telemetry.parseFrom(bytes) }
+      rawStream
+        .map(bytes => Telemetry.parseFrom(bytes))
+        .returns(classOf[Telemetry])
 
     // --------------------------------------------------------------------
     // Telemetry -> TelemetryEvent + processingStartNs
     // --------------------------------------------------------------------
     val parsed: DataStream[(TelemetryEvent, Long)] =
-      parsedProto.map { proto =>
-        val event = TelemetryEvent(
-          roverId = proto.roverId,
-          lat     = proto.lat.getOrElse(0.0),
-          lon     = proto.lon.getOrElse(0.0),
-          ts      = proto.ts,
-          speed   = proto.speed.getOrElse(0.0),
-          heading = proto.heading.getOrElse(0.0),
-          edgeId  = proto.edgeId.getOrElse(""),
-          routeId = proto.routeId.getOrElse("")
-        )
-        (event, System.nanoTime())
-      }
+      parsedProto
+        .map { proto =>
+          val event = TelemetryEvent(
+            roverId = proto.roverId,
+            lat     = proto.lat.getOrElse(0.0),
+            lon     = proto.lon.getOrElse(0.0),
+            ts      = proto.ts,
+            speed   = proto.speed.getOrElse(0.0),
+            heading = proto.heading.getOrElse(0.0),
+            edgeId  = proto.edgeId.getOrElse(""),
+            routeId = proto.routeId.getOrElse("")
+          )
+          (event, System.nanoTime())
+        }
+        .returns(classOf[(TelemetryEvent, Long)])
 
     // --------------------------------------------------------------------
     // Register metrics + compute latency using original timestamp
     // --------------------------------------------------------------------
     val profiledWithMetrics: DataStream[(TelemetryEvent, Option[Long])] =
-      parsed.map(new RichMapFunction[(TelemetryEvent, Long), (TelemetryEvent, Option[Long])]:
+      parsed
+        .map(new RichMapFunction[(TelemetryEvent, Long), (TelemetryEvent, Option[Long])] {
 
-        private var latencyUpdater: LatencyMetrics.Updater = null
+          private var latencyUpdater: LatencyMetrics.Updater = null
 
-        override def map(value: (TelemetryEvent, Long)): (TelemetryEvent, Option[Long]) =
-          if latencyUpdater == null then
-            latencyUpdater = LatencyMetrics.register(getRuntimeContext.getMetricGroup)
+          override def map(value: (TelemetryEvent, Long)): (TelemetryEvent, Option[Long]) =
+            if latencyUpdater == null then
+              latencyUpdater = LatencyMetrics.register(getRuntimeContext.getMetricGroup)
 
-          val (event, startNs) = value
-          val latencyNs = Some(System.nanoTime() - startNs)
+            val (event, startNs) = value
+            val latencyNs = Some(System.nanoTime() - startNs)
 
-          latencyUpdater.update(latencyNs)
-          (event, latencyNs)
-      )
+            latencyUpdater.update(latencyNs)
+            (event, latencyNs)
+        })
+        .returns(classOf[(TelemetryEvent, Option[Long])])
 
     // --------------------------------------------------------------------
     // Convert to EnrichedTelemetryEvent for Cassandra sink
     // --------------------------------------------------------------------
     val enriched: DataStream[EnrichedTelemetryEvent] =
-      profiledWithMetrics.map { case (event, latencyOpt) =>
-        EnrichedTelemetryEvent(
-          roverId = event.roverId,
-          ts      = event.ts,
-          lat     = event.lat,
-          lon     = event.lon,
-          speed   = event.speed,
-          heading = event.heading,
-          latencyNs = latencyOpt.getOrElse(0L)
-        )
-      }
+      profiledWithMetrics
+        .map { case (event, latencyOpt) =>
+          EnrichedTelemetryEvent(
+            roverId   = event.roverId,
+            ts        = event.ts,
+            lat       = event.lat,
+            lon       = event.lon,
+            speed     = event.speed,
+            heading   = event.heading,
+            latencyNs = latencyOpt.getOrElse(0L)
+          )
+        }
+        .returns(classOf[EnrichedTelemetryEvent])
 
     // --------------------------------------------------------------------
     // Processing-time tumbling windows (still needed for metrics)
@@ -132,6 +141,7 @@ object ProcessingPipeline:
                 count += 1
               out.collect((key, count))
         )
+        .returns(classOf[(String, Long)])
 
     // --------------------------------------------------------------------
     // Window latency metrics

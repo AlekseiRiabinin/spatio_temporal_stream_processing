@@ -5,7 +5,7 @@ import org.apache.flink.api.connector.sink2.{Sink, SinkWriter, WriterInitContext
 import org.slf4j.LoggerFactory
 
 import java.util.concurrent.{CompletableFuture, CompletionStage}
-import scala.collection.mutable.ArrayBuffer
+import java.util.{ArrayList, List}
 
 import cityrover.telemetry.EnrichedTelemetryEvent
 
@@ -30,7 +30,9 @@ final class CassandraSinkWriter(
 ) extends SinkWriter[EnrichedTelemetryEvent]:
 
   private val log = LoggerFactory.getLogger(getClass)
-  private val pendingFutures = ArrayBuffer.empty[CompletionStage[_]]
+
+  private val pendingFutures: List[CompletionStage[_]] =
+    new ArrayList[CompletionStage[_]]()
 
   // ---------------------------------------------------------------------------
   // Initialize Cassandra connector with schema (bootstrap session)
@@ -40,15 +42,14 @@ final class CassandraSinkWriter(
     val keyspace = config.getString("cityrover.cassandra.keyspace")
     val table    = config.getString("cityrover.cassandra.table")
 
-    // 1. Bootstrap schema using a session WITHOUT keyspace
     val bootstrapSession = CassandraConnector.createBootstrapSession(config)
 
     try
       CassandraSchema.initialize(bootstrapSession, keyspace, table)
+
     finally
       bootstrapSession.close()
 
-    // 2. Runtime connector (session WITH keyspace + prepared statements)
     CassandraConnector.createRuntimeConnector(config)
 
   // ---------------------------------------------------------------------------
@@ -72,7 +73,7 @@ final class CassandraSinkWriter(
       val future = connector.session.executeAsync(stmt)
 
       pendingFutures.synchronized:
-        pendingFutures += future
+        pendingFutures.add(future)
 
       cleanupCompletedFutures()
 
@@ -95,9 +96,11 @@ final class CassandraSinkWriter(
 
     try
       waitForPendingWrites()
+
     catch
       case ex: Exception =>
         log.warn("Error while waiting for pending writes", ex)
+
     finally
       connector.close()
       log.info("CassandraSinkWriter closed.")
@@ -107,27 +110,33 @@ final class CassandraSinkWriter(
   // ---------------------------------------------------------------------------
   private def waitForPendingWrites(): Unit =
     pendingFutures.synchronized:
-      if pendingFutures.nonEmpty then
+      if !pendingFutures.isEmpty then
         log.info(s"Waiting for ${pendingFutures.size} pending async writes...")
 
         try
-          val completableFutures =
-            pendingFutures.map(_.toCompletableFuture).toArray
-          CompletableFuture.allOf(completableFutures: _*).join()
+          // Convert Java List → Array[CompletableFuture[_]]
+          val cfArray: Array[CompletableFuture[_]] =
+            pendingFutures.stream()
+              .map(_.toCompletableFuture)
+              .toArray(size => new Array[CompletableFuture[_]](size))
+
+          CompletableFuture.allOf(cfArray: _*).join()
+
         catch
           case ex: Exception =>
             log.error("Error while waiting for pending writes", ex)
+
         finally
           pendingFutures.clear()
+
       else
         log.debug("No pending writes to wait for")
 
   private def cleanupCompletedFutures(): Unit =
     pendingFutures.synchronized:
-      pendingFutures.filterInPlace { future =>
-        future.toCompletableFuture match
-          case cf if cf.isDone => false   // drop completed
-          case _               => true    // keep pending
-      }
+      val it = pendingFutures.iterator()
+      while it.hasNext do
+        val cf = it.next().toCompletableFuture
+        if cf.isDone then it.remove()
 
 end CassandraSinkWriter
