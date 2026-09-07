@@ -114,11 +114,13 @@ final class CassandraSinkWriter(
         log.info(s"Waiting for ${pendingFutures.size} pending async writes...")
 
         try
-          // Convert Java List → Array[CompletableFuture[_]]
-          val cfArray: Array[CompletableFuture[_]] =
+          val cfList: java.util.List[CompletableFuture[Void]] =
             pendingFutures.stream()
-              .map(_.toCompletableFuture)
-              .toArray(size => new Array[CompletableFuture[_]](size))
+              .map(cs => cs.toCompletableFuture.asInstanceOf[CompletableFuture[Void]])
+              .collect(java.util.stream.Collectors.toList())
+
+          val cfArray: Array[CompletableFuture[Void]] = 
+            cfList.toArray(new Array[CompletableFuture[Void]](0))
 
           CompletableFuture.allOf(cfArray: _*).join()
 
