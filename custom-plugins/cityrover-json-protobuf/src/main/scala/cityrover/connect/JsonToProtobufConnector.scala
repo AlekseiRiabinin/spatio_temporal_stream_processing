@@ -20,7 +20,7 @@ class JsonToProtobufConnector extends SinkConnector {
   }
 
   override def taskConfigs(
-      maxTasks: Int
+    maxTasks: Int
   ): util.List[util.Map[String, String]] = {
 
     val configs =
