@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package cityrover.telemetry;
+
+import "scalapb/scalapb.proto";
+
+option (scalapb.options) = {
+  flat_package: true
+};
+
+message Telemetry {
+  string roverId = 1;
+  int64 ts = 2;
+
+  optional double lat = 3;
+  optional double lon = 4;
+  optional double speed = 5;
+  optional double heading = 6;
+
+  optional string edgeId = 7;
+  optional string routeId = 8;
+}
+
+message EnrichedTelemetryEvent {
+
+  // Identity / Keys
+  string roverId = 1;
+  string edgeId = 2;
+  string routeId = 3;
+
+  // Raw telemetry
+  double lat = 4;
+  double lon = 5;
+  int64 ts = 6;
+  double speed = 7;
+  double heading = 8;
+
+  // 5-second window features
+  double speedAvg5s = 9;
+  double speedMax5s = 10;
+  double speedMin5s = 11;
+  double accelerationAvg5s = 12;
+  double headingChange5s = 13;
+  double distanceTraveled5s = 14;
+
+  // 30-second window features
+  double speedAvg30s = 15;
+  double speedStd30s = 16;
+  double accelerationAvg30s = 17;
+  double jerkAvg30s = 18;
+  double turnRateAvg30s = 19;
+  int32 stopsCount30s = 20;
+  double distanceTraveled30s = 21;
+
+  // 1-minute window features
+  double speedAvg1m = 22;
+  double speedStd1m = 23;
+  double accelerationAvg1m = 24;
+  double jerkAvg1m = 25;
+  double turnRateAvg1m = 26;
+  double idleRatio1m = 27;
+  double distanceTraveled1m = 28;
+  double congestionLevel1m = 29;
+
+  // 5-minute window features
+  double speedAvg5m = 30;
+  double speedStd5m = 31;
+  double accelerationAvg5m = 32;
+  double jerkAvg5m = 33;
+  double turnRateAvg5m = 34;
+  double idleRatio5m = 35;
+  double distanceTraveled5m = 36;
+  double congestionLevel5m = 37;
+
+  // Geospatial features
+  int64 gridCellId = 38;
+  string regionId = 39;
+  string snappedEdgeId = 40;
+  double snappedLat = 41;
+  double snappedLon = 42;
+
+  // Route / navigation features
+  double routeProgress = 43;
+  double routeDeviation = 44;
+  double expectedSpeed = 45;
+  double speedRatio = 46;
+
+  // Behavioral features
+  double drivingStyleScore = 47;
+  double anomalyScore = 48;
+
+  // ML feature store metadata
+  string featureVersion = 49;
+  int64 featureTimestamp = 50;
+  int64 featureLatencyMs = 51;
+
+  // Quality / anomaly detection
+  bool isOutlier = 52;
+  bool isGpsJump = 53;
+  bool isSpeedAnomaly = 54;
+  bool isHeadingAnomaly = 55;
+
+  // Debug / observability
+  string rawEventHash = 56;
+  string processingNode = 57;
+  int64 processingTimeMs = 58;
+}
