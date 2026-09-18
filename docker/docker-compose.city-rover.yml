@@ -406,6 +406,57 @@ services:
       - city-rover-net
     restart: "no"
 
+  feature-transform-job:
+    build:
+      context: ../stream-processing/city-rover/feature-transform-job
+      dockerfile: Dockerfile
+    container_name: feature-transform-job
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+      kafka-1:
+        condition: service_started
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:19092
+      FLINK_JOB_PARALLELISM: 1
+    networks:
+      - city-rover-net
+    restart: "no"
+
+
+  # ---
+  # API
+  # ---
+  mle-tools-streamio:
+    build:
+      context: ../../mle_tools_streamio
+      dockerfile: Dockerfile
+    image: mle-tools-streamio:dev
+    container_name: mle-tools-streamio
+    hostname: mle-tools-streamio
+    environment:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: /workspace
+      FLINK_JOBMANAGER_ADDRESS: flink-jobmanager
+      FLINK_JOBMANAGER_PORT: "8081"
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:19092
+    volumes:
+      # Development mode:
+      # Host project -> /workspace inside the container.
+      - ../../mle_tools_streamio:/workspace
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+      kafka-1:
+        condition: service_started
+    networks:
+      - city-rover-net
+    command: ["sleep", "infinity"]
+
 
 volumes:
   minio-data:
@@ -455,6 +506,8 @@ networks:
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache rover-map-visualizer
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache trajectory-lakehouse-writer-job
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache rover-flink-latency-job
+# docker compose -f docker/docker-compose.city-rover.yml build --no-cache feature-transform-job
+# docker compose -f docker/docker-compose.city-rover.yml build --no-cache mle-tools-streamio
 
 
 # 1. Verify plugin discovery
