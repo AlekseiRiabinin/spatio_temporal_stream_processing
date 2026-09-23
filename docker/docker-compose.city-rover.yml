@@ -426,6 +426,19 @@ services:
     restart: "no"
 
 
+  streamio-pyflink-job:
+    build:
+      context: ./streamio-pyflink-job
+      dockerfile: Dockerfile
+    depends_on:
+      - flink-jobmanager
+      - flink-taskmanager
+      - kafka-1
+      - cassandra
+    networks:
+      - city-rover-net
+
+
   # ---
   # API
   # ---
