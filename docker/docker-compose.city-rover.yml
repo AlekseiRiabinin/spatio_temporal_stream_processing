@@ -425,16 +425,40 @@ services:
       - city-rover-net
     restart: "no"
 
+  streamio-kafka-producer-test:
+    build:
+      context: ../stream-processing/pyflink/streamio-kafka-producer-test
+      dockerfile: Dockerfile
+    image: streamio-kafka-producer-test:dev
+    container_name: streamio-kafka-producer-test
+    hostname: streamio-kafka-producer-test
+    environment:
+      PYTHONUNBUFFERED: "1"
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:19092
+      PRODUCER_TOPIC: streamio-test-topic
+    depends_on:
+      kafka-1:
+        condition: service_started
+    networks:
+      - city-rover-net
+    restart: always
 
   streamio-pyflink-job:
     build:
-      context: ./streamio-pyflink-job
+      context: ../stream-processing/pyflink/streamio-connector-test-job
       dockerfile: Dockerfile
+    image: streamio-pyflink-job:dev
+    container_name: streamio-pyflink-job
+    hostname: streamio-pyflink-job
     depends_on:
-      - flink-jobmanager
-      - flink-taskmanager
-      - kafka-1
-      - cassandra
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+      kafka-1:
+        condition: service_started
+      cassandra:
+        condition: service_started
     networks:
       - city-rover-net
 
@@ -520,6 +544,9 @@ networks:
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache trajectory-lakehouse-writer-job
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache rover-flink-latency-job
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache feature-transform-job
+
+# docker compose -f docker/docker-compose.city-rover.yml build --no-cache streamio-kafka-producer-test
+# docker compose -f docker/docker-compose.city-rover.yml build --no-cache streamio-pyflink-job
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache mle-tools-streamio
 
 
