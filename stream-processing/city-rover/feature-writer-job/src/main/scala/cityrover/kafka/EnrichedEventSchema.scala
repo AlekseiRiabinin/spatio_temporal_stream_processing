@@ -2,7 +2,6 @@ package cityrover.kafka
 
 import org.apache.flink.api.common.serialization.DeserializationSchema
 import org.apache.flink.api.common.typeinfo.TypeInformation
-import org.apache.flink.api.common.typeinfo.Types
 
 import cityrover.telemetry.EnrichedTelemetryEvent
 
@@ -24,4 +23,4 @@ class EnrichedEventSchema extends DeserializationSchema[EnrichedTelemetryEvent]:
     false
 
   override def getProducedType: TypeInformation[EnrichedTelemetryEvent] =
-    Types.POJO(classOf[EnrichedTelemetryEvent])
+    TypeInformation.of(classOf[EnrichedTelemetryEvent])

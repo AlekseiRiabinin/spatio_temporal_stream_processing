@@ -3,6 +3,7 @@ package cityrover.kafka
 import org.apache.flink.api.common.serialization.SerializationSchema
 import cityrover.telemetry.EnrichedTelemetryEvent
 
+
 /**
   * KafkaSchema
   *

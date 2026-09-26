@@ -1,7 +1,7 @@
 package cityrover.pipeline
 
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
-import org.apache.flink.streaming.api.datastream.{DataStream, SingleOutputStreamOperator}
+import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows
 
@@ -15,7 +15,12 @@ import cityrover.kafka.{KafkaSources, KafkaSinks}
 import cityrover.telemetry.{Telemetry, EnrichedTelemetryEvent}
 import cityrover.util.ConfigLoader
 
-import cityrover.windows.{Window5sFunction, Window30sFunction, Window1mFunction, Window5mFunction}
+import cityrover.windows.{
+  Window5sFunction,
+  Window30sFunction,
+  Window1mFunction,
+  Window5mFunction
+}
 
 
 object FeatureProcessingPipeline:
@@ -30,7 +35,14 @@ object FeatureProcessingPipeline:
         "raw-telemetry-source"
       )
 
-    // 2. Parse protobuf → TelemetryEvent
+    // 2. Watermark strategy based on the event timestamp (`ts`).
+    val watermarkStrategy: WatermarkStrategy[TelemetryEvent] =
+      WatermarkStrategy
+        .forBoundedOutOfOrderness[TelemetryEvent](Duration.ofSeconds(5))
+        .withTimestampAssigner((event, _) => event.ts)
+        .withIdleness(Duration.ofSeconds(30))
+
+    // 3. Parse protobuf → TelemetryEvent, then assign timestamps + watermarks
     val telemetry: DataStream[TelemetryEvent] =
       rawBytes
         .map(bytes =>
@@ -46,9 +58,9 @@ object FeatureProcessingPipeline:
             routeId = proto.routeId.getOrElse("")
           )
         )
-        .name("parse-protobuf")
+        .assignTimestampsAndWatermarks(watermarkStrategy)
 
-    // 3. Compute rolling window features
+    // 4. Compute rolling window features
     val enriched5s =
       telemetry
         .keyBy(_.roverId)
@@ -73,20 +85,13 @@ object FeatureProcessingPipeline:
         .window(TumblingEventTimeWindows.of(Duration.ofSeconds(ConfigLoader.window5m)))
         .process(new Window5mFunction)
 
-    val enrichedAll: SingleOutputStreamOperator[EnrichedEvent] =
-      enriched5s
-        .union(enriched30s)
-        .union(enriched1m)
-        .union(enriched5m)
-        .asInstanceOf[SingleOutputStreamOperator[EnrichedEvent]]
+    // union returns a plain DataStream; no cast needed
+    val enrichedAll: DataStream[EnrichedEvent] =
+      enriched5s.union(enriched30s, enriched1m, enriched5m)
 
-    enrichedAll.name("compute-window-features")
-
-
-    // 4. Kafka sink (protobuf enriched telemetry)
+    // 5. Kafka sink (protobuf enriched telemetry)
     val protobufStream: DataStream[EnrichedTelemetryEvent] =
       enrichedAll.map(_.toProtobuf)
 
     protobufStream
       .sinkTo(KafkaSinks.enrichedTelemetrySink())
-      .name("enriched-kafka-sink")

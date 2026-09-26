@@ -425,6 +425,29 @@ services:
       - city-rover-net
     restart: "no"
 
+  feature-writer-job:
+    build:
+      context: ../stream-processing/city-rover/feature-writer-job
+      dockerfile: Dockerfile
+    container_name: feature-writer-job
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+      kafka-1:
+        condition: service_started
+      cassandra:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:19092
+      CASSANDRA_CONTACT_POINTS: cassandra:9042
+      CASSANDRA_KEYSPACE: city_rover
+      FLINK_JOB_PARALLELISM: 1
+    networks:
+      - city-rover-net
+    restart: "no"
+
   streamio-kafka-producer-test:
     build:
       context: ../stream-processing/pyflink/streamio-kafka-producer-test
@@ -537,6 +560,8 @@ networks:
 # ./run-map-visualizer.code
 # ./run-lakehouse-job.sh
 # ./run-latency-job.sh
+# ./run-feature-transform-job.sh
+# ./run-feature-writer-job.sh
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache graph-engine
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache rover-simulator
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache trajectory-visualizer-job
@@ -544,6 +569,7 @@ networks:
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache trajectory-lakehouse-writer-job
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache rover-flink-latency-job
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache feature-transform-job
+# docker compose -f docker/docker-compose.city-rover.yml build --no-cache feature-writer-job
 
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache streamio-kafka-producer-test
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache streamio-pyflink-job

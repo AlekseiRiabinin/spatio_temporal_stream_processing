@@ -1,10 +1,10 @@
 package cityrover.windows
 
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction
-import org.apache.flink.util.Collector
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow
+import org.apache.flink.util.Collector
 
-import scala.jdk.CollectionConverters.*
+import java.util.ArrayList
 
 import cityrover.model.{TelemetryEvent, EnrichedEvent}
 import cityrover.util.GeoUtils.{haversine, computeGridCell, computeRegion}
@@ -25,45 +25,82 @@ class Window30sFunction
     out: Collector[EnrichedEvent]
   ): Unit =
 
-    val list = events.iterator().asScala.toList
+    val list = new ArrayList[TelemetryEvent]()
+    val iter = events.iterator()
+
+    while iter.hasNext do
+      list.add(iter.next())
+
     if list.isEmpty then return
 
-    val last = list.last
+    val size = list.size()
+    val last = list.get(size - 1)
 
-    val speeds = list.map(_.speed)
-    val speedAvg = speeds.sum / speeds.size
-    val speedStd =
-      math.sqrt(speeds.map(s => math.pow(s - speedAvg, 2)).sum / speeds.size)
+    // --- speedAvg ---
+    var speedSum = 0.0
+    var i = 0
+    while i < size do
+      speedSum += list.get(i).speed
+      i += 1
+    val speedAvg = speedSum / size
 
-    val accelerationAvg =
-      if speeds.size >= 2 then
-        val diffs = speeds.sliding(2).collect { case Seq(a, b) => b - a }.toList
-        diffs.sum / diffs.size
-      else 0.0
+    // --- speedStd ---
+    var sqDiffSum = 0.0
+    i = 0
+    while i < size do
+      val d = list.get(i).speed - speedAvg
+      sqDiffSum += d * d
+      i += 1
+    val speedStd = math.sqrt(sqDiffSum / size)
 
-    val jerkAvg =
-      if speeds.size >= 3 then
-        val jerks = speeds.sliding(3).collect {
-          case Seq(a, b, c) => (c - b) - (b - a)
-        }.toList
-        jerks.sum / jerks.size
-      else 0.0
+    // --- accelerationAvg ---
+    var accelerationAvg = 0.0
+    if size >= 2 then
+      var diffSum = 0.0
+      i = 0
+      while i < size - 1 do
+        diffSum += list.get(i + 1).speed - list.get(i).speed
+        i += 1
+      accelerationAvg = diffSum / (size - 1)
 
-    val turnRateAvg =
-      if list.size >= 2 then
-        val turns = list.sliding(2).collect {
-          case Seq(a, b) => math.abs(b.heading - a.heading)
-        }.toList
-        turns.sum / turns.size
-      else 0.0
+    // --- jerkAvg ---
+    var jerkAvg = 0.0
+    if size >= 3 then
+      var jerkSum = 0.0
+      i = 0
+      while i < size - 2 do
+        val a = list.get(i).speed
+        val b = list.get(i + 1).speed
+        val c = list.get(i + 2).speed
+        jerkSum += (c - b) - (b - a)
+        i += 1
+      jerkAvg = jerkSum / (size - 2)
 
-    val stopsCount = speeds.count(_ < 0.5)
+    // --- turnRateAvg ---
+    var turnRateAvg = 0.0
+    if size >= 2 then
+      var turnSum = 0.0
+      i = 0
+      while i < size - 1 do
+        turnSum += math.abs(list.get(i + 1).heading - list.get(i).heading)
+        i += 1
+      turnRateAvg = turnSum / (size - 1)
 
-    val distanceTraveled =
-      list.sliding(2).map {
-        case Seq(a, b) => haversine(a.lat, a.lon, b.lat, b.lon)
-        case _         => 0.0
-      }.sum
+    // --- stopsCount ---
+    var stopsCount = 0
+    i = 0
+    while i < size do
+      if list.get(i).speed < 0.5 then stopsCount += 1
+      i += 1
+
+    // --- distanceTraveled ---
+    var distanceTraveled = 0.0
+    i = 0
+    while i < size - 1 do
+      val a = list.get(i)
+      val b = list.get(i + 1)
+      distanceTraveled += haversine(a.lat, a.lon, b.lat, b.lon)
+      i += 1
 
     out.collect(
       EnrichedEvent(

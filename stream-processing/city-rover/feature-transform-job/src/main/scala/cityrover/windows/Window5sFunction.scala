@@ -1,10 +1,10 @@
 package cityrover.windows
 
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction
-import org.apache.flink.util.Collector
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow
+import org.apache.flink.util.Collector
 
-import scala.jdk.CollectionConverters.*
+import java.util.ArrayList
 
 import cityrover.model.{TelemetryEvent, EnrichedEvent}
 import cityrover.util.GeoUtils.{haversine, computeGridCell, computeRegion}
@@ -25,24 +25,42 @@ class Window5sFunction
     out: Collector[EnrichedEvent]
   ): Unit =
 
-    val list = events.iterator().asScala.toList
+    val list = new ArrayList[TelemetryEvent]()
+    val iter = events.iterator()
+    while iter.hasNext do
+      list.add(iter.next())
+
     if list.isEmpty then return
 
-    val last = list.last
+    val last = list.get(list.size() - 1)
 
-    val speedAvg = list.map(_.speed).sum / list.size
-    val speedMax = list.map(_.speed).max
-    val speedMin = list.map(_.speed).min
+    // --- speedAvg ---
+    var speedSum = 0.0
+    var speedMax = Double.MinValue
+    var speedMin = Double.MaxValue
+    var i = 0
+    while i < list.size() do
+      val s = list.get(i).speed
+      speedSum += s
+      if s > speedMax then speedMax = s
+      if s < speedMin then speedMin = s
+      i += 1
+    val speedAvg = speedSum / list.size()
 
+    // --- headingChange ---
     val headingChange =
-      if list.size >= 2 then math.abs(list.last.heading - list.head.heading)
+      if list.size() >= 2 then
+        math.abs(list.get(list.size() - 1).heading - list.get(0).heading)
       else 0.0
 
-    val distanceTraveled =
-      list.sliding(2).map {
-        case Seq(a, b) => haversine(a.lat, a.lon, b.lat, b.lon)
-        case _         => 0.0
-      }.sum
+    // --- distanceTraveled ---
+    var distanceTraveled = 0.0
+    var j = 0
+    while j < list.size() - 1 do
+      val a = list.get(j)
+      val b = list.get(j + 1)
+      distanceTraveled += haversine(a.lat, a.lon, b.lat, b.lon)
+      j += 1
 
     out.collect(
       EnrichedEvent(
