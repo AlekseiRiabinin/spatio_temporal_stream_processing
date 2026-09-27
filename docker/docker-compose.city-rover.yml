@@ -559,9 +559,14 @@ networks:
 # ./run-trajectory-job.sh
 # ./run-map-visualizer.code
 # ./run-lakehouse-job.sh
+
 # ./run-latency-job.sh
 # ./run-feature-transform-job.sh
 # ./run-feature-writer-job.sh
+
+# ./run-streamio-kafka-producer.sh
+# ./run-streamio-pyflink-job.sh
+
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache graph-engine
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache rover-simulator
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache trajectory-visualizer-job
@@ -572,7 +577,7 @@ networks:
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache feature-writer-job
 
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache streamio-kafka-producer-test
-# docker compose -f docker/docker-compose.city-rover.yml build --no-cache streamio-pyflink-job
+# docker compose -f docker/docker-compose.city-rover.yml build --progress=plain streamio-pyflink-job
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache mle-tools-streamio
 
 

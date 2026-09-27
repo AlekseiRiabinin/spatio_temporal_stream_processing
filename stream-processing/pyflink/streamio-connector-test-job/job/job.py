@@ -15,10 +15,10 @@ def main():
     # Kafka source
     # ------------------------------------------------------------------
     table_env.execute_sql("""
-    CREATE TABLE kafka_source (
+    CREATE TABLE IF NOT EXISTS kafka_source (
         id STRING,
         ts BIGINT,
-        value DOUBLE
+        measurement DOUBLE
     ) WITH (
         'connector' = 'kafka',
         'topic' = 'streamio-test-topic',
@@ -33,10 +33,10 @@ def main():
     # Cassandra sink (custom connector)
     # ------------------------------------------------------------------
     table_env.execute_sql("""
-    CREATE TABLE cassandra_sink (
+    CREATE TABLE IF NOT EXISTS cassandra_sink (
         id STRING,
         ts BIGINT,
-        value DOUBLE
+        measurement DOUBLE
     ) WITH (
         'connector' = 'cassandra',
         'hosts' = 'cassandra',
@@ -53,9 +53,10 @@ def main():
     # ------------------------------------------------------------------
     table_env.execute_sql("""
     INSERT INTO cassandra_sink
-    SELECT id, ts, value FROM kafka_source
+    SELECT id, ts, measurement FROM kafka_source
     """)
 
 
 if __name__ == "__main__":
     main()
+    

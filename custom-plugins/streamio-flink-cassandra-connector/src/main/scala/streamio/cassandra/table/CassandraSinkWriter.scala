@@ -50,7 +50,10 @@ final class CassandraSinkWriter(
     options.getOrDefault("table", "default_table")
 
   private val maxInflight: Int =
-    Option(options.get("maxInflight")).map(_.toInt).getOrElse(1024)
+    Option(options.get("max_inflight"))
+      .filter(_.nonEmpty)
+      .flatMap(_.toIntOption)
+      .getOrElse(100)
 
   // ---------------------------------------------------------------------------
   // Cassandra session + prepared statement

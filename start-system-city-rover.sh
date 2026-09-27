@@ -174,6 +174,7 @@ docker exec kafka-1 bash -c '
         "rover-telemetry-protobuf:4"
         "rover-analytics:4"
         "cityrover-spark-metrics:1"
+        "streamio-test-topic:1"
     )
 
     for topic in "${topics[@]}"; do
