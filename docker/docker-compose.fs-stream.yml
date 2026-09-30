@@ -1,0 +1,250 @@
+services:
+
+  # ---------------------
+  # SHARED INFRASTRUCTURE
+  # ---------------------
+
+  kafka-1:
+    image: apache/kafka:3.8.0
+    container_name: kafka-1
+    ports:
+      - "19092:19092"
+      - "19093:19093"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:19093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:19092,CONTROLLER://0.0.0.0:19093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      CLUSTER_ID: d8ce1515-401e-44d4-a444-1b6dba479047
+    networks:
+      - city-rover-net
+    restart: always
+
+  kafka-connect:
+    image: confluentinc/cp-kafka-connect:7.6.0
+    container_name: kafka-connect
+    depends_on:
+      - kafka-1
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: "kafka-1:19092"
+      CONNECT_REST_PORT: 8085
+      CONNECT_REST_ADVERTISED_HOST_NAME: "kafka-connect"
+      CONNECT_REST_ADVERTISED_PORT: 8083
+      CONNECT_GROUP_ID: "connect-cluster"
+      CONNECT_CONFIG_STORAGE_TOPIC: "connect-configs"
+      CONNECT_OFFSET_STORAGE_TOPIC: "connect-offsets"
+      CONNECT_STATUS_STORAGE_TOPIC: "connect-status"
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.storage.StringConverter"
+      CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.storage.StringConverter"
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/java/cityrover"
+      CONNECT_LOG4J_LOGGERS: "org.reflections=ERROR"
+    ports:
+      - "8083:8083"
+    volumes:
+      - ../connect-plugins:/usr/share/java/cityrover
+    networks:
+      - city-rover-net
+    restart: unless-stopped
+
+  cassandra:
+    image: cassandra:4.1
+    container_name: cassandra
+    hostname: cassandra
+    ports:
+      - "9042:9042"
+    environment:
+      CASSANDRA_CLUSTER_NAME: "CityRoverCluster"
+      CASSANDRA_NUM_TOKENS: 16
+      CASSANDRA_START_RPC: "true"
+      CASSANDRA_RPC_ADDRESS: 0.0.0.0
+      CASSANDRA_BROADCAST_ADDRESS: cassandra
+      CASSANDRA_BROADCAST_RPC_ADDRESS: cassandra
+      CASSANDRA_SEEDS: cassandra
+      MAX_HEAP_SIZE: "2G"
+      HEAP_NEWSIZE: "512M"
+    volumes:
+      - cassandra-data:/var/lib/cassandra
+    networks:
+      - city-rover-net
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh cassandra 9042 -e 'describe keyspaces'"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    volumes:
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9095:9090"
+    networks:
+      - city-rover-net
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_started
+    networks:
+      - city-rover-net
+    restart: unless-stopped
+
+  # -------------------------------
+  # FS STREAM FLINK CLUSTER (2.2.1)
+  # -------------------------------
+
+  flink-jobmanager-fs:
+    image: flink:2.2.1-scala_2.12-java17
+    container_name: flink-jobmanager-fs
+    hostname: flink-jobmanager-fs
+    command: jobmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager-fs
+    ports:
+      - "8082:8081"   # avoid conflict with main cluster
+      - "9092:9090"
+    volumes:
+      - ../flink-conf-fs/config.yaml:/opt/flink/conf/config.yaml
+      - ../flink-jars-fs/flink-sql-connector-kafka-5.0.0-2.2.jar:/opt/flink/lib/flink-sql-connector-kafka-5.0.0-2.2.jar:ro
+    networks:
+      - city-rover-net
+    restart: unless-stopped
+
+  flink-taskmanager-fs:
+    image: flink:2.2.1-scala_2.12-java17
+    container_name: flink-taskmanager-fs
+    hostname: flink-taskmanager-fs
+    command: taskmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager-fs
+    ports:
+      - "9093:9090"
+    depends_on:
+      flink-jobmanager-fs:
+        condition: service_started
+    volumes:
+      - ../flink-conf-fs/config.yaml:/opt/flink/conf/config.yaml
+      - ../flink-jars-fs/flink-sql-connector-kafka-5.0.0-2.2.jar:/opt/flink/lib/flink-sql-connector-kafka-5.0.0-2.2.jar:ro
+    networks:
+      - city-rover-net
+    restart: unless-stopped
+
+  # -------------------------
+  # FEATURE STORE PYFLINK JOB
+  # -------------------------
+
+  feature_store_playground:
+    build:
+      context: ../../feature_store_playground
+      dockerfile: Dockerfile
+    image: feature_store_playground:dev
+    container_name: feature_store_playground
+    hostname: feature_store_playground
+
+    entrypoint: ["python3", "stream_features_precalculate.py"]
+
+    depends_on:
+      kafka-1:
+        condition: service_started
+      cassandra:
+        condition: service_healthy
+      flink-jobmanager-fs:
+        condition: service_started
+
+    environment:
+      PYTHONUNBUFFERED: "1"
+
+      # Kafka
+      KAFKA_BOOTSTRAP: kafka-1:19092
+      KAFKA_TOPIC_FIN: stream_fs.test.intellinx_antifraud_dbo_fin_transactions
+      KAFKA_TOPIC_NOFIN: stream_fs.test.intellinx_antifraud_dbo_nofin_transactions
+      KAFKA_TOPIC_INCOMING: stream_fs.test.intellinx_antifraud_dbo_incoming_payments
+      KAFKA_GROUP_ID: pyflink-stream-features-precalculate
+      KAFKA_START_FROM: earliest
+
+      # Cassandra
+      SCYLLA_CONTACT_POINTS: cassandra
+      SCYLLA_PORT: "9042"
+      SCYLLA_LOCAL_DC: datacenter1
+      SCYLLA_KEYSPACE: test
+      SCYLLA_TABLE: af_dbo_v1_7
+
+      # Window config
+      MAX_WINDOW_MS: "21600000"
+      ALLOWED_FUTURE_MS: "300000"
+
+      # Job metadata
+      JOB_NAME: stream-features-precalculate
+      PARALLELISM: "1"
+
+      # PyFlink REST endpoint for FS cluster
+      FLINK_REST_HOST: flink-jobmanager-fs
+      FLINK_REST_PORT: "8081"
+
+    networks:
+      - city-rover-net
+    restart: unless-stopped
+
+volumes:
+  grafana-data:
+  cassandra-data:
+
+networks:
+  city-rover-net:
+    external: true
+
+
+# ./start-system-fs-stream.sh
+# ./run-feature-store-playground.sh
+
+# docker compose -f docker/docker-compose.city-rover.yml build --no-cache feature_store_playground
+# docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate feature_store_playground
+
+# 1. Verify plugin discovery
+# curl http://localhost:8083/connector-plugins
+#
+# 2. Deploy kafka-connector:
+# curl -s -X POST \
+#   http://localhost:8083/connectors \
+#   -H 'Content-Type: application/json' \
+#   --data @json-to-protobuf-telemetry.json | jq
+#
+# 3. Check status:
+# curl -s http://localhost:8083/connectors/json-to-protobuf-telemetry/status | jq
+#
+# 4. Verify Protobuf messages in Kafka:
+# docker exec -i kafka-1 \
+#   /opt/kafka/bin/kafka-console-consumer.sh \
+#   --bootstrap-server kafka-1:19092 \
+#   --topic rover-telemetry-protobuf \
+#   --partition 0 \
+#   --offset 0 \
+#   --max-messages 1 \
+#   2>/dev/null | xxd
