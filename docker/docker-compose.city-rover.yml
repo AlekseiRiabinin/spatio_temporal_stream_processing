@@ -473,6 +473,11 @@ services:
     image: streamio-pyflink-job:dev
     container_name: streamio-pyflink-job
     hostname: streamio-pyflink-job
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+    volumes:
+      - ../flink-conf/config.yaml:/opt/flink/conf/config.yaml
     depends_on:
       flink-jobmanager:
         condition: service_started
@@ -484,6 +489,46 @@ services:
         condition: service_started
     networks:
       - city-rover-net
+
+  feature_store_playground:
+    build:
+      context: ../../feature_store_playground
+      dockerfile: Dockerfile
+    image: feature_store_playground:dev
+    container_name: feature_store_playground
+    hostname: feature_store_playground
+    entrypoint: ["python3", "stream_features_precalculate.py"]
+    depends_on:
+      kafka-1:
+        condition: service_started
+      cassandra:
+        condition: service_healthy
+      flink-jobmanager:
+        condition: service_started
+    environment:
+      PYTHONUNBUFFERED: "1"
+      # Kafka
+      KAFKA_BOOTSTRAP: kafka-1:19092
+      KAFKA_TOPIC: stream_fs.test.intellinx_antifraud_dbo_fin_transactions
+      KAFKA_TOPIC_NOFIN: stream_fs.test.intellinx_antifraud_dbo_nofin_transactions
+      KAFKA_TOPIC_INCOMING: stream_fs.test.intellinx_antifraud_dbo_incoming_payments
+      KAFKA_GROUP_ID: pyflink-stream-features-precalculate
+      KAFKA_START_FROM: latest
+      # Cassandra 4.1
+      SCYLLA_CONTACT_POINTS: cassandra
+      SCYLLA_PORT: "9042"
+      SCYLLA_LOCAL_DC: datacenter1
+      SCYLLA_KEYSPACE: test
+      SCYLLA_TABLE: af_dbo_v1_7
+      # Window configuration
+      MAX_WINDOW_MS: "21600000"      # 360 min
+      ALLOWED_FUTURE_MS: "300000"    # 5 min
+      # Job metadata
+      JOB_NAME: stream-features-precalculate
+      PARALLELISM: "1"
+    networks:
+      - city-rover-net
+    restart: unless-stopped
 
 
   # ---
@@ -579,6 +624,9 @@ networks:
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache streamio-kafka-producer-test
 # docker compose -f docker/docker-compose.city-rover.yml build --progress=plain streamio-pyflink-job
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache mle-tools-streamio
+
+# docker compose -f docker/docker-compose.city-rover.yml build --no-cache feature_store_playground
+
 
 
 # 1. Verify plugin discovery

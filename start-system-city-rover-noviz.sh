@@ -175,6 +175,9 @@ docker exec kafka-1 bash -c '
         "rover-analytics:4"
         "cityrover-spark-metrics:1"
         "streamio-test-topic:1"
+        "stream_fs.test.intellinx_antifraud_dbo_fin_transactions:4"
+        "stream_fs.test.intellinx_antifraud_dbo_nofin_transactions:4"
+        "stream_fs.test.intellinx_antifraud_dbo_incoming_payments:4"
     )
 
     for topic in "${topics[@]}"; do
