@@ -119,15 +119,16 @@ services:
   # -------------------------------
 
   flink-jobmanager-fs:
-    image: flink:2.2.1-scala_2.12-java17
+    image: feature_store_flink_cluster:dev
     container_name: flink-jobmanager-fs
     hostname: flink-jobmanager-fs
     command: jobmanager
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager-fs
+      PYFLINK_PYTHON: /opt/venv/bin/python3
     ports:
-      - "8082:8081"   # avoid conflict with main cluster
+      - "8082:8081"
       - "9092:9090"
     volumes:
       - ../flink-conf-fs/config.yaml:/opt/flink/conf/config.yaml
@@ -137,13 +138,14 @@ services:
     restart: unless-stopped
 
   flink-taskmanager-fs:
-    image: flink:2.2.1-scala_2.12-java17
+    image: feature_store_flink_cluster:dev
     container_name: flink-taskmanager-fs
     hostname: flink-taskmanager-fs
     command: taskmanager
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager-fs
+      PYFLINK_PYTHON: /opt/venv/bin/python3
     ports:
       - "9093:9090"
     depends_on:
@@ -207,7 +209,11 @@ services:
     image: feature_store_playground:dev
     container_name: cassandra_latency_probe
     hostname: cassandra_latency_probe
-    entrypoint: ["python3", "/opt/flink/usrlib/cassandra_latency_probe.py"]
+    # entrypoint: ["python3", "/opt/flink/usrlib/cassandra_latency_probe.py"]
+    entrypoint: ["flink", "run", "-m", "flink-jobmanager-fs:8081",
+      "-pyclientexec", "/opt/venv/bin/python3",
+      "-pyexec", "/opt/venv/bin/python3",
+      "-py", "/opt/flink/usrlib/cassandra_latency_probe.py"]
     depends_on:
       kafka-1:
         condition: service_started
@@ -247,6 +253,9 @@ networks:
 # docker compose -f docker/docker-compose.fs-stream.yml build --no-cache feature_store_playground
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate feature_store_playground
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate cassandra_latency_probe
+
+# docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate \
+#   flink-jobmanager-fs flink-taskmanager-fs cassandra_latency_probe
 
 # 1. Verify plugin discovery
 # curl http://localhost:8083/connector-plugins

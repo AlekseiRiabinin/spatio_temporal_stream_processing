@@ -13,18 +13,22 @@ metrics:
       factory:
         class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
   reporters: prom
-parallelism:
-  default: 1
 jobmanager:
   rpc:
     address: flink-jobmanager-fs
   memory:
     process:
       size: 1600m
+python:
+  client:
+    executable: /opt/venv/bin/python3
+  executable: /opt/venv/bin/python3
+query:
+  server:
+    port: '6125'
+parallelism:
+  default: 1
 env:
   java:
     opts:
       all: -XX:+UseZGC -XX:+ZGenerational -XX:ZUncommitDelay=30 -XX:+AlwaysPreTouch
-query:
-  server:
-    port: '6125'
