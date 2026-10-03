@@ -167,9 +167,7 @@ services:
     image: feature_store_playground:dev
     container_name: feature_store_playground
     hostname: feature_store_playground
-
     entrypoint: ["python3", "stream_features_precalculate.py"]
-
     depends_on:
       kafka-1:
         condition: service_started
@@ -177,10 +175,8 @@ services:
         condition: service_healthy
       flink-jobmanager-fs:
         condition: service_started
-
     environment:
       PYTHONUNBUFFERED: "1"
-
       # Kafka
       KAFKA_BOOTSTRAP: kafka-1:19092
       KAFKA_TOPIC_FIN: stream_fs.test.intellinx_antifraud_dbo_fin_transactions
@@ -188,29 +184,52 @@ services:
       KAFKA_TOPIC_INCOMING: stream_fs.test.intellinx_antifraud_dbo_incoming_payments
       KAFKA_GROUP_ID: pyflink-stream-features-precalculate
       KAFKA_START_FROM: earliest
-
       # Cassandra
       SCYLLA_CONTACT_POINTS: cassandra
       SCYLLA_PORT: "9042"
       SCYLLA_LOCAL_DC: datacenter1
       SCYLLA_KEYSPACE: test
       SCYLLA_TABLE: af_dbo_v1_7
-
       # Window config
       MAX_WINDOW_MS: "21600000"
       ALLOWED_FUTURE_MS: "300000"
-
       # Job metadata
       JOB_NAME: stream-features-precalculate
       PARALLELISM: "1"
-
       # PyFlink REST endpoint for FS cluster
       FLINK_REST_HOST: flink-jobmanager-fs
       FLINK_REST_PORT: "8081"
-
     networks:
       - city-rover-net
     restart: unless-stopped
+
+  cassandra_latency_probe:
+    image: feature_store_playground:dev
+    container_name: cassandra_latency_probe
+    hostname: cassandra_latency_probe
+    entrypoint: ["python3", "/opt/flink/usrlib/cassandra_latency_probe.py"]
+    depends_on:
+      kafka-1:
+        condition: service_started
+      cassandra:
+        condition: service_healthy
+    environment:
+      PYTHONUNBUFFERED: "1"
+      KAFKA_BOOTSTRAP: kafka-1:19092
+      KAFKA_TOPIC_PROBE: stream_fs.test.probe_serving_rows
+      KAFKA_GROUP_ID_PROBE: pyflink-cassandra-probe
+      KAFKA_START_FROM_PROBE: latest
+      SCYLLA_CONTACT_POINTS: cassandra
+      SCYLLA_PORT: "9042"
+      SCYLLA_LOCAL_DC: datacenter1
+      SCYLLA_KEYSPACE: test
+      SCYLLA_TABLE: af_dbo_v1_7
+      PARALLELISM: "1"
+    volumes:
+      - ../../feature_store_playground/cassandra_latency_probe.py:/opt/flink/usrlib/cassandra_latency_probe.py:ro
+    networks:
+      - city-rover-net
+    restart: "no"
 
 volumes:
   grafana-data:
@@ -223,9 +242,11 @@ networks:
 
 # ./start-system-fs-stream.sh
 # ./run-feature-store-playground.sh
+# ./run-cassandra_latency_probe.sh
 
-# docker compose -f docker/docker-compose.city-rover.yml build --no-cache feature_store_playground
+# docker compose -f docker/docker-compose.fs-stream.yml build --no-cache feature_store_playground
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate feature_store_playground
+# docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate cassandra_latency_probe
 
 # 1. Verify plugin discovery
 # curl http://localhost:8083/connector-plugins

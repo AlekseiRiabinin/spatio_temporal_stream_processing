@@ -132,14 +132,29 @@ wait_for_container \
 # ============================================================
 echo ""
 echo "2. Creating Kafka topics..."
+
+# Topics and their timestamp policy:
+#   - Input topics: LogAppendTime. The upstream job windows on event time and
+#     we want broker-assigned timestamps so replayed/late-producer records
+#     cannot skew watermarks.
+#   - Output/probe topics: CreateTime. For end-to-end "publication -> readable"
+#     latency we need the PRODUCER's clock on the record, not the broker's.
+#     `message.timestamp.type=CreateTime` is the Kafka broker default, so we
+#     explicitly delete any dynamic override to make the intent visible.
 docker exec kafka-1 bash -c '
+    # (topic_name:partitions:timestamp_type)
     topics=(
-        "stream_fs.test.intellinx_antifraud_dbo_fin_transactions:4"
-        "stream_fs.test.intellinx_antifraud_dbo_nofin_transactions:4"
-        "stream_fs.test.intellinx_antifraud_dbo_incoming_payments:4"
+        "stream_fs.test.intellinx_antifraud_dbo_fin_transactions:4:LogAppendTime"
+        "stream_fs.test.intellinx_antifraud_dbo_nofin_transactions:4:LogAppendTime"
+        "stream_fs.test.intellinx_antifraud_dbo_incoming_payments:4:LogAppendTime"
+        "stream_fs.output.features:4:CreateTime"
+        "stream_fs.test.probe_serving_rows:4:CreateTime"
     )
+
     for topic in "${topics[@]}"; do
-        IFS=":" read -r name partitions <<< "$topic"
+        IFS=":" read -r name partitions ts_type <<< "$topic"
+
+        # 1. Create the topic if it does not exist.
         if /opt/kafka/bin/kafka-topics.sh \
             --bootstrap-server kafka-1:19092 \
             --describe --topic "$name" >/dev/null 2>&1; then
@@ -152,9 +167,76 @@ docker exec kafka-1 bash -c '
                 --replication-factor 1 \
                 --bootstrap-server kafka-1:19092
         fi
+
+        # 2. Enforce the desired timestamp policy (idempotent).
+        if [ "$ts_type" = "LogAppendTime" ]; then
+            echo "Setting message.timestamp.type=LogAppendTime on: $name"
+            /opt/kafka/bin/kafka-configs.sh \
+                --bootstrap-server kafka-1:19092 \
+                --alter \
+                --entity-type topics \
+                --entity-name "$name" \
+                --add-config message.timestamp.type=LogAppendTime >/dev/null
+        else
+            # CreateTime is the broker default; delete any dynamic override so
+            # the topic inherits it. Deleting a non-existent config is a no-op
+            # that still prints a warning, so suppress stderr.
+            echo "Ensuring message.timestamp.type=CreateTime (default) on: $name"
+            /opt/kafka/bin/kafka-configs.sh \
+                --bootstrap-server kafka-1:19092 \
+                --alter \
+                --entity-type topics \
+                --entity-name "$name" \
+                --delete-config message.timestamp.type >/dev/null 2>&1 || true
+        fi
     done
 '
 echo "Kafka topics initialized."
+
+# ------------------------------------------------------------
+# 2b. Verify message.timestamp.type on FS topics
+# ------------------------------------------------------------
+echo ""
+echo "Verifying message.timestamp.type on FS topics..."
+docker exec kafka-1 bash -c '
+    # name -> expected timestamp type
+    declare -A expected=(
+        [stream_fs.test.intellinx_antifraud_dbo_fin_transactions]=LogAppendTime
+        [stream_fs.test.intellinx_antifraud_dbo_nofin_transactions]=LogAppendTime
+        [stream_fs.test.intellinx_antifraud_dbo_incoming_payments]=LogAppendTime
+        [stream_fs.output.features]=CreateTime
+        [stream_fs.test.probe_serving_rows]=CreateTime
+    )
+
+    rc=0
+    for name in "${!expected[@]}"; do
+        ts_type=$(/opt/kafka/bin/kafka-configs.sh \
+            --bootstrap-server kafka-1:19092 \
+            --describe \
+            --entity-type topics \
+            --entity-name "$name" 2>/dev/null \
+            | grep -oE "message\.timestamp\.type=[A-Za-z]+" \
+            | head -1 \
+            | cut -d= -f2)
+
+        # When no dynamic override exists, the topic uses the broker default,
+        # which is CreateTime. Treat "empty" as CreateTime.
+        actual="${ts_type:-CreateTime}"
+
+        if [ "$actual" = "${expected[$name]}" ]; then
+            echo "  OK   $name -> $actual"
+        else
+            echo "  FAIL $name -> $actual (expected ${expected[$name]})"
+            rc=1
+        fi
+    done
+    exit $rc
+'
+verify_rc=$?
+if [ $verify_rc -ne 0 ]; then
+    echo "ERROR: one or more topics have the wrong message.timestamp.type" >&2
+    exit $verify_rc
+fi
 
 # ============================================================
 # 3. Cassandra
