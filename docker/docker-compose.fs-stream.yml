@@ -237,6 +237,41 @@ services:
       - city-rover-net
     restart: "no"
 
+  kafka_latency_probe:
+    image: feature_store_playground:dev
+    container_name: kafka_latency_probe
+    hostname: kafka_latency_probe
+    entrypoint: ["flink", "run", "-m", "flink-jobmanager-fs:8081",
+      "-pyclientexec", "/opt/venv/bin/python3",
+      "-pyexec", "/opt/venv/bin/python3",
+      "-py", "/opt/flink/usrlib/kafka_latency_probe.py"]
+    depends_on:
+      kafka-1:
+        condition: service_started
+      flink-jobmanager-fs:
+        condition: service_started
+    environment:
+      PYTHONUNBUFFERED: "1"
+      # Kafka input
+      KAFKA_BOOTSTRAP: kafka-1:19092
+      KAFKA_TOPIC_FIN: stream_fs.test.intellinx_antifraud_dbo_fin_transactions
+      KAFKA_TOPIC_NOFIN: stream_fs.test.intellinx_antifraud_dbo_nofin_transactions
+      KAFKA_TOPIC_INCOMING: stream_fs.test.intellinx_antifraud_dbo_incoming_payments
+      # Kafka output (sink)
+      KAFKA_TOPIC_SINK: stream_fs.test.probe_transformation
+      # Probe-specific
+      KAFKA_GROUP_ID_PROBE: pyflink-kafka-probe
+      KAFKA_START_FROM_PROBE: latest
+      # Window config (must match the main job)
+      FEATURE_WINDOW_MS: "21600000"
+      ALLOWED_FUTURE_MS: "300000"
+      PARALLELISM: "1"
+    volumes:
+      - ../../feature_store_playground/kafka_latency_probe.py:/opt/flink/usrlib/kafka_latency_probe.py:ro
+    networks:
+      - city-rover-net
+    restart: "no"
+
 volumes:
   grafana-data:
   cassandra-data:
@@ -248,11 +283,13 @@ networks:
 
 # ./start-system-fs-stream.sh
 # ./run-feature-store-playground.sh
-# ./run-cassandra_latency_probe.sh
+# ./run-cassandra-latency-probe.sh
+# ./run-kafka-latency-probe.sh
 
 # docker compose -f docker/docker-compose.fs-stream.yml build --no-cache feature_store_playground
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate feature_store_playground
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate cassandra_latency_probe
+# docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate kafka_latency_probe
 
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate \
 #   flink-jobmanager-fs flink-taskmanager-fs cassandra_latency_probe

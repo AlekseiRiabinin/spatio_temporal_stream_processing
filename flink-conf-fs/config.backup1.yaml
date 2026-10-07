@@ -1,0 +1,35 @@
+blob:
+  server:
+    port: '6124'
+taskmanager:
+  memory:
+    process:
+      size: 1728m
+  numberOfTaskSlots: 4
+metrics:
+  reporter:
+    prom:
+      port: '9249'
+      filter:
+        includes: jobmanager.*,taskmanager.*,operator.*
+      class: org.apache.flink.metrics.prometheus.PrometheusReporter
+  reporters: prom
+jobmanager:
+  rpc:
+    address: flink-jobmanager-fs
+  memory:
+    process:
+      size: 1600m
+python:
+  client:
+    executable: /opt/venv/bin/python3
+  executable: /opt/venv/bin/python3
+query:
+  server:
+    port: '6125'
+parallelism:
+  default: 1
+env:
+  java:
+    opts:
+      all: -XX:+UseZGC -XX:+ZGenerational -XX:ZUncommitDelay=30 -XX:+AlwaysPreTouch

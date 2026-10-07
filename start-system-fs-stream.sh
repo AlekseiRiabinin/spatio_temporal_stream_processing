@@ -149,6 +149,7 @@ docker exec kafka-1 bash -c '
         "stream_fs.test.intellinx_antifraud_dbo_incoming_payments:4:LogAppendTime"
         "stream_fs.output.features:4:CreateTime"
         "stream_fs.test.probe_serving_rows:4:CreateTime"
+        "stream_fs.test.probe_transformation:4:CreateTime"
     )
 
     for topic in "${topics[@]}"; do

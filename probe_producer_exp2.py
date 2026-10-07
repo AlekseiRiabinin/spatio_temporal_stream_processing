@@ -96,4 +96,5 @@ if __name__ == "__main__":
 #   --warmup 5 --count 100 --sleep 0.2 --pause 2.0 \
 #   | docker exec -i kafka-1 /opt/kafka/bin/kafka-console-producer.sh \
 #       --bootstrap-server kafka-1:19092 \
+#       --timeout 0 \
 #       --topic stream_fs.test.probe_serving_rows
