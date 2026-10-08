@@ -292,6 +292,9 @@ networks:
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate kafka_latency_probe
 
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate \
+#   flink-jobmanager-fs flink-taskmanager-fs kafka_latency_probe
+
+# docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate \
 #   flink-jobmanager-fs flink-taskmanager-fs cassandra_latency_probe
 
 # 1. Verify plugin discovery
