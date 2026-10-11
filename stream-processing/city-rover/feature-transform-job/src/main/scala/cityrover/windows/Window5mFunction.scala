@@ -1,34 +1,83 @@
 package cityrover.windows
 
+import org.apache.flink.api.common.functions.OpenContext
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow
 import org.apache.flink.util.Collector
+import org.slf4j.LoggerFactory
 
 import java.util.ArrayList
 
 import cityrover.model.{TelemetryEvent, EnrichedEvent}
+import cityrover.metrics.{LatencyMetrics, StampedRecord}
+import cityrover.util.{GeoUtils, MetricsConfig}
 import cityrover.util.GeoUtils.{haversine, computeGridCell, computeRegion}
 
 
-class Window5mFunction
+/**
+ * 5-minute window feature computation.
+ *
+ * Input type is now `StampedRecord[TelemetryEvent]` — the wrapper that
+ * carries `t1Ms` (Kafka broker timestamp) and `tSrcMs` (wall clock at the
+ * source boundary). The window function unwraps it to `TelemetryEvent`
+ * for the actual computation, and uses the stamps to record:
+ *
+ *   kafka_to_flink_ms = t_src_ms - t1_ms     (per element)
+ *   queue_ms          = t_transform_start - t_src_ms   (per element)
+ *   transform_ms      = t_transform_done - t_transform_start   (per window)
+ *   latency_ms        = t_transform_done - t1_ms    (per element)
+ *
+ * The metric decomposition mirrors the PyFlink probes (kafka_latency_probe.py).
+ */
+class Window5mFunction(metricsCfg: MetricsConfig)
   extends ProcessWindowFunction[
-    TelemetryEvent,
+    StampedRecord[TelemetryEvent],
     EnrichedEvent,
     String,
     TimeWindow
   ]:
 
+  @transient private val log = LoggerFactory.getLogger(getClass)
+
+  @transient private var lat: LatencyMetrics = _
+
+  override def open(openContext: OpenContext): Unit =
+    super.open(openContext)
+    lat = LatencyMetrics.register(getRuntimeContext, metricsCfg, "window_5m")
+    log.info(s"Window5mFunction opened (metricsEnabled=${metricsCfg.prometheusEnabled})")
+
   override def process(
     key: String,
-    ctx: ProcessWindowFunction[TelemetryEvent, EnrichedEvent, String, TimeWindow]#Context,
-    events: java.lang.Iterable[TelemetryEvent],
+    ctx: ProcessWindowFunction[
+      StampedRecord[TelemetryEvent],
+      EnrichedEvent,
+      String,
+      TimeWindow
+    ]#Context,
+    stampedEvents: java.lang.Iterable[StampedRecord[TelemetryEvent]],
     out: Collector[EnrichedEvent]
   ): Unit =
 
-    val list = new ArrayList[TelemetryEvent]()
-    val iter = events.iterator()
+    // ----------------------------------------------------------------
+    // 0. Capture transform start time. This is the moment the operator
+    //    begins computing the window aggregate.
+    // ----------------------------------------------------------------
+    val tTransformStartMs = System.currentTimeMillis().toDouble
+
+    // ----------------------------------------------------------------
+    // 1. Materialize the input iterable and unwrap StampedRecord.
+    //    We keep two parallel lists:
+    //      - `list`   : the domain events (for the computation)
+    //      - `stamps` : the timing stamps (for metric recording)
+    // ----------------------------------------------------------------
+    val list   = new ArrayList[TelemetryEvent]()
+    val stamps = new ArrayList[StampedRecord[TelemetryEvent]]()
+
+    val iter = stampedEvents.iterator()
     while iter.hasNext do
-      list.add(iter.next())
+      val stamped = iter.next()
+      list.add(stamped.payload)
+      stamps.add(stamped)
 
     if list.isEmpty then return
 
@@ -104,6 +153,35 @@ class Window5mFunction
 
     // --- congestionLevel ---
     val congestionLevel = if speedAvg < 5.0 then 1.0 else 0.0
+
+    // ----------------------------------------------------------------
+    // 2. Capture transform done time. Everything below is emit-only.
+    // ----------------------------------------------------------------
+    val tTransformDoneMs = System.currentTimeMillis().toDouble
+
+    // ----------------------------------------------------------------
+    // 3. Record latency metrics.
+    //
+    //    Per-element metrics (kafka_to_flink_ms, queue_ms, latency_ms)
+    //    are recorded once per element in the window. Per-window metrics
+    //    (transform_ms) are recorded once.
+    //
+    //    Note on t1: in the default mode, the LatencyInstrumentedMap at
+    //    the source sets t1Ms = -1 because the broker timestamp is not
+    //    available at map time. In that case, kafka_to_flink_ms and
+    //    latency_ms are skipped here — a dedicated ProcessFunction
+    //    downstream of the source records them using ctx.timestamp().
+    // ----------------------------------------------------------------
+    lat.recordTransform(tTransformStartMs, tTransformDoneMs)
+
+    i = 0
+    while i < stamps.size() do
+      val s = stamps.get(i)
+      if s.t1Ms >= 0L then
+        lat.recordKafkaToFlink(s.t1Ms.toDouble, s.tSrcMs)
+        lat.recordEndToEnd(s.t1Ms.toDouble, tTransformDoneMs)
+      lat.recordQueue(s.tSrcMs, tTransformStartMs)
+      i += 1
 
     out.collect(
       EnrichedEvent(
