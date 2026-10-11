@@ -20,6 +20,7 @@ lazy val jacksonVersion   = "2.17.2"
 lazy val log4jVersion     = "2.23.1"
 lazy val scalatestVersion = "3.2.19"
 lazy val scalapbVersion   = "0.11.13"
+lazy val dropwizardVersion = "3.2.6"
 
 // ============================================================
 // Project
@@ -41,7 +42,17 @@ lazy val root = (project in file("."))
       "org.apache.flink" % "flink-clients"            % flinkVersion,
       "org.apache.flink" % "flink-runtime"            % flinkVersion,
       "org.apache.flink" % "flink-core"               % flinkVersion,
+
+      // Flink metrics: core API + Prometheus reporter + Dropwizard bridge
+      //   - flink-metrics-core    : MetricGroup, Counter, Histogram, Meter, Gauge
+      //   - flink-metrics-dropwizard : DropwizardHistogramWrapper etc.
+      //   - flink-metrics-prometheus : PrometheusReporter (scraped by Prometheus)
+      "org.apache.flink" % "flink-metrics-core"       % flinkVersion,
+      "org.apache.flink" % "flink-metrics-dropwizard" % flinkVersion,
       "org.apache.flink" % "flink-metrics-prometheus" % flinkVersion,
+
+      // Dropwizard core: needed for SlidingWindowReservoir / ExponentiallyDecayingReservoir
+      "io.dropwizard.metrics" % "metrics-core" % dropwizardVersion,
 
       // Kafka connector
       "org.apache.flink" % "flink-connector-kafka" % flinkKafkaVersion,
