@@ -59,9 +59,9 @@ object ConfigLoader:
   def metrics: MetricsConfig =
     val m = config.getConfig("cityrover.metrics")
 
-    val prom   = m.getConfig("prometheus")
-    val reg    = m.getConfig("register")
-    val res    = m.getConfig("reservoir")
+    val prom    = m.getConfig("prometheus")
+    val reg     = m.getConfig("register")
+    val res     = m.getConfig("reservoir")
     val tagsCfg = m.getConfig("tags")
 
     val tags: Map[String, String] =

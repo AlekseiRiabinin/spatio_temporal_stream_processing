@@ -16,10 +16,10 @@ ThisBuild / organization := "cityrover.flink"
 lazy val flinkVersion      = "2.3.0"
 lazy val flinkKafkaVersion = "5.0.0-2.2"
 
-lazy val jacksonVersion   = "2.17.2"
-lazy val log4jVersion     = "2.23.1"
-lazy val scalatestVersion = "3.2.19"
-lazy val scalapbVersion   = "0.11.13"
+lazy val jacksonVersion    = "2.17.2"
+lazy val log4jVersion      = "2.23.1"
+lazy val scalatestVersion  = "3.2.19"
+lazy val scalapbVersion    = "0.11.13"
 lazy val dropwizardVersion = "3.2.6"
 
 // ============================================================
