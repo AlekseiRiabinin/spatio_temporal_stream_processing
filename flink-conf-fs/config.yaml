@@ -5,7 +5,7 @@ taskmanager:
   memory:
     process:
       size: 1728m
-  numberOfTaskSlots: 4
+  numberOfTaskSlots: '4'
 metrics:
   reporter:
     prom:
