@@ -2,6 +2,9 @@ package cityrover.kafka
 
 import org.apache.flink.connector.kafka.sink.{KafkaSink => FlinkKafkaSink}
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema
+import org.apache.flink.api.common.serialization.SerializationSchema
+
+import java.nio.charset.StandardCharsets
 
 import cityrover.util.ConfigLoader
 import cityrover.telemetry.EnrichedTelemetryEvent
@@ -18,7 +21,14 @@ import cityrover.telemetry.EnrichedTelemetryEvent
 object KafkaSinks:
 
   /**
-    * Sink for enriched telemetry (protobuf-based)
+    * Sink for enriched telemetry (protobuf-based).
+    *
+    * The Kafka message key is set to `roverId` so that every record for
+    * a given rover lands in the same partition. This preserves
+    * per-rover ordering (within the partition) and spreads load across
+    * partitions. Without an explicit key, Kafka's default partitioner
+    * hashes on a null key and distributes round-robin — no per-rover
+    * ordering.
     */
   def enrichedTelemetrySink(): FlinkKafkaSink[EnrichedTelemetryEvent] =
     FlinkKafkaSink.builder[EnrichedTelemetryEvent]()
@@ -26,7 +36,19 @@ object KafkaSinks:
       .setRecordSerializer(
         KafkaRecordSerializationSchema.builder[EnrichedTelemetryEvent]()
           .setTopic(ConfigLoader.kafkaEnrichedTelemetryTopic)
+          .setKeySerializationSchema(new RoverIdKeySchema())
           .setValueSerializationSchema(new EnrichedEventProtobufSchema())
           .build()
       )
       .build()
+
+
+/**
+  * Serializes `EnrichedTelemetryEvent.roverId` as the Kafka message key
+  * (UTF-8 bytes). Keeping the key schema in its own class makes it
+  * obvious at the call site that the key is `roverId` and nothing else.
+  */
+class RoverIdKeySchema extends SerializationSchema[EnrichedTelemetryEvent]:
+
+  override def serialize(event: EnrichedTelemetryEvent): Array[Byte] =
+    event.roverId.getBytes(StandardCharsets.UTF_8)

@@ -21,87 +21,161 @@ message Telemetry {
   optional string routeId = 8;
 }
 
+// ============================================================
+// Window discriminator
+// ============================================================
+enum WindowType {
+  WINDOW_TYPE_UNSPECIFIED = 0;
+  WINDOW_5S  = 1;
+  WINDOW_30S = 2;
+  WINDOW_1M  = 3;
+  WINDOW_5M  = 4;
+}
+
+// ============================================================
+// Enriched event — one partial record per window firing.
+//
+// Invariants:
+//   * Exactly one `features` oneof variant is set per message.
+//   * `windowEndTs` is the EVENT-TIME window boundary in
+//     MILLISECONDS since epoch (replay-stable; not firing time,
+//     not wall clock). The writer multiplies by 1000 for
+//     Cassandra USING TIMESTAMP (microseconds).
+//   * Fields shared by all windows (identity, raw telemetry,
+//     geospatial, route, behavioral, metadata, quality, debug)
+//     live at the top level and are populated by every window
+//     variant — OR, if a field is only computed by one window,
+//     move it into that window's message (see notes below).
+// ============================================================
 message EnrichedTelemetryEvent {
 
-  // Identity / Keys
-  string roverId = 1;
-  string edgeId = 2;
-  string routeId = 3;
+  // ----------------------------------------------------------
+  // Envelope / discriminator
+  // ----------------------------------------------------------
+  WindowType windowType = 1;   // which window produced this record
+  int64 windowEndTs     = 2;   // event-time window end, ms since epoch
 
-  // Raw telemetry
-  double lat = 4;
-  double lon = 5;
-  int64 ts = 6;
-  double speed = 7;
-  double heading = 8;
+  // ----------------------------------------------------------
+  // Identity / keys (every window populates these)
+  // ----------------------------------------------------------
+  string roverId = 10;
+  string edgeId  = 11;
+  string routeId = 12;
 
-  // 5-second window features
-  double speedAvg5s = 9;
-  double speedMax5s = 10;
-  double speedMin5s = 11;
-  double accelerationAvg5s = 12;
-  double headingChange5s = 13;
-  double distanceTraveled5s = 14;
+  // ----------------------------------------------------------
+  // Raw telemetry snapshot (every window populates these —
+  // this is the "latest event in the window" the features
+  // were derived from)
+  // ----------------------------------------------------------
+  double lat     = 20;
+  double lon     = 21;
+  int64  ts      = 22;   // event-time of the sampled event, ms
+  double speed   = 23;
+  double heading = 24;
 
-  // 30-second window features
-  double speedAvg30s = 15;
-  double speedStd30s = 16;
-  double accelerationAvg30s = 17;
-  double jerkAvg30s = 18;
-  double turnRateAvg30s = 19;
-  int32 stopsCount30s = 20;
-  double distanceTraveled30s = 21;
+  // ----------------------------------------------------------
+  // Per-window feature payload.
+  // Exactly one variant is set per message.
+  // ----------------------------------------------------------
+  oneof features {
+    Window5sFeatures  w5s  = 30;
+    Window30sFeatures w30s = 31;
+    Window1mFeatures  w1m  = 32;
+    Window5mFeatures  w5m  = 33;
+  }
 
-  // 1-minute window features
-  double speedAvg1m = 22;
-  double speedStd1m = 23;
-  double accelerationAvg1m = 24;
-  double jerkAvg1m = 25;
-  double turnRateAvg1m = 26;
-  double idleRatio1m = 27;
-  double distanceTraveled1m = 28;
-  double congestionLevel1m = 29;
+  // ----------------------------------------------------------
+  // Geospatial features (assign to the owning window, or keep
+  // top-level if recomputed per window — see note).
+  // ----------------------------------------------------------
+  int64  gridCellId    = 40;
+  string regionId      = 41;
+  string snappedEdgeId = 42;
+  double snappedLat    = 43;
+  double snappedLon    = 44;
 
-  // 5-minute window features
-  double speedAvg5m = 30;
-  double speedStd5m = 31;
-  double accelerationAvg5m = 32;
-  double jerkAvg5m = 33;
-  double turnRateAvg5m = 34;
-  double idleRatio5m = 35;
-  double distanceTraveled5m = 36;
-  double congestionLevel5m = 37;
-
-  // Geospatial features
-  int64 gridCellId = 38;
-  string regionId = 39;
-  string snappedEdgeId = 40;
-  double snappedLat = 41;
-  double snappedLon = 42;
-
+  // ----------------------------------------------------------
   // Route / navigation features
-  double routeProgress = 43;
-  double routeDeviation = 44;
-  double expectedSpeed = 45;
-  double speedRatio = 46;
+  // ----------------------------------------------------------
+  double routeProgress  = 50;
+  double routeDeviation = 51;
+  double expectedSpeed  = 52;
+  double speedRatio     = 53;
 
+  // ----------------------------------------------------------
   // Behavioral features
-  double drivingStyleScore = 47;
-  double anomalyScore = 48;
+  // ----------------------------------------------------------
+  double drivingStyleScore = 60;
+  double anomalyScore      = 61;
 
+  // ----------------------------------------------------------
   // ML feature store metadata
-  string featureVersion = 49;
-  int64 featureTimestamp = 50;
-  int64 featureLatencyMs = 51;
+  // ----------------------------------------------------------
+  string featureVersion   = 70;
+  int64  featureTimestamp = 71;   // ms, event-time of feature computation
+  int64  featureLatencyMs = 72;   // processing-latency observability
 
+  // ----------------------------------------------------------
   // Quality / anomaly detection
-  bool isOutlier = 52;
-  bool isGpsJump = 53;
-  bool isSpeedAnomaly = 54;
-  bool isHeadingAnomaly = 55;
+  // ----------------------------------------------------------
+  bool isOutlier        = 80;
+  bool isGpsJump        = 81;
+  bool isSpeedAnomaly   = 82;
+  bool isHeadingAnomaly = 83;
 
+  // ----------------------------------------------------------
   // Debug / observability
-  string rawEventHash = 56;
-  string processingNode = 57;
-  int64 processingTimeMs = 58;
+  // ----------------------------------------------------------
+  string rawEventHash     = 90;
+  string processingNode   = 91;
+  int64  processingTimeMs = 92;
+}
+
+// ============================================================
+// Per-window feature payloads
+// ============================================================
+
+message Window5sFeatures {
+  double speedAvg5s           = 1;
+  double speedMax5s           = 2;
+  double speedMin5s           = 3;
+  double accelerationAvg5s    = 4;
+  double headingChange5s      = 5;
+  double distanceTraveled5s   = 6;
+  int64  updatedAt5s          = 7;   // event-time, ms — mirrors windowEndTs
+}
+
+message Window30sFeatures {
+  double speedAvg30s          = 1;
+  double speedStd30s          = 2;
+  double accelerationAvg30s   = 3;
+  double jerkAvg30s           = 4;
+  double turnRateAvg30s       = 5;
+  int32  stopsCount30s        = 6;
+  double distanceTraveled30s  = 7;
+  int64  updatedAt30s         = 8;
+}
+
+message Window1mFeatures {
+  double speedAvg1m           = 1;
+  double speedStd1m           = 2;
+  double accelerationAvg1m    = 3;
+  double jerkAvg1m            = 4;
+  double turnRateAvg1m        = 5;
+  double idleRatio1m          = 6;
+  double distanceTraveled1m   = 7;
+  double congestionLevel1m    = 8;
+  int64  updatedAt1m          = 9;
+}
+
+message Window5mFeatures {
+  double speedAvg5m           = 1;
+  double speedStd5m           = 2;
+  double accelerationAvg5m    = 3;
+  double jerkAvg5m            = 4;
+  double turnRateAvg5m        = 5;
+  double idleRatio5m          = 6;
+  double distanceTraveled5m   = 7;
+  double congestionLevel5m    = 8;
+  int64  updatedAt5m          = 9;
 }

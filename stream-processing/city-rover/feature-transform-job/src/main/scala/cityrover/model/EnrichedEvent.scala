@@ -1,66 +1,98 @@
 package cityrover.model
 
-import cityrover.telemetry.EnrichedTelemetryEvent
+import cityrover.telemetry.{
+  EnrichedTelemetryEvent,
+  WindowType,
+  Window5sFeatures  => Proto5sFeatures,
+  Window30sFeatures => Proto30sFeatures,
+  Window1mFeatures  => Proto1mFeatures,
+  Window5mFeatures  => Proto5mFeatures
+}
 
+// ============================================================
+// Shared envelope — populated by every window firing
+// ============================================================
 
-/**
-  * EnrichedEvent
+/** Fields common to every window firing.
   *
-  * ML‑ready feature representation derived from raw TelemetryEvent.
-  *
-  * This version replaces raw temporal fields with rolling window
-  * aggregates commonly used in online feature stores:
-  *
-  *   - 5‑second window
-  *   - 30‑second window
-  *   - 1‑minute window
-  *   - 5‑minute window
-  *
-  * These windows capture short‑term and mid‑term dynamics of rover
-  * movement, enabling real‑time ML models to react to behavior changes.
+  * `windowEndTs` is the EVENT-TIME window boundary in MILLISECONDS
+  * since epoch (replay-stable; not firing time, not wall clock).
+  * The writer multiplies by 1000 for Cassandra USING TIMESTAMP (µs).
   */
-final case class EnrichedEvent(
-
-  // ============================================================
-  // Identity / Keys
-  // ============================================================
+final case class FeatureEnvelope(
+  // identity
   roverId: String,
   edgeId: String,
   routeId: String,
 
-  // ============================================================
-  // Raw telemetry (copied from TelemetryEvent)
-  // ============================================================
+  // raw telemetry snapshot (latest event in the window)
   lat: Double,
   lon: Double,
   ts: Long,
   speed: Double,
   heading: Double,
 
-  // ============================================================
-  // 5‑second window features (ultra‑short term)
-  // ============================================================
+  // envelope / discriminator
+  windowEndTs: Long,
+
+  // geospatial
+  gridCellId: Long,
+  regionId: String,
+  snappedEdgeId: String,
+  snappedLat: Double,
+  snappedLon: Double,
+
+  // route / navigation
+  routeProgress: Double,
+  routeDeviation: Double,
+  expectedSpeed: Double,
+  speedRatio: Double,
+
+  // behavioral
+  drivingStyleScore: Double,
+  anomalyScore: Double,
+
+  // ML metadata
+  featureVersion: String,
+  featureTimestamp: Long,
+  featureLatencyMs: Long,
+
+  // quality / anomaly
+  isOutlier: Boolean,
+  isGpsJump: Boolean,
+  isSpeedAnomaly: Boolean,
+  isHeadingAnomaly: Boolean,
+
+  // debug / observability
+  rawEventHash: String,
+  processingNode: String,
+  processingTimeMs: Long
+)
+
+// ============================================================
+// Per-window payloads
+// ============================================================
+
+final case class Window5sPayload(
   speedAvg5s: Double,
   speedMax5s: Double,
   speedMin5s: Double,
   accelerationAvg5s: Double,
   headingChange5s: Double,
-  distanceTraveled5s: Double,
+  distanceTraveled5s: Double
+)
 
-  // ============================================================
-  // 30‑second window features (short term)
-  // ============================================================
+final case class Window30sPayload(
   speedAvg30s: Double,
   speedStd30s: Double,
   accelerationAvg30s: Double,
   jerkAvg30s: Double,
   turnRateAvg30s: Double,
   stopsCount30s: Int,
-  distanceTraveled30s: Double,
+  distanceTraveled30s: Double
+)
 
-  // ============================================================
-  // 1‑minute window features (medium term)
-  // ============================================================
+final case class Window1mPayload(
   speedAvg1m: Double,
   speedStd1m: Double,
   accelerationAvg1m: Double,
@@ -68,11 +100,10 @@ final case class EnrichedEvent(
   turnRateAvg1m: Double,
   idleRatio1m: Double,
   distanceTraveled1m: Double,
-  congestionLevel1m: Double,
+  congestionLevel1m: Double
+)
 
-  // ============================================================
-  // 5‑minute window features (longer term)
-  // ============================================================
+final case class Window5mPayload(
   speedAvg5m: Double,
   speedStd5m: Double,
   accelerationAvg5m: Double,
@@ -80,139 +111,156 @@ final case class EnrichedEvent(
   turnRateAvg5m: Double,
   idleRatio5m: Double,
   distanceTraveled5m: Double,
-  congestionLevel5m: Double,
-
-  // ============================================================
-  // Geospatial features
-  // ============================================================
-  gridCellId: Long,
-  regionId: String,
-  snappedEdgeId: String,
-  snappedLat: Double,
-  snappedLon: Double,
-
-  // ============================================================
-  // Route / navigation features
-  // ============================================================
-  routeProgress: Double,
-  routeDeviation: Double,
-  expectedSpeed: Double,
-  speedRatio: Double,
-
-  // ============================================================
-  // Behavioral features
-  // ============================================================
-  drivingStyleScore: Double,
-  anomalyScore: Double,
-
-  // ============================================================
-  // ML feature store metadata
-  // ============================================================
-  featureVersion: String,
-  featureTimestamp: Long,
-  featureLatencyMs: Long,
-
-  // ============================================================
-  // Quality / anomaly detection
-  // ============================================================
-  isOutlier: Boolean,
-  isGpsJump: Boolean,
-  isSpeedAnomaly: Boolean,
-  isHeadingAnomaly: Boolean,
-
-  // ============================================================
-  // Debug / observability
-  // ============================================================
-  rawEventHash: String,
-  processingNode: String,
-  processingTimeMs: Long
+  congestionLevel5m: Double
 )
 
-/**
-  * Convert Flink EnrichedEvent → Protobuf EnrichedTelemetryEvent
-  *
-  * This is used by the Kafka sink to serialize protobuf bytes.
-  */
+// ============================================================
+// Partial enriched event — exactly one window variant
+// ============================================================
+
+sealed trait EnrichedEvent {
+  def envelope: FeatureEnvelope
+  def windowType: WindowType
+}
+
+final case class EnrichedEvent5s(
+  envelope: FeatureEnvelope,
+  features: Window5sPayload
+) extends EnrichedEvent {
+  val windowType: WindowType = WindowType.WINDOW_5S
+}
+
+final case class EnrichedEvent30s(
+  envelope: FeatureEnvelope,
+  features: Window30sPayload
+) extends EnrichedEvent {
+  val windowType: WindowType = WindowType.WINDOW_30S
+}
+
+final case class EnrichedEvent1m(
+  envelope: FeatureEnvelope,
+  features: Window1mPayload
+) extends EnrichedEvent {
+  val windowType: WindowType = WindowType.WINDOW_1M
+}
+
+final case class EnrichedEvent5m(
+  envelope: FeatureEnvelope,
+  features: Window5mPayload
+) extends EnrichedEvent {
+  val windowType: WindowType = WindowType.WINDOW_5M
+}
+
+// ============================================================
+// Conversion to protobuf
+// ============================================================
+
 extension (e: EnrichedEvent)
   def toProtobuf: EnrichedTelemetryEvent =
+    val protoFeatures: EnrichedTelemetryEvent.Features = e match
+      case e5s: EnrichedEvent5s =>
+        EnrichedTelemetryEvent.Features.W5S(
+          Proto5sFeatures(
+            speedAvg5S         = e5s.features.speedAvg5s,
+            speedMax5S         = e5s.features.speedMax5s,
+            speedMin5S         = e5s.features.speedMin5s,
+            accelerationAvg5S  = e5s.features.accelerationAvg5s,
+            headingChange5S    = e5s.features.headingChange5s,
+            distanceTraveled5S = e5s.features.distanceTraveled5s,
+            updatedAt5S        = e.envelope.windowEndTs
+          )
+        )
+      case e30s: EnrichedEvent30s =>
+        EnrichedTelemetryEvent.Features.W30S(
+          Proto30sFeatures(
+            speedAvg30S         = e30s.features.speedAvg30s,
+            speedStd30S         = e30s.features.speedStd30s,
+            accelerationAvg30S  = e30s.features.accelerationAvg30s,
+            jerkAvg30S          = e30s.features.jerkAvg30s,
+            turnRateAvg30S      = e30s.features.turnRateAvg30s,
+            stopsCount30S       = e30s.features.stopsCount30s,
+            distanceTraveled30S = e30s.features.distanceTraveled30s,
+            updatedAt30S        = e.envelope.windowEndTs
+          )
+        )
+      case e1m: EnrichedEvent1m =>
+        EnrichedTelemetryEvent.Features.W1M(
+          Proto1mFeatures(
+            speedAvg1M         = e1m.features.speedAvg1m,
+            speedStd1M         = e1m.features.speedStd1m,
+            accelerationAvg1M  = e1m.features.accelerationAvg1m,
+            jerkAvg1M          = e1m.features.jerkAvg1m,
+            turnRateAvg1M      = e1m.features.turnRateAvg1m,
+            idleRatio1M        = e1m.features.idleRatio1m,
+            distanceTraveled1M = e1m.features.distanceTraveled1m,
+            congestionLevel1M  = e1m.features.congestionLevel1m,
+            updatedAt1M        = e.envelope.windowEndTs
+          )
+        )
+      case e5m: EnrichedEvent5m =>
+        EnrichedTelemetryEvent.Features.W5M(
+          Proto5mFeatures(
+            speedAvg5M         = e5m.features.speedAvg5m,
+            speedStd5M         = e5m.features.speedStd5m,
+            accelerationAvg5M  = e5m.features.accelerationAvg5m,
+            jerkAvg5M          = e5m.features.jerkAvg5m,
+            turnRateAvg5M      = e5m.features.turnRateAvg5m,
+            idleRatio5M        = e5m.features.idleRatio5m,
+            distanceTraveled5M = e5m.features.distanceTraveled5m,
+            congestionLevel5M  = e5m.features.congestionLevel5m,
+            updatedAt5M        = e.envelope.windowEndTs
+          )
+        )
+
     EnrichedTelemetryEvent(
-      roverId = e.roverId,
-      edgeId = e.edgeId,
-      routeId = e.routeId,
+      windowType  = e.windowType,
+      windowEndTs = e.envelope.windowEndTs,
 
-      lat = e.lat,
-      lon = e.lon,
-      ts = e.ts,
-      speed = e.speed,
-      heading = e.heading,
+      // identity
+      roverId = e.envelope.roverId,
+      edgeId  = e.envelope.edgeId,
+      routeId = e.envelope.routeId,
 
-      // 5s
-      speedAvg5S = e.speedAvg5s,
-      speedMax5S = e.speedMax5s,
-      speedMin5S = e.speedMin5s,
-      accelerationAvg5S = e.accelerationAvg5s,
-      headingChange5S = e.headingChange5s,
-      distanceTraveled5S = e.distanceTraveled5s,
+      // raw snapshot
+      lat     = e.envelope.lat,
+      lon     = e.envelope.lon,
+      ts      = e.envelope.ts,
+      speed   = e.envelope.speed,
+      heading = e.envelope.heading,
 
-      // 30s
-      speedAvg30S = e.speedAvg30s,
-      speedStd30S = e.speedStd30s,
-      accelerationAvg30S = e.accelerationAvg30s,
-      jerkAvg30S = e.jerkAvg30s,
-      turnRateAvg30S = e.turnRateAvg30s,
-      stopsCount30S = e.stopsCount30s,
-      distanceTraveled30S = e.distanceTraveled30s,
-
-      // 1m
-      speedAvg1M = e.speedAvg1m,
-      speedStd1M = e.speedStd1m,
-      accelerationAvg1M = e.accelerationAvg1m,
-      jerkAvg1M = e.jerkAvg1m,
-      turnRateAvg1M = e.turnRateAvg1m,
-      idleRatio1M = e.idleRatio1m,
-      distanceTraveled1M = e.distanceTraveled1m,
-      congestionLevel1M = e.congestionLevel1m,
-
-      // 5m
-      speedAvg5M = e.speedAvg5m,
-      speedStd5M = e.speedStd5m,
-      accelerationAvg5M = e.accelerationAvg5m,
-      jerkAvg5M = e.jerkAvg5m,
-      turnRateAvg5M = e.turnRateAvg5m,
-      idleRatio5M = e.idleRatio5m,
-      distanceTraveled5M = e.distanceTraveled5m,
-      congestionLevel5M = e.congestionLevel5m,
+      // oneof — exactly one variant set above
+      features = protoFeatures,
 
       // geospatial
-      gridCellId = e.gridCellId,
-      regionId = e.regionId,
-      snappedEdgeId = e.snappedEdgeId,
-      snappedLat = e.snappedLat,
-      snappedLon = e.snappedLon,
+      gridCellId    = e.envelope.gridCellId,
+      regionId      = e.envelope.regionId,
+      snappedEdgeId = e.envelope.snappedEdgeId,
+      snappedLat    = e.envelope.snappedLat,
+      snappedLon    = e.envelope.snappedLon,
 
       // route
-      routeProgress = e.routeProgress,
-      routeDeviation = e.routeDeviation,
-      expectedSpeed = e.expectedSpeed,
-      speedRatio = e.speedRatio,
+      routeProgress  = e.envelope.routeProgress,
+      routeDeviation = e.envelope.routeDeviation,
+      expectedSpeed  = e.envelope.expectedSpeed,
+      speedRatio     = e.envelope.speedRatio,
 
       // behavioral
-      drivingStyleScore = e.drivingStyleScore,
-      anomalyScore = e.anomalyScore,
+      drivingStyleScore = e.envelope.drivingStyleScore,
+      anomalyScore      = e.envelope.anomalyScore,
 
       // metadata
-      featureVersion = e.featureVersion,
-      featureTimestamp = e.featureTimestamp,
-      featureLatencyMs = e.featureLatencyMs,
+      featureVersion   = e.envelope.featureVersion,
+      featureTimestamp = e.envelope.featureTimestamp,
+      featureLatencyMs = e.envelope.featureLatencyMs,
 
       // quality
-      isOutlier = e.isOutlier,
-      isGpsJump = e.isGpsJump,
-      isSpeedAnomaly = e.isSpeedAnomaly,
-      isHeadingAnomaly = e.isHeadingAnomaly,
+      isOutlier        = e.envelope.isOutlier,
+      isGpsJump        = e.envelope.isGpsJump,
+      isSpeedAnomaly   = e.envelope.isSpeedAnomaly,
+      isHeadingAnomaly = e.envelope.isHeadingAnomaly,
 
       // debug
-      rawEventHash = e.rawEventHash,
-      processingNode = e.processingNode,
-      processingTimeMs = e.processingTimeMs
+      rawEventHash     = e.envelope.rawEventHash,
+      processingNode   = e.envelope.processingNode,
+      processingTimeMs = e.envelope.processingTimeMs
     )

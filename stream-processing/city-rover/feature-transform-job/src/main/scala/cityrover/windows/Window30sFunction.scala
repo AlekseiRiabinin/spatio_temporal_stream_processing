@@ -8,10 +8,11 @@ import org.slf4j.LoggerFactory
 
 import java.util.ArrayList
 
-import cityrover.model.{TelemetryEvent, EnrichedEvent}
+import cityrover.model.{TelemetryEvent, EnrichedEvent, EnrichedEvent30s, Window30sPayload}
 import cityrover.metrics.{LatencyMetrics, StampedRecord}
+import cityrover.windows.FeatureEnvelopeBuilder
 import cityrover.util.MetricsConfig
-import cityrover.util.GeoUtils.{haversine, computeGridCell, computeRegion}
+import cityrover.util.GeoUtils.haversine
 
 
 /**
@@ -165,85 +166,26 @@ class Window30sFunction(metricsCfg: MetricsConfig)
       lat.recordQueue(s.tSrcMs, tTransformStartMs)
       i += 1
 
+    // ----------------------------------------------------------------
+    // 4. Emit partial record: envelope + 30s payload only.
+    // ----------------------------------------------------------------
+    val windowEndTs = ctx.window.getEnd   // event-time ms
+
+    val envelope = FeatureEnvelopeBuilder.build(
+      list, windowEndTs, tTransformStartMs.toLong
+    )
+
     out.collect(
-      EnrichedEvent(
-        roverId = last.roverId,
-        edgeId = last.edgeId,
-        routeId = last.routeId,
-        lat = last.lat,
-        lon = last.lon,
-        ts = last.ts,
-        speed = last.speed,
-        heading = last.heading,
-
-        // 5s window placeholders
-        speedAvg5s = 0.0,
-        speedMax5s = 0.0,
-        speedMin5s = 0.0,
-        accelerationAvg5s = 0.0,
-        headingChange5s = 0.0,
-        distanceTraveled5s = 0.0,
-
-        // 30s window features
-        speedAvg30s = speedAvg,
-        speedStd30s = speedStd,
-        accelerationAvg30s = accelerationAvg,
-        jerkAvg30s = jerkAvg,
-        turnRateAvg30s = turnRateAvg,
-        stopsCount30s = stopsCount,
-        distanceTraveled30s = distanceTraveled,
-
-        // 1m placeholders
-        speedAvg1m = 0.0,
-        speedStd1m = 0.0,
-        accelerationAvg1m = 0.0,
-        jerkAvg1m = 0.0,
-        turnRateAvg1m = 0.0,
-        idleRatio1m = 0.0,
-        distanceTraveled1m = 0.0,
-        congestionLevel1m = 0.0,
-
-        // 5m placeholders
-        speedAvg5m = 0.0,
-        speedStd5m = 0.0,
-        accelerationAvg5m = 0.0,
-        jerkAvg5m = 0.0,
-        turnRateAvg5m = 0.0,
-        idleRatio5m = 0.0,
-        distanceTraveled5m = 0.0,
-        congestionLevel5m = 0.0,
-
-        // geospatial
-        gridCellId = computeGridCell(last.lat, last.lon),
-        regionId = computeRegion(last.lat, last.lon),
-        snappedEdgeId = last.edgeId,
-        snappedLat = last.lat,
-        snappedLon = last.lon,
-
-        // route
-        routeProgress = 0.0,
-        routeDeviation = 0.0,
-        expectedSpeed = 0.0,
-        speedRatio = 0.0,
-
-        // behavioral
-        drivingStyleScore = 0.0,
-        anomalyScore = 0.0,
-
-        // metadata
-        featureVersion = "v1",
-        featureTimestamp = System.currentTimeMillis(),
-        featureLatencyMs = System.currentTimeMillis() - last.ts,
-
-        // quality
-        isOutlier = false,
-        isGpsJump = false,
-        isSpeedAnomaly = false,
-        isHeadingAnomaly = false,
-
-        // debug
-        rawEventHash = last.hashCode().toHexString,
-        processingNode = java.net.InetAddress.getLocalHost.getHostName,
-        processingTimeMs = System.currentTimeMillis()
+      EnrichedEvent30s(
+        envelope = envelope,
+        features = Window30sPayload(
+          speedAvg30s         = speedAvg,
+          speedStd30s         = speedStd,
+          accelerationAvg30s  = accelerationAvg,
+          jerkAvg30s          = jerkAvg,
+          turnRateAvg30s      = turnRateAvg,
+          stopsCount30s       = stopsCount,
+          distanceTraveled30s = distanceTraveled
+        )
       )
     )

@@ -78,38 +78,66 @@ object FeatureProcessingPipeline:
     val telemetry: DataStream[StampedRecord[TelemetryEvent]] =
       stampedTelemetry.assignTimestampsAndWatermarks(watermarkStrategy)
 
-    // 5. Rolling window features (each takes metricsCfg).
-    val enriched5s =
+    // 5. Rolling window features.
+    //
+    //    Each branch emits a DIFFERENT concrete subtype of EnrichedEvent:
+    //      Window5sFunction  -> EnrichedEvent5s (Window5sPayload only)
+    //      Window30sFunction -> EnrichedEvent30s (Window30sPayload only)
+    //      Window1mFunction  -> EnrichedEvent1m (Window1mPayload only)
+    //      Window5mFunction  -> EnrichedEvent5m (Window5mPayload only)
+    //
+    //    `windowEndTs` is set to `ctx.window.getEnd` (event-time, ms)
+    //    inside each function and carried through the envelope. The
+    //    writer uses it for Cassandra `USING TIMESTAMP ? * 1000`.
+    //
+    //    The explicit `DataStream[EnrichedEvent]` widenings make the
+    //    union's common type obvious and catch a future 5th window that
+    //    forgets to extend the sealed trait at compile time here.
+    val enriched5s: DataStream[EnrichedEvent] =
       telemetry
         .keyBy(_.payload.roverId)
         .window(TumblingEventTimeWindows.of(Duration.ofSeconds(ConfigLoader.window5s)))
         .process(new Window5sFunction(metricsCfg))
 
-    val enriched30s =
+    val enriched30s: DataStream[EnrichedEvent] =
       telemetry
         .keyBy(_.payload.roverId)
         .window(TumblingEventTimeWindows.of(Duration.ofSeconds(ConfigLoader.window30s)))
         .process(new Window30sFunction(metricsCfg))
 
-    val enriched1m =
+    val enriched1m: DataStream[EnrichedEvent] =
       telemetry
         .keyBy(_.payload.roverId)
         .window(TumblingEventTimeWindows.of(Duration.ofSeconds(ConfigLoader.window1m)))
         .process(new Window1mFunction(metricsCfg))
 
-    val enriched5m =
+    val enriched5m: DataStream[EnrichedEvent] =
       telemetry
         .keyBy(_.payload.roverId)
         .window(TumblingEventTimeWindows.of(Duration.ofSeconds(ConfigLoader.window5m)))
         .process(new Window5mFunction(metricsCfg))
 
-    // 6. Union.
+    // 6. Union — interleaves the four partial-record streams.
+    //    No join, no buffering; each branch fires independently.
     val enrichedAll: DataStream[EnrichedEvent] =
       enriched5s.union(enriched30s, enriched1m, enriched5m)
 
-    // 7. Kafka sink.
+    // 7. Serialize to protobuf.
+    //
+    //    `toProtobuf` sets the `oneof features` variant based on the
+    //    concrete EnrichedEvent subtype, and copies `windowEndTs` from
+    //    the envelope (event-time, ms). Do NOT substitute a wall-clock
+    //    timestamp here — replays would stop being idempotent and the
+    //    writer's `USING TIMESTAMP * 1000` would lose meaning.
     val protobufStream: DataStream[EnrichedTelemetryEvent] =
       enrichedAll.map(_.toProtobuf)
 
+    // 8. Kafka sink.
+    //
+    //    The Kafka message key is set to `roverId` inside the record
+    //    serializer (`RoverIdKeySchema`), not by a Flink `keyBy` here.
+    //    Do not add `keyBy(...)` before `sinkTo` — it would introduce
+    //    a network shuffle without changing partitioning, since the
+    //    Kafka key is what determines the destination partition.
     protobufStream
       .sinkTo(KafkaSinks.enrichedTelemetrySink())
