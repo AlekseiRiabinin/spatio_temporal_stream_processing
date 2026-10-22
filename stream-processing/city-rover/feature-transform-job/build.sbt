@@ -42,6 +42,7 @@ lazy val root = (project in file("."))
       "org.apache.flink" % "flink-clients"            % flinkVersion,
       "org.apache.flink" % "flink-runtime"            % flinkVersion,
       "org.apache.flink" % "flink-core"               % flinkVersion,
+      "org.apache.flink" % "flink-connector-base"     % flinkVersion,
 
       // Flink metrics: core API + Prometheus reporter + Dropwizard bridge
       //   - flink-metrics-core    : MetricGroup, Counter, Histogram, Meter, Gauge

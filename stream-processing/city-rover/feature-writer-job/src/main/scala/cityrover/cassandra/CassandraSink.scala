@@ -1,6 +1,12 @@
 package cityrover.cassandra
 
-import cityrover.telemetry.EnrichedTelemetryEvent
+import cityrover.telemetry.{
+  EnrichedTelemetryEvent,
+  Window5sFeatures,
+  Window30sFeatures,
+  Window1mFeatures,
+  Window5mFeatures
+}
 import cityrover.metrics.{LatencyMetrics, StampedRecord}
 import cityrover.util.MetricsConfig
 
@@ -11,7 +17,7 @@ import org.apache.flink.api.connector.sink2.{Sink, SinkWriter, WriterInitContext
 import org.slf4j.LoggerFactory
 
 import java.util.ArrayList
-import java.util.concurrent.{CompletionStage, CompletableFuture}
+import java.util.concurrent.{CompletionStage, Semaphore}
 
 
 case class CassandraConnectorConfig(config: Config)
@@ -40,23 +46,20 @@ final class CassandraSinkWriter(
 
   // ---------------------------------------------------------------------------
   // Latency registry, built per-subtask in the constructor.
-  //
-  // In the SinkWriter lifecycle there is no `open()` method — the writer is
-  // constructed by `createWriter`. We build the LatencyMetrics registry here,
-  // using the metric group exposed by `initContext.metricGroup()`.
   // ---------------------------------------------------------------------------
 
   private val lat: LatencyMetrics =
-    LatencyMetrics.register(
-      initContext.metricGroup(),
-      metricsCfg,
-      "writer"
-    )
+    LatencyMetrics.register(initContext.metricGroup(), metricsCfg, "writer")
 
   // ---------------------------------------------------------------------------
-  // Pending futures, each paired with the timing context needed to record
-  // write_ms and latency_ms once the write completes.
+  // Bounded in-flight writes: when `maxInFlight` async writes are pending,
+  // `write` blocks on `acquire()`. This is how Flink backpressures the
+  // Kafka consumer when Cassandra is slow, instead of growing
+  // `pendingWrites` without bound.
   // ---------------------------------------------------------------------------
+
+  private val maxInFlight = 1024
+  private val permits     = new Semaphore(maxInFlight)
 
   private final case class PendingWrite(
     future: CompletionStage[AsyncResultSet],
@@ -65,11 +68,10 @@ final class CassandraSinkWriter(
     tWriteStartMs: Double
   )
 
-  private val pendingWrites =
-    new ArrayList[PendingWrite]()
+  private val pendingWrites = new ArrayList[PendingWrite]()
 
   // ---------------------------------------------------------------------------
-  // Initialize Cassandra connector with schema (bootstrap session)
+  // Initialize Cassandra connector with schema (bootstrap session).
   // ---------------------------------------------------------------------------
 
   private val connector: CassandraConnector =
@@ -77,32 +79,16 @@ final class CassandraSinkWriter(
     val keyspace = config.getString("cityrover.cassandra.keyspace")
     val table    = config.getString("cityrover.cassandra.table")
 
-    val bootstrapSession =
-      CassandraConnector.createBootstrapSession(config)
-
-    try
-      CassandraSchema.initialize(bootstrapSession, keyspace, table)
-    finally
-      bootstrapSession.close()
+    val bootstrapSession = CassandraConnector.createBootstrapSession(config)
+    try CassandraSchema.initialize(bootstrapSession, keyspace, table)
+    finally bootstrapSession.close()
 
     CassandraConnector.createRuntimeConnector(config)
 
   // ---------------------------------------------------------------------------
-  // Write enriched telemetry events asynchronously, with timing.
-  //
-  // The timing flow:
-  //
-  //   t1Ms         — Kafka broker timestamp (from StampedRecord.t1Ms if
-  //                  populated, otherwise -1)
-  //   tSrcMs       — wall clock at the source boundary (from StampedRecord)
-  //   tWriteStart  — captured immediately before executeAsync()
-  //   t2Ms         — captured inside whenComplete(), on the driver's thread
-  //
-  // kafka_to_flink_ms and flink_ms are recorded synchronously here because
-  // their endpoints (t1, tSrc, tWriteStart) are all known.
-  //
-  // write_ms and latency_ms require t2, which is only known after the
-  // future completes. They are recorded in the whenComplete callback.
+  // Write one partial record. Dispatch on the `oneof` variant, bind only
+  // that window's columns, and use event-time (windowEndTs * 1000) as the
+  // Cassandra write timestamp so replays and reordering are idempotent.
   // ---------------------------------------------------------------------------
 
   override def write(
@@ -110,78 +96,79 @@ final class CassandraSinkWriter(
     context: SinkWriter.Context
   ): Unit =
     try
-      val event = stamped.payload
+      val event    = stamped.payload
+      val tsMicros = event.windowEndTs * 1000L   // ms -> µs
 
-      // If t1 was not populated at the source boundary, try to recover it
-      // from the SinkWriter context. This depends on the KafkaSource
-      // assigning timestamps; if not, t1 stays -1 and the kafka_to_flink_ms
-      // histogram is skipped for that record.
-      val t1Ms: Double =
-        if stamped.t1Ms >= 0L then stamped.t1Ms.toDouble
-        else -1.0
-
-      val tSrcMs = stamped.tSrcMs
-
-      // Record the two stages whose endpoints are already known.
-      if t1Ms >= 0.0 then
-        lat.recordKafkaToFlink(t1Ms, tSrcMs)
-
-      // Bound the pre-write phase (t_src -> t_write_start).
+      permits.acquire()   // backpressure: block if maxInFlight reached
       val tWriteStartMs = System.currentTimeMillis().toDouble
+
+      // Metrics whose endpoints are already known.
+      val t1Ms: Double =
+        if stamped.t1Ms >= 0L then stamped.t1Ms.toDouble else -1.0
+      val tSrcMs = stamped.tSrcMs
+      if t1Ms >= 0.0 then lat.recordKafkaToFlink(t1Ms, tSrcMs)
       lat.recordFlink(tSrcMs, tWriteStartMs)
 
-      // Submit the async write.
-      val stmt   = connector.bind(event)
-      val future = connector.session.executeAsync(stmt)
+      // Bind per window. Exactly one variant is set (validated by
+      // EnrichedEventSchema upstream); anything else is a bug.
+      val bound =
+        event.features match
+          case EnrichedTelemetryEvent.Features.W5S(f)  =>
+            connector.bind5s(event, f, tsMicros)
+          case EnrichedTelemetryEvent.Features.W30S(f) =>
+            connector.bind30s(event, f, tsMicros)
+          case EnrichedTelemetryEvent.Features.W1M(f)  =>
+            connector.bind1m(event, f, tsMicros)
+          case EnrichedTelemetryEvent.Features.W5M(f)  =>
+            connector.bind5m(event, f, tsMicros)
+          case other =>
+            throw new IllegalStateException(
+              s"Unknown/empty features variant for roverId='${event.roverId}': $other"
+            )
 
-      // Attach a completion callback that records write_ms and latency_ms
-      // once the future resolves. The callback runs on the driver's I/O
-      // thread — it must be fast and must not throw.
+      val future = connector.session.executeAsync(bound)
+
+      // Completion callback: record write_ms / latency_ms, release the
+      // backpressure permit, and log failures. Runs on the driver thread,
+      // so it must be fast and must not throw.
       val _ = future.whenComplete { (_, error) =>
+        permits.release()
         val t2Ms = System.currentTimeMillis().toDouble
         if error == null then
           lat.recordWrite(tWriteStartMs, t2Ms)
-          if t1Ms >= 0.0 then
-            lat.recordEndToEnd(t1Ms, t2Ms)
+          if t1Ms >= 0.0 then lat.recordEndToEnd(t1Ms, t2Ms)
         else
-          // Cassandra write failed — do not record a latency sample for
-          // the failed attempt. The error is logged by the writer.
           log.debug(s"Async Cassandra write failed: ${error.getMessage}")
       }
 
-      // Track the future for flush()/close() to wait on.
       pendingWrites.synchronized:
         pendingWrites.add(PendingWrite(future, t1Ms, tSrcMs, tWriteStartMs))
-
       cleanupCompletedFutures()
 
     catch
       case ex: Exception =>
+        // If we threw before submitting, release the permit we acquired.
+        // (If the throw came from `executeAsync` itself, the future is null
+        // and no `whenComplete` will release it — so we release here.)
+        permits.release()
         log.error(
-          s"Failed to write enriched telemetry event to Cassandra: ${stamped.payload}",
+          s"Failed to write enriched telemetry event to Cassandra: " +
+          s"roverId=${stamped.payload.roverId}, windowType=${stamped.payload.windowType}",
           ex
         )
 
   // ---------------------------------------------------------------------------
-  // Flush pending async writes
+  // Flush / close
   // ---------------------------------------------------------------------------
 
   override def flush(endOfInput: Boolean): Unit =
     log.info(s"Flushing Cassandra writes, endOfInput=$endOfInput")
     waitForPendingWrites()
 
-  // ---------------------------------------------------------------------------
-  // Close sink writer
-  // ---------------------------------------------------------------------------
-
   override def close(): Unit =
     log.info("Closing CassandraSinkWriter...")
-
-    try
-      waitForPendingWrites()
-    catch
-      case ex: Exception =>
-        log.warn("Error while waiting for pending writes", ex)
+    try waitForPendingWrites()
+    catch case ex: Exception => log.warn("Error while waiting for pending writes", ex)
     finally
       connector.close()
       log.info("CassandraSinkWriter closed.")
@@ -194,16 +181,10 @@ final class CassandraSinkWriter(
     pendingWrites.synchronized:
       if !pendingWrites.isEmpty then
         log.info(s"Waiting for ${pendingWrites.size} pending async writes...")
-
         try
-          pendingWrites.forEach { pw =>
-            pw.future.toCompletableFuture.join()
-          }
-        catch
-          case ex: Exception =>
-            log.error("Error while waiting for pending writes", ex)
-        finally
-          pendingWrites.clear()
+          pendingWrites.forEach(pw => pw.future.toCompletableFuture.join())
+        catch case ex: Exception => log.error("Error while waiting for pending writes", ex)
+        finally pendingWrites.clear()
       else
         log.debug("No pending writes to wait for")
 
@@ -212,7 +193,6 @@ final class CassandraSinkWriter(
       val it = pendingWrites.iterator()
       while it.hasNext do
         val pw = it.next()
-        if pw.future.toCompletableFuture.isDone then
-          it.remove()
+        if pw.future.toCompletableFuture.isDone then it.remove()
 
 end CassandraSinkWriter

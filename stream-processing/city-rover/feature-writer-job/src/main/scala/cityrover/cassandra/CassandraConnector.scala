@@ -5,7 +5,14 @@ import com.datastax.oss.driver.api.core.cql.{BoundStatement, PreparedStatement}
 import com.typesafe.config.Config
 
 import java.net.InetSocketAddress
-import cityrover.telemetry.EnrichedTelemetryEvent
+
+import cityrover.telemetry.{
+  EnrichedTelemetryEvent,
+  Window5sFeatures,
+  Window30sFeatures,
+  Window1mFeatures,
+  Window5mFeatures
+}
 
 
 /**
@@ -13,101 +20,84 @@ import cityrover.telemetry.EnrichedTelemetryEvent
   *
   * Wraps:
   *   - CqlSession
-  *   - Prepared INSERT statement
+  *   - four per-window Prepared INSERT statements
   *
-  * Provides bind() for EnrichedTelemetryEvent → BoundStatement.
+  * Binding is per-window: each helper names only that window's columns
+  * and binds `USING TIMESTAMP ?` to `windowEndTs * 1000` (µs).
+  *
+  * No method binds columns it did not compute — that would produce
+  * nulls, which Cassandra treats as tombstones and effectively deletes
+  * the column.
   */
 final class CassandraConnector(
   val session: CqlSession,
-  val insertStmt: PreparedStatement
+  val stmt5s: PreparedStatement,
+  val stmt30s: PreparedStatement,
+  val stmt1m: PreparedStatement,
+  val stmt5m: PreparedStatement
 ):
 
-  /** Bind all enriched telemetry fields to the prepared statement */
-  def bind(event: EnrichedTelemetryEvent): BoundStatement =
-    insertStmt.bind(
-      event.roverId,
-      event.edgeId,
-      event.routeId,
+  // ---------------------------------------------------------------------------
+  // Bind helpers — one per window.
+  //
+  // `tsMicros` is `event.windowEndTs * 1000`, bound as the trailing
+  // positional parameter of `USING TIMESTAMP ?`. Positional binding is
+  // required for USING TIMESTAMP; named binding won't work for that slot.
+  // ---------------------------------------------------------------------------
 
-      // Raw telemetry
-      Double.box(event.lat),
-      Double.box(event.lon),
-      Long.box(event.ts),
-      Double.box(event.speed),
-      Double.box(event.heading),
+  def bind5s(e: EnrichedTelemetryEvent, f: Window5sFeatures, tsMicros: Long): BoundStatement =
+    stmt5s.bind()
+      .setString("rover_id", e.roverId)
+      .setLong("updated_at_5s", e.windowEndTs)
+      .setDouble("speed_avg_5s", f.speedAvg5S)
+      .setDouble("speed_max_5s", f.speedMax5S)
+      .setDouble("speed_min_5s", f.speedMin5S)
+      .setDouble("acceleration_avg_5s", f.accelerationAvg5S)
+      .setDouble("heading_change_5s", f.headingChange5S)
+      .setDouble("distance_traveled_5s", f.distanceTraveled5S)
+      .setLong("[timestamp]", tsMicros)   // ← see note below
 
-      // 5-second window features
-      Double.box(event.speedAvg5S),
-      Double.box(event.speedMax5S),
-      Double.box(event.speedMin5S),
-      Double.box(event.accelerationAvg5S),
-      Double.box(event.headingChange5S),
-      Double.box(event.distanceTraveled5S),
+  def bind30s(e: EnrichedTelemetryEvent, f: Window30sFeatures, tsMicros: Long): BoundStatement =
+    stmt30s.bind()
+      .setString("rover_id", e.roverId)
+      .setLong("updated_at_30s", e.windowEndTs)
+      .setDouble("speed_avg_30s", f.speedAvg30S)
+      .setDouble("speed_std_30s", f.speedStd30S)
+      .setDouble("acceleration_avg_30s", f.accelerationAvg30S)
+      .setDouble("jerk_avg_30s", f.jerkAvg30S)
+      .setDouble("turn_rate_avg_30s", f.turnRateAvg30S)
+      .setInt("stops_count_30s", f.stopsCount30S)
+      .setDouble("distance_traveled_30s", f.distanceTraveled30S)
+      .setLong("[timestamp]", tsMicros)
 
-      // 30-second window features
-      Double.box(event.speedAvg30S),
-      Double.box(event.speedStd30S),
-      Double.box(event.accelerationAvg30S),
-      Double.box(event.jerkAvg30S),
-      Double.box(event.turnRateAvg30S),
-      Int.box(event.stopsCount30S),
-      Double.box(event.distanceTraveled30S),
+  def bind1m(e: EnrichedTelemetryEvent, f: Window1mFeatures, tsMicros: Long): BoundStatement =
+    stmt1m.bind()
+      .setString("rover_id", e.roverId)
+      .setLong("updated_at_1m", e.windowEndTs)
+      .setDouble("speed_avg_1m", f.speedAvg1M)
+      .setDouble("speed_std_1m", f.speedStd1M)
+      .setDouble("acceleration_avg_1m", f.accelerationAvg1M)
+      .setDouble("jerk_avg_1m", f.jerkAvg1M)
+      .setDouble("turn_rate_avg_1m", f.turnRateAvg1M)
+      .setDouble("idle_ratio_1m", f.idleRatio1M)
+      .setDouble("distance_traveled_1m", f.distanceTraveled1M)
+      .setDouble("congestion_level_1m", f.congestionLevel1M)
+      .setLong("[timestamp]", tsMicros)
 
-      // 1-minute window features
-      Double.box(event.speedAvg1M),
-      Double.box(event.speedStd1M),
-      Double.box(event.accelerationAvg1M),
-      Double.box(event.jerkAvg1M),
-      Double.box(event.turnRateAvg1M),
-      Double.box(event.idleRatio1M),
-      Double.box(event.distanceTraveled1M),
-      Double.box(event.congestionLevel1M),
+  def bind5m(e: EnrichedTelemetryEvent, f: Window5mFeatures, tsMicros: Long): BoundStatement =
+    stmt5m.bind()
+      .setString("rover_id", e.roverId)
+      .setLong("updated_at_5m", e.windowEndTs)
+      .setDouble("speed_avg_5m", f.speedAvg5M)
+      .setDouble("speed_std_5m", f.speedStd5M)
+      .setDouble("acceleration_avg_5m", f.accelerationAvg5M)
+      .setDouble("jerk_avg_5m", f.jerkAvg5M)
+      .setDouble("turn_rate_avg_5m", f.turnRateAvg5M)
+      .setDouble("idle_ratio_5m", f.idleRatio5M)
+      .setDouble("distance_traveled_5m", f.distanceTraveled5M)
+      .setDouble("congestion_level_5m", f.congestionLevel5M)
+      .setLong("[timestamp]", tsMicros)
 
-      // 5-minute window features
-      Double.box(event.speedAvg5M),
-      Double.box(event.speedStd5M),
-      Double.box(event.accelerationAvg5M),
-      Double.box(event.jerkAvg5M),
-      Double.box(event.turnRateAvg5M),
-      Double.box(event.idleRatio5M),
-      Double.box(event.distanceTraveled5M),
-      Double.box(event.congestionLevel5M),
-
-      // Geospatial features
-      Long.box(event.gridCellId),
-      event.regionId,
-      event.snappedEdgeId,
-      Double.box(event.snappedLat),
-      Double.box(event.snappedLon),
-
-      // Route / navigation features
-      Double.box(event.routeProgress),
-      Double.box(event.routeDeviation),
-      Double.box(event.expectedSpeed),
-      Double.box(event.speedRatio),
-
-      // Behavioral features
-      Double.box(event.drivingStyleScore),
-      Double.box(event.anomalyScore),
-
-      // ML metadata
-      event.featureVersion,
-      Long.box(event.featureTimestamp),
-      Long.box(event.featureLatencyMs),
-
-      // Quality / anomaly detection
-      Boolean.box(event.isOutlier),
-      Boolean.box(event.isGpsJump),
-      Boolean.box(event.isSpeedAnomaly),
-      Boolean.box(event.isHeadingAnomaly),
-
-      // Debug / observability
-      event.rawEventHash,
-      event.processingNode,
-      Long.box(event.processingTimeMs)
-    )
-
-  /** Close session when shutting down the Flink job */
   def close(): Unit =
     if session != null then session.close()
 
@@ -117,7 +107,7 @@ end CassandraConnector
 object CassandraConnector:
 
   // ---------------------------------------------------------------------------
-  // 1. Bootstrap session (NO keyspace)
+  // 1. Bootstrap session (NO keyspace) — used only to create schema
   // ---------------------------------------------------------------------------
   def createBootstrapSession(config: Config): CqlSession =
     val host = config.getString("cityrover.cassandra.host")
@@ -143,65 +133,57 @@ object CassandraConnector:
       .build()
 
   // ---------------------------------------------------------------------------
-  // 3. Runtime connector (session + prepared statement)
+  // 3. Runtime connector (session + four per-window prepared statements)
   // ---------------------------------------------------------------------------
   def createRuntimeConnector(config: Config): CassandraConnector =
     val session = createRuntimeSession(config)
-    val table   = config.getString("cityrover.cassandra.table")
+    val keyspace = config.getString("cityrover.cassandra.keyspace")
+    val table    = config.getString("cityrover.cassandra.table")
 
-    val insertStmt = session.prepare(
-      s"""
-         |INSERT INTO $table (
-         |  rover_id,
-         |  edge_id,
-         |  route_id,
-         |
-         |  lat, lon, ts, speed, heading,
-         |
-         |  speed_avg_5s, speed_max_5s, speed_min_5s,
-         |  acceleration_avg_5s, heading_change_5s, distance_traveled_5s,
-         |
-         |  speed_avg_30s, speed_std_30s, acceleration_avg_30s,
-         |  jerk_avg_30s, turn_rate_avg_30s, stops_count_30s,
-         |  distance_traveled_30s,
-         |
-         |  speed_avg_1m, speed_std_1m, acceleration_avg_1m,
-         |  jerk_avg_1m, turn_rate_avg_1m, idle_ratio_1m,
-         |  distance_traveled_1m, congestion_level_1m,
-         |
-         |  speed_avg_5m, speed_std_5m, acceleration_avg_5m,
-         |  jerk_avg_5m, turn_rate_avg_5m, idle_ratio_5m,
-         |  distance_traveled_5m, congestion_level_5m,
-         |
-         |  grid_cell_id, region_id, snapped_edge_id,
-         |  snapped_lat, snapped_lon,
-         |
-         |  route_progress, route_deviation, expected_speed, speed_ratio,
-         |
-         |  driving_style_score, anomaly_score,
-         |
-         |  feature_version, feature_timestamp, feature_latency_ms,
-         |
-         |  is_outlier, is_gps_jump, is_speed_anomaly, is_heading_anomaly,
-         |
-         |  raw_event_hash, processing_node, processing_time_ms
-         |) VALUES (
-         |  ?, ?, ?,
-         |  ?, ?, ?, ?, ?,
-         |  ?, ?, ?, ?, ?, ?,
-         |  ?, ?, ?, ?, ?, ?, ?,
-         |  ?, ?, ?, ?, ?, ?, ?, ?,
-         |  ?, ?, ?, ?, ?, ?, ?, ?,
-         |  ?, ?, ?, ?, ?,
-         |  ?, ?, ?, ?,
-         |  ?, ?,
-         |  ?, ?, ?,
-         |  ?, ?, ?, ?,
-         |  ?, ?, ?
-         |)
-         |""".stripMargin
-    )
+    val stmt5s  = session.prepare(cql5s(keyspace, table))
+    val stmt30s = session.prepare(cql30s(keyspace, table))
+    val stmt1m  = session.prepare(cql1m(keyspace, table))
+    val stmt5m  = session.prepare(cql5m(keyspace, table))
 
-    CassandraConnector(session, insertStmt)
+    CassandraConnector(session, stmt5s, stmt30s, stmt1m, stmt5m)
+
+  // ---------------------------------------------------------------------------
+  // Per-window CQL. Each names ONLY its own columns + the write timestamp.
+  // ---------------------------------------------------------------------------
+
+  private def cql5s(ks: String, tbl: String): String =
+    s"""INSERT INTO $ks.$tbl
+       |  (rover_id, updated_at_5s,
+       |   speed_avg_5s, speed_max_5s, speed_min_5s,
+       |   acceleration_avg_5s, heading_change_5s, distance_traveled_5s)
+       |VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       |USING TIMESTAMP ?""".stripMargin
+
+  private def cql30s(ks: String, tbl: String): String =
+    s"""INSERT INTO $ks.$tbl
+       |  (rover_id, updated_at_30s,
+       |   speed_avg_30s, speed_std_30s, acceleration_avg_30s,
+       |   jerk_avg_30s, turn_rate_avg_30s, stops_count_30s,
+       |   distance_traveled_30s)
+       |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       |USING TIMESTAMP ?""".stripMargin
+
+  private def cql1m(ks: String, tbl: String): String =
+    s"""INSERT INTO $ks.$tbl
+       |  (rover_id, updated_at_1m,
+       |   speed_avg_1m, speed_std_1m, acceleration_avg_1m,
+       |   jerk_avg_1m, turn_rate_avg_1m, idle_ratio_1m,
+       |   distance_traveled_1m, congestion_level_1m)
+       |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       |USING TIMESTAMP ?""".stripMargin
+
+  private def cql5m(ks: String, tbl: String): String =
+    s"""INSERT INTO $ks.$tbl
+       |  (rover_id, updated_at_5m,
+       |   speed_avg_5m, speed_std_5m, acceleration_avg_5m,
+       |   jerk_avg_5m, turn_rate_avg_5m, idle_ratio_5m,
+       |   distance_traveled_5m, congestion_level_5m)
+       |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       |USING TIMESTAMP ?""".stripMargin
 
 end CassandraConnector

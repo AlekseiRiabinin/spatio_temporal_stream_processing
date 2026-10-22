@@ -11,9 +11,6 @@ object CassandraSchema:
   def initialize(session: CqlSession, keyspace: String, table: String): Unit =
     log.info(s"Initializing Cassandra schema (keyspace: $keyspace, table: $table)...")
 
-    // -------------------------------------------------------------------------
-    // Create keyspace
-    // -------------------------------------------------------------------------
     val keyspaceCql =
       s"""
          |CREATE KEYSPACE IF NOT EXISTS $keyspace
@@ -27,7 +24,20 @@ object CassandraSchema:
     log.info(s"Keyspace '$keyspace' ensured.")
 
     // -------------------------------------------------------------------------
-    // Create enriched telemetry table
+    // One row per rover. Each window's partial record upserts ONLY its own
+    // columns (see CassandraConnector.bind5s/30s/1m/5m); Cassandra merges
+    // them into the same row.
+    //
+    // `*_updated_at` columns carry the event-time window boundary (ms) for
+    // each window group so readers can tell how fresh each group is. They
+    // are written with the same `USING TIMESTAMP` as the feature columns,
+    // which makes replay idempotent.
+    //
+    // `ts` is kept as a regular column (not part of the PK): it holds the
+    // event-time of the latest event the feature values were derived from.
+    // It is updated by every window write with the same event-time
+    // `USING TIMESTAMP`, so it converges to the newest snapshot without
+    // affecting conflict resolution of feature columns.
     // -------------------------------------------------------------------------
     val tableCql =
       s"""
@@ -49,6 +59,7 @@ object CassandraSchema:
          |    acceleration_avg_5s    double,
          |    heading_change_5s      double,
          |    distance_traveled_5s   double,
+         |    updated_at_5s          bigint,
          |
          |    speed_avg_30s          double,
          |    speed_std_30s          double,
@@ -57,6 +68,7 @@ object CassandraSchema:
          |    turn_rate_avg_30s      double,
          |    stops_count_30s        int,
          |    distance_traveled_30s  double,
+         |    updated_at_30s         bigint,
          |
          |    speed_avg_1m           double,
          |    speed_std_1m           double,
@@ -66,6 +78,7 @@ object CassandraSchema:
          |    idle_ratio_1m          double,
          |    distance_traveled_1m   double,
          |    congestion_level_1m    double,
+         |    updated_at_1m          bigint,
          |
          |    speed_avg_5m           double,
          |    speed_std_5m           double,
@@ -75,6 +88,7 @@ object CassandraSchema:
          |    idle_ratio_5m          double,
          |    distance_traveled_5m   double,
          |    congestion_level_5m    double,
+         |    updated_at_5m          bigint,
          |
          |    grid_cell_id           bigint,
          |    region_id              text,
@@ -103,12 +117,9 @@ object CassandraSchema:
          |    processing_node        text,
          |    processing_time_ms     bigint,
          |
-         |    PRIMARY KEY (rover_id, ts)
-         |) WITH CLUSTERING ORDER BY (ts DESC)
-         |  AND compaction = {
-         |      'class': 'TimeWindowCompactionStrategy',
-         |      'compaction_window_size': '1',
-         |      'compaction_window_unit': 'DAYS'
+         |    PRIMARY KEY (rover_id)
+         |) WITH compaction = {
+         |      'class': 'SizeTieredCompactionStrategy'
          |  }
          |  AND default_time_to_live = 0;
          |""".stripMargin

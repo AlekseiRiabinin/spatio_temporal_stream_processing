@@ -2,6 +2,7 @@ package cityrover.kafka
 
 import org.apache.flink.connector.kafka.sink.{KafkaSink => FlinkKafkaSink}
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema
+import org.apache.flink.connector.base.DeliveryGuarantee
 import org.apache.flink.api.common.serialization.SerializationSchema
 
 import java.nio.charset.StandardCharsets
@@ -29,10 +30,14 @@ object KafkaSinks:
     * partitions. Without an explicit key, Kafka's default partitioner
     * hashes on a null key and distributes round-robin — no per-rover
     * ordering.
+    * 
+    * Idempotent Cassandra upserts will have USING TIMESTAMP = windowEndTs * 1000,
+    * so DeliveryGuarantee.AT_LEAST_ONCE is used here. 
     */
   def enrichedTelemetrySink(): FlinkKafkaSink[EnrichedTelemetryEvent] =
     FlinkKafkaSink.builder[EnrichedTelemetryEvent]()
       .setBootstrapServers(ConfigLoader.kafkaBootstrap)
+      .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE) 
       .setRecordSerializer(
         KafkaRecordSerializationSchema.builder[EnrichedTelemetryEvent]()
           .setTopic(ConfigLoader.kafkaEnrichedTelemetryTopic)
