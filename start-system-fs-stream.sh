@@ -137,6 +137,8 @@ echo "2. Creating Kafka topics..."
 #   - Input topics: LogAppendTime. The upstream job windows on event time and
 #     we want broker-assigned timestamps so replayed/late-producer records
 #     cannot skew watermarks.
+#     EXCEPTION: the single-input-topic load test input uses CreateTime, so
+#     the producer-rebased event time reaches Flink unchanged.
 #   - Output/probe topics: CreateTime. For end-to-end "publication -> readable"
 #     latency we need the PRODUCER's clock on the record, not the broker's.
 #     `message.timestamp.type=CreateTime` is the Kafka broker default, so we
@@ -144,12 +146,21 @@ echo "2. Creating Kafka topics..."
 docker exec kafka-1 bash -c '
     # (topic_name:partitions:timestamp_type)
     topics=(
+        # --- fan-out input topics (original pipeline) -------------------
         "stream_fs.test.intellinx_antifraud_dbo_fin_transactions:4:LogAppendTime"
         "stream_fs.test.intellinx_antifraud_dbo_nofin_transactions:4:LogAppendTime"
         "stream_fs.test.intellinx_antifraud_dbo_incoming_payments:4:LogAppendTime"
+
+        # --- single-input-topic load test -------------------------
+        "stream_fs.test.intellinx_antifraud_dbo:4:CreateTime"
+
+        # --- output / probe topics --------------------------------------
         "stream_fs.output.features:4:CreateTime"
         "stream_fs.test.probe_serving_rows:4:CreateTime"
         "stream_fs.test.probe_transformation:4:CreateTime"
+
+        # --- result topic for the single-input-topic load test ----
+        "stream_fs.test.antifraud_dbo_result_realtime_features_one_input_topic:4:CreateTime"
     )
 
     for topic in "${topics[@]}"; do
@@ -205,8 +216,10 @@ docker exec kafka-1 bash -c '
         [stream_fs.test.intellinx_antifraud_dbo_fin_transactions]=LogAppendTime
         [stream_fs.test.intellinx_antifraud_dbo_nofin_transactions]=LogAppendTime
         [stream_fs.test.intellinx_antifraud_dbo_incoming_payments]=LogAppendTime
+        [stream_fs.test.intellinx_antifraud_dbo]=CreateTime
         [stream_fs.output.features]=CreateTime
         [stream_fs.test.probe_serving_rows]=CreateTime
+        [stream_fs.test.antifraud_dbo_result_realtime_features_one_input_topic]=CreateTime
     )
 
     rc=0

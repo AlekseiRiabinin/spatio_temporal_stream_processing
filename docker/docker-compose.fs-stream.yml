@@ -343,6 +343,28 @@ services:
       - city-rover-net
     restart: "no"
 
+  feature_store_data_generator:
+    build:
+      context: ../../feature_store_data_generator
+      dockerfile: Dockerfile
+    image: feature_store_data_generator:dev
+    container_name: feature_store_data_generator
+    hostname: feature_store_data_generator
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:19092
+      KAFKA_SECURITY_PROTOCOL: PLAINTEXT
+      DATA_DIR: /app/data
+      RESULTS_DIR: /app/results
+    volumes:
+      - ../../feature_store_data_generator/data:/app/data:ro
+      - ../../feature_store_data_generator/results:/app/results
+    depends_on:
+      kafka-1:
+        condition: service_started
+    networks:
+      - city-rover-net
+    restart: "no"
+
 volumes:
   grafana-data:
   cassandra-data:
@@ -356,11 +378,13 @@ networks:
 # ./run-feature-store-playground.sh
 # ./run-cassandra-latency-probe.sh
 # ./run-kafka-latency-probe.sh
+# ./run-feature-store-data-generator.sh
 
 # docker compose -f docker/docker-compose.fs-stream.yml build --no-cache feature_store_playground
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate feature_store_playground
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate cassandra_latency_probe
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate kafka_latency_probe
+# docker compose -f docker/docker-compose.fs-stream.yml build --no-cache feature_store_data_generator
 
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate \
 #   flink-jobmanager-fs flink-taskmanager-fs kafka_latency_probe
