@@ -205,6 +205,8 @@ services:
     volumes:
       - ../flink-conf-fs/config.yaml:/opt/flink/conf/config.yaml
       - ../flink-jars-fs/flink-sql-connector-kafka-5.0.0-2.2.jar:/opt/flink/lib/flink-sql-connector-kafka-5.0.0-2.2.jar:ro
+      - ../../feature_store_playground/cassandra_latency_probe.py:/opt/flink/usrlib/cassandra_latency_probe.py:ro
+      - ../../feature_store_playground/kafka_latency_probe.py:/opt/flink/usrlib/kafka_latency_probe.py:ro
     networks:
       - city-rover-net
     restart: unless-stopped
@@ -226,6 +228,8 @@ services:
     volumes:
       - ../flink-conf-fs/config.yaml:/opt/flink/conf/config.yaml
       - ../flink-jars-fs/flink-sql-connector-kafka-5.0.0-2.2.jar:/opt/flink/lib/flink-sql-connector-kafka-5.0.0-2.2.jar:ro
+      - ../../feature_store_playground/cassandra_latency_probe.py:/opt/flink/usrlib/cassandra_latency_probe.py:ro
+      - ../../feature_store_playground/kafka_latency_probe.py:/opt/flink/usrlib/kafka_latency_probe.py:ros
     networks:
       - city-rover-net
     restart: unless-stopped
@@ -365,6 +369,78 @@ services:
       - city-rover-net
     restart: "no"
 
+  # -----------------------------------------------------------------
+  # PIPELINE: data generator → transform_job → writer_job → cassandra
+  # -----------------------------------------------------------------
+
+  feature_store_transform_job:
+    image: feature_store_playground:dev
+    container_name: feature_store_transform_job
+    hostname: feature_store_transform_job
+    entrypoint: ["flink", "run", "-m", "flink-jobmanager-fs:8081",
+      "-pyclientexec", "/opt/venv/bin/python3",
+      "-pyexec", "/opt/venv/bin/python3",
+      "-py", "/opt/flink/usrlib/transform_job.py"]
+    depends_on:
+      kafka-1:
+        condition: service_started
+      flink-jobmanager-fs:
+        condition: service_started
+    environment:
+      PYTHONUNBUFFERED: "1"
+      # Kafka input (single topic, written by feature_store_data_generator)
+      KAFKA_BOOTSTRAP: kafka-1:19092
+      KAFKA_TOPIC_INPUT: stream_fs.test.intellinx_antifraud_dbo
+      # Kafka output (hop topic — read by writer_job)
+      KAFKA_TOPIC_SINK: stream_fs.test.probe_serving_rows
+      # Probe-specific
+      KAFKA_GROUP_ID_PROBE: pyflink-kafka-probe-single
+      KAFKA_START_FROM_PROBE: latest
+      # Window config (must match the production job)
+      FEATURE_WINDOW_MS: "21600000"
+      ALLOWED_FUTURE_MS: "300000"
+      PARALLELISM: "1"
+    volumes:
+      - ../../feature_store_pipeline/transform_job.py:/opt/flink/usrlib/transform_job.py:ro
+    networks:
+      - city-rover-net
+    restart: "no"
+
+  feature_store_writer_job:
+    image: feature_store_playground:dev
+    container_name: feature_store_writer_job
+    hostname: feature_store_writer_job
+    entrypoint: ["flink", "run", "-m", "flink-jobmanager-fs:8081",
+      "-pyclientexec", "/opt/venv/bin/python3",
+      "-pyexec", "/opt/venv/bin/python3",
+      "-py", "/opt/flink/usrlib/writer_job.py"]
+    depends_on:
+      kafka-1:
+        condition: service_started
+      cassandra:
+        condition: service_healthy
+      flink-jobmanager-fs:
+        condition: service_started
+    environment:
+      PYTHONUNBUFFERED: "1"
+      # Kafka input (hop topic — written by transform_job)
+      KAFKA_BOOTSTRAP: kafka-1:19092
+      KAFKA_TOPIC_PROBE: stream_fs.test.probe_serving_rows
+      KAFKA_GROUP_ID_PROBE: pyflink-cassandra-probe-single
+      KAFKA_START_FROM_PROBE: latest
+      # Cassandra
+      SCYLLA_CONTACT_POINTS: cassandra
+      SCYLLA_PORT: "9042"
+      SCYLLA_LOCAL_DC: datacenter1
+      SCYLLA_KEYSPACE: test
+      SCYLLA_TABLE: af_dbo_v1_7
+      PARALLELISM: "1"
+    volumes:
+      - ../../feature_store_pipeline/writer_job.py:/opt/flink/usrlib/writer_job.py:ro
+    networks:
+      - city-rover-net
+    restart: "no"
+
 volumes:
   grafana-data:
   cassandra-data:
@@ -379,12 +455,16 @@ networks:
 # ./run-cassandra-latency-probe.sh
 # ./run-kafka-latency-probe.sh
 # ./run-feature-store-data-generator.sh
+# ./run-feature-store-pipeline.sh
 
 # docker compose -f docker/docker-compose.fs-stream.yml build --no-cache feature_store_playground
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate feature_store_playground
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate cassandra_latency_probe
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate kafka_latency_probe
 # docker compose -f docker/docker-compose.fs-stream.yml build --no-cache feature_store_data_generator
+
+# docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate \
+#   flink-jobmanager-fs flink-taskmanager-fs
 
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate \
 #   flink-jobmanager-fs flink-taskmanager-fs kafka_latency_probe
@@ -413,3 +493,24 @@ networks:
 #   --offset 0 \
 #   --max-messages 1 \
 #   2>/dev/null | xxd
+
+
+# docker exec cassandra cqlsh cassandra 9042 -e "TRUNCATE test.af_dbo_v1_7;"
+
+# End offsets on the hop topic (transform output) — should be growing
+# docker exec kafka-1 /opt/kafka/bin/kafka-get-offsets.sh \
+#   --bootstrap-server kafka-1:19092 \
+#   --topic stream_fs.test.probe_serving_rows
+
+# End offsets on the result topic (what the generator listens to) — must be growing for FIN results
+# docker exec kafka-1 /opt/kafka/bin/kafka-get-offsets.sh \
+#   --bootstrap-server kafka-1:19092 \
+#   --topic stream_fs.test.antifraud_dbo_result_realtime_features_one_input_topic
+
+# Cassandra row count
+# docker exec cassandra cqlsh cassandra 9042 -e \
+#   "SELECT COUNT(*) FROM test.af_dbo_v1_7;"
+
+# Watch it climb to its final value
+# watch -n 2 'docker exec cassandra cqlsh cassandra 9042 -e \
+#   "SELECT COUNT(*) FROM test.af_dbo_v1_7;" 2>/dev/null | grep -E "^ *[0-9]+"'
