@@ -1,5 +1,7 @@
 package cityrover.window
 
+import cityrover.model.TelemetryEvent
+
 
 /** Incremental accumulator types for the four tumbling event-time windows.
   *
@@ -14,9 +16,13 @@ package cityrover.window
   * element's value (jerk = Δaccel, turnRate = Δheading, distance via
   * haversine between consecutive events).
   *
-  * All timestamps (`windowStartTs`, `lastSeenTs`) are in MILLISECONDS,
-  * event-time. They mirror the corresponding Flink window boundaries so
-  * the two jobs produce identical `windowEndTs` values.
+  * `lastEvent` is the most recent event merged into the accumulator.
+  * `EventTimeWindow` extracts it when a window fires, so
+  * `FeatureEnvelopeBuilder` can build an envelope from the true
+  * "latest event in the window" — not from the triggering event (which
+  * may be much later if the watermark advanced on a subsequent chunk).
+  *
+  * All timestamps (`lastSeenTs`) are in MILLISECONDS, event-time.
   */
 
 // ============================================================
@@ -34,7 +40,8 @@ final case class Window5sAccumulator(
   distanceTraveled: Double,
   prevLat: Option[Double],
   prevLon: Option[Double],
-  lastSeenTs: Long
+  lastSeenTs: Long,
+  lastEvent: Option[TelemetryEvent]
 )
 
 /** 30-second window accumulator (short term). */
@@ -54,7 +61,8 @@ final case class Window30sAccumulator(
   distanceTraveled: Double,
   prevLat: Option[Double],
   prevLon: Option[Double],
-  lastSeenTs: Long
+  lastSeenTs: Long,
+  lastEvent: Option[TelemetryEvent]
 )
 
 /** 1-minute window accumulator (medium term). */
@@ -74,7 +82,8 @@ final case class Window1mAccumulator(
   distanceTraveled: Double,
   prevLat: Option[Double],
   prevLon: Option[Double],
-  lastSeenTs: Long
+  lastSeenTs: Long,
+  lastEvent: Option[TelemetryEvent]
 )
 
 /** 5-minute window accumulator (long term). */
@@ -94,7 +103,8 @@ final case class Window5mAccumulator(
   distanceTraveled: Double,
   prevLat: Option[Double],
   prevLon: Option[Double],
-  lastSeenTs: Long
+  lastSeenTs: Long,
+  lastEvent: Option[TelemetryEvent]
 )
 
 // ============================================================
@@ -112,7 +122,8 @@ object Window5sAccumulator:
     distanceTraveled = 0.0,
     prevLat = None,
     prevLon = None,
-    lastSeenTs = Long.MinValue
+    lastSeenTs = Long.MinValue,
+    lastEvent = None
   )
 
 object Window30sAccumulator:
@@ -132,7 +143,8 @@ object Window30sAccumulator:
     distanceTraveled = 0.0,
     prevLat = None,
     prevLon = None,
-    lastSeenTs = Long.MinValue
+    lastSeenTs = Long.MinValue,
+    lastEvent = None
   )
 
 object Window1mAccumulator:
@@ -152,7 +164,8 @@ object Window1mAccumulator:
     distanceTraveled = 0.0,
     prevLat = None,
     prevLon = None,
-    lastSeenTs = Long.MinValue
+    lastSeenTs = Long.MinValue,
+    lastEvent = None
   )
 
 object Window5mAccumulator:
@@ -172,32 +185,36 @@ object Window5mAccumulator:
     distanceTraveled = 0.0,
     prevLat = None,
     prevLon = None,
-    lastSeenTs = Long.MinValue
+    lastSeenTs = Long.MinValue,
+    lastEvent = None
   )
 
 // ============================================================
 // Union type used by the state map
 // ============================================================
 
-/** Discriminated union of the four window accumulators.
-  *
-  * The window state map is keyed by `(roverId, WindowType)`, but the map's
-  * value type must accommodate any of the four accumulators. This sealed
-  * trait is the type-erasable way to do that without `Any`, and it gives
-  * `EventTimeWindow` exhaustive pattern matches when it walks the map.
-  */
+/** Discriminated union of the four window accumulators. */
 sealed trait WindowAccumulator:
   /** When was the last event merged into this accumulator? Event-time ms. */
   def lastSeenTs: Long
 
+  /** The most recent event merged into this accumulator. Used by
+    * `EventTimeWindow.fireReadyWindows` to build a correct
+    * `FeatureEnvelope` from the true latest event in the window. */
+  def lastEvent: Option[TelemetryEvent]
+
 final case class Acc5s(state: Window5sAccumulator) extends WindowAccumulator:
   def lastSeenTs: Long = state.lastSeenTs
+  def lastEvent: Option[TelemetryEvent] = state.lastEvent
 
 final case class Acc30s(state: Window30sAccumulator) extends WindowAccumulator:
   def lastSeenTs: Long = state.lastSeenTs
+  def lastEvent: Option[TelemetryEvent] = state.lastEvent
 
 final case class Acc1m(state: Window1mAccumulator) extends WindowAccumulator:
   def lastSeenTs: Long = state.lastSeenTs
+  def lastEvent: Option[TelemetryEvent] = state.lastEvent
 
 final case class Acc5m(state: Window5mAccumulator) extends WindowAccumulator:
   def lastSeenTs: Long = state.lastSeenTs
+  def lastEvent: Option[TelemetryEvent] = state.lastEvent

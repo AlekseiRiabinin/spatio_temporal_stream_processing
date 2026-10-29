@@ -514,3 +514,18 @@ networks:
 # Watch it climb to its final value
 # watch -n 2 'docker exec cassandra cqlsh cassandra 9042 -e \
 #   "SELECT COUNT(*) FROM test.af_dbo_v1_7;" 2>/dev/null | grep -E "^ *[0-9]+"'
+
+
+# 1. Export to CSV (features) inside the Cassandra container
+# docker exec cassandra cqlsh cassandra 9042 -e \
+#   "COPY test.af_dbo_v1_7 TO '/tmp/af_dbo_v1_7.csv' WITH HEADER = TRUE;"
+
+# 2. Copy the file (features) from the container to the host
+# docker cp cassandra:/tmp/af_dbo_v1_7.csv ./data/fs/af_dbo_v1_7.csv
+
+# 3. Export to CSV (logs) inside the Cassandra container
+# docker exec cassandra cqlsh cassandra 9042 -e \
+#   "COPY test.af_dbo_v1_7_log TO '/tmp/af_dbo_v1_7_log.csv' WITH HEADER = TRUE;"
+
+# 4. Copy the file (logs) from the container to the host
+# docker cp cassandra:/tmp/af_dbo_v1_7_log.csv ./data/fs/af_dbo_v1_7_log.csv

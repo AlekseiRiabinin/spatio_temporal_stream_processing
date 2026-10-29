@@ -3,6 +3,7 @@ import sbtassembly.MergeStrategy
 
 import scalapb.compiler.Version.scalapbVersion
 
+
 ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / javacOptions ++= Seq("--release", "25")
 
@@ -20,7 +21,6 @@ lazy val root = (project in file("."))
     assembly / assemblyOption ~= (_.withIncludeScala(true)),
 
     // ---- ScalaPB ----
-    // Generate Scala sources from .proto files in src/main/protobuf.
     Compile / PB.targets := Seq(
       scalapb.gen(
         flatPackage = true,
@@ -35,7 +35,6 @@ lazy val root = (project in file("."))
       "dev.zio" %% "zio-streams" % "2.1.27",
 
       // Kafka integration
-      // Verify resolved kafka-clients version and broker compatibility.
       "dev.zio" %% "zio-kafka" % "3.0.0",
 
       // Configuration
@@ -45,6 +44,10 @@ lazy val root = (project in file("."))
 
       // Prometheus metrics
       "dev.zio" %% "zio-metrics-connectors-prometheus" % "2.5.4",
+
+      // HTTP server (for Prometheus /metrics endpoint)
+      // Reference version in official docs is 3.8.1; latest stable is 3.11.6
+      "dev.zio" %% "zio-http" % "3.11.6",
 
       // ScalaPB runtime
       "com.thesamet.scalapb" %% "scalapb-runtime" %
@@ -62,7 +65,6 @@ lazy val root = (project in file("."))
       case PathList("META-INF", "services", _*) =>
         MergeStrategy.filterDistinctLines
 
-      // Discard signature files invalidated by assembling the JAR.
       case PathList("META-INF", xs @ _*)
           if xs.exists(x =>
             x.endsWith(".SF") ||
@@ -72,18 +74,15 @@ lazy val root = (project in file("."))
           ) =>
         MergeStrategy.discard
 
-      // Preserve configuration contributed by dependencies.
       case "reference.conf" =>
         MergeStrategy.concat
 
       case "application.conf" =>
         MergeStrategy.concat
 
-      // Protobuf definitions may be duplicated across dependencies.
       case x if x.endsWith(".proto") =>
         MergeStrategy.deduplicate
 
-      // Avoid silently choosing arbitrary duplicate classes/resources.
       case x =>
         MergeStrategy.deduplicate
     },

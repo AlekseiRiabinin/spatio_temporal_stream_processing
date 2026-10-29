@@ -19,9 +19,10 @@ import cityrover.util.GeoUtils.haversine
   * so a given set of events produces identical payloads in both jobs. When
   * the Flink job's formula changes, this file must change too.
   *
-  * No metrics, no `FeatureEnvelope`, no window boundaries — those are the
-  * concerns of `EventTimeWindow` (state machine) and `FeatureEnvelopeBuilder`
-  * (envelope). This file only knows about accumulators and payloads.
+  * `add*` also records `lastEvent = Some(ev)` on every event, so
+  * `EventTimeWindow.fireReadyWindows` can build a correct
+  * `FeatureEnvelope` from the true "latest event in the window" —
+  * not the triggering event.
   */
 object WindowAggregator {
 
@@ -45,13 +46,11 @@ object WindowAggregator {
       distanceTraveled = newDistance,
       prevLat          = Some(ev.lat),
       prevLon          = Some(ev.lon),
-      lastSeenTs       = ev.ts
+      lastSeenTs       = ev.ts,
+      lastEvent        = Some(ev)   // ← new
     )
   }
 
-  /** `windowEndTs` is the event-time window boundary in ms; the caller
-    * (EventTimeWindow) supplies `window.getEnd` equivalent.
-    */
   def result5s(acc: Window5sAccumulator, windowEndTs: Long): Window5sPayload = {
     val speedAvg = if acc.count > 0 then acc.speedSum / acc.count else 0.0
     val headingChange =
@@ -63,7 +62,7 @@ object WindowAggregator {
       speedAvg5s         = speedAvg,
       speedMax5s         = if acc.count > 0 then acc.speedMax else 0.0,
       speedMin5s         = if acc.count > 0 then acc.speedMin else 0.0,
-      accelerationAvg5s  = 0.0,   // not computed in Flink 5s window either
+      accelerationAvg5s  = 0.0,
       headingChange5s    = headingChange,
       distanceTraveled5s = acc.distanceTraveled
     )
@@ -111,7 +110,8 @@ object WindowAggregator {
       distanceTraveled = newDistance,
       prevLat          = Some(ev.lat),
       prevLon          = Some(ev.lon),
-      lastSeenTs       = ev.ts
+      lastSeenTs       = ev.ts,
+      lastEvent        = Some(ev)   // ← new
     )
   }
 
@@ -178,7 +178,8 @@ object WindowAggregator {
       distanceTraveled = newDistance,
       prevLat          = Some(ev.lat),
       prevLon          = Some(ev.lon),
-      lastSeenTs       = ev.ts
+      lastSeenTs       = ev.ts,
+      lastEvent        = Some(ev)   // ← new
     )
   }
 
@@ -248,7 +249,8 @@ object WindowAggregator {
       distanceTraveled = newDistance,
       prevLat          = Some(ev.lat),
       prevLon          = Some(ev.lon),
-      lastSeenTs       = ev.ts
+      lastSeenTs       = ev.ts,
+      lastEvent        = Some(ev)   // ← new
     )
   }
 
