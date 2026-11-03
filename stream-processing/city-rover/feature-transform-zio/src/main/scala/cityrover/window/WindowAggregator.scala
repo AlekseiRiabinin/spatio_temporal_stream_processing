@@ -33,8 +33,9 @@ object WindowAggregator {
   def add5s(acc: Window5sAccumulator, ev: TelemetryEvent): Window5sAccumulator = {
     val newDistance =
       (acc.prevLat, acc.prevLon) match
-        case (Some(plat), Some(plon)) => acc.distanceTraveled + haversine(plat, plon, ev.lat, ev.lon)
-        case _                        => acc.distanceTraveled
+        case (Some(plat), Some(plon)) => 
+          acc.distanceTraveled + haversine(plat, plon, ev.lat, ev.lon)
+        case _ => acc.distanceTraveled
 
     acc.copy(
       speedSum         = acc.speedSum + ev.speed,
@@ -56,7 +57,7 @@ object WindowAggregator {
     val headingChange =
       (acc.firstHeading, acc.lastHeading) match
         case (Some(first), Some(last)) => math.abs(last - first)
-        case _                          => 0.0
+        case _ => 0.0
 
     Window5sPayload(
       speedAvg5s         = speedAvg,
@@ -230,8 +231,9 @@ object WindowAggregator {
 
     val newDistance =
       (acc.prevLat, acc.prevLon) match
-        case (Some(plat), Some(plon)) => acc.distanceTraveled + haversine(plat, plon, ev.lat, ev.lon)
-        case _                        => acc.distanceTraveled
+        case (Some(plat), Some(plon)) => 
+          acc.distanceTraveled + haversine(plat, plon, ev.lat, ev.lon)
+        case _ => acc.distanceTraveled
 
     acc.copy(
       speedSum         = acc.speedSum + ev.speed,

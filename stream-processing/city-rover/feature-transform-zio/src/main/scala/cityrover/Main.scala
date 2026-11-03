@@ -85,7 +85,7 @@ object Main extends ZIOAppDefault:
     * allocates a fresh key type each time.
     */
   private final case class Metrics(
-    kafkaToFlink: Histogram[Double],
+    kafkaToZio: Histogram[Double],
     queue: Histogram[Double],
     transform: Histogram[Double],
     emit: Histogram[Double],
@@ -94,7 +94,7 @@ object Main extends ZIOAppDefault:
 
   private def buildMetrics(config: AppConfig): Metrics =
     Metrics(
-      kafkaToFlink = LatencyMetrics.kafkaToFlinkMs(config.metrics, "transform"),
+      kafkaToZio = LatencyMetrics.kafkaToZioMs(config.metrics, "transform"),
       queue        = LatencyMetrics.queueMs(config.metrics, "transform"),
       transform    = LatencyMetrics.transformMs(config.metrics, "transform"),
       emit         = LatencyMetrics.emitMs(config.metrics, "transform"),
@@ -160,7 +160,7 @@ object Main extends ZIOAppDefault:
           ZIO.foreachDiscard(pairs) { case (_, _, stamped, tStart, tDone) =>
             val k2f =
               if stamped.t1Ms >= 0L then
-                metrics.kafkaToFlink.update((stamped.tSrcMs - stamped.t1Ms).toDouble)
+                metrics.kafkaToZio.update((stamped.tSrcMs - stamped.t1Ms).toDouble)
               else ZIO.unit
             val q  = metrics.queue.update((tStart - stamped.tSrcMs).toDouble)
             val t  = metrics.transform.update((tDone - tStart).toDouble)

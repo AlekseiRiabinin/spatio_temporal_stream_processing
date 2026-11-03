@@ -9,7 +9,7 @@ import cityrover.util.MetricsConfig
 /** Latency histograms and counters for feature-transform-zio.
   *
   * Mirrors the metric surface of the Flink `LatencyMetrics`:
-  *   - kafka_to_flink_ms : t_src_ms - t1_ms
+  *   - kafka_to_zio_ms   : t_src_ms - t1_ms
   *   - queue_ms          : t_transform_start_ms - t_src_ms
   *   - transform_ms      : t_transform_done_ms - t_transform_start_ms
   *   - emit_ms           : t_sink_enqueue_ms - t_transform_done_ms
@@ -62,9 +62,9 @@ object LatencyMetrics:
   // once in Main and reuse the resulting values.
   // ---------------------------------------------------------------------------
 
-  def kafkaToFlinkMs(config: MetricsConfig, subgroup: String): Metric.Histogram[Double] =
+  def kafkaToZioMs(config: MetricsConfig, subgroup: String): Metric.Histogram[Double] =
     tagHistogram(
-      Metric.histogram("kafka_to_flink_ms", boundaries(config)),
+      Metric.histogram("kafka_to_zio_ms", boundaries(config)),
       config, subgroup
     )
 
@@ -103,8 +103,8 @@ object LatencyMetrics:
     Metric.counter("tagged_records_total")
       .tagged(MetricLabel("namespace", config.namespace))
 
-  def kafkaToFlinkRecorded(config: MetricsConfig, subgroup: String): Metric.Counter[Long] =
-    Metric.counter("kafka_to_flink_recorded_here_total")
+  def kafkaToZioRecorded(config: MetricsConfig, subgroup: String): Metric.Counter[Long] =
+    Metric.counter("kafka_to_zio_recorded_here_total")
       .tagged(MetricLabel("namespace", config.namespace), MetricLabel("subgroup", subgroup))
 
   def transformErrors(config: MetricsConfig, subgroup: String): Metric.Counter[Long] =

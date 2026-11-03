@@ -1,5 +1,8 @@
 package cityrover.window
 
+import scala.collection.mutable.ArrayBuffer
+import zio.Chunk
+
 import cityrover.model.{
   EnrichedEvent,
   EnrichedEvent5s,
@@ -10,7 +13,6 @@ import cityrover.model.{
   TelemetryEvent
 }
 import cityrover.util.WindowConfig
-import zio.Chunk
 
 
 /** Tumbling event-time windows, replacing Flink's
@@ -118,7 +120,7 @@ object EventTimeWindow {
   ): (WindowState, Chunk[EnrichedEvent]) =
     val rovers = state.watermarks.lastEventTs.keySet
     var current = state
-    val fired = scala.collection.mutable.ArrayBuffer.empty[EnrichedEvent]
+    val fired = ArrayBuffer.empty[EnrichedEvent]
 
     rovers.foreach { roverId =>
       val wmAfter =
@@ -153,10 +155,21 @@ object EventTimeWindow {
     val key1m  = (roverId, WindowTypeTag.W1m)
     val key5m  = (roverId, WindowTypeTag.W5m)
 
-    val acc5s  = accs.get(key5s).collect  { case Acc5s(a)  => a }.getOrElse(Window5sAccumulator.empty)
-    val acc30s = accs.get(key30s).collect { case Acc30s(a) => a }.getOrElse(Window30sAccumulator.empty)
-    val acc1m  = accs.get(key1m).collect  { case Acc1m(a)  => a }.getOrElse(Window1mAccumulator.empty)
-    val acc5m  = accs.get(key5m).collect  { case Acc5m(a)  => a }.getOrElse(Window5mAccumulator.empty)
+    val acc5s = accs.get(key5s).collect {
+       case Acc5s(a) => a 
+    }.getOrElse(Window5sAccumulator.empty)
+    
+    val acc30s = accs.get(key30s).collect { 
+      case Acc30s(a) => a 
+    }.getOrElse(Window30sAccumulator.empty)
+    
+    val acc1m = accs.get(key1m).collect {
+      case Acc1m(a) => a 
+    }.getOrElse(Window1mAccumulator.empty)
+    
+    val acc5m = accs.get(key5m).collect {
+      case Acc5m(a) => a 
+    }.getOrElse(Window5mAccumulator.empty)
 
     accs
       .updated(key5s,  Acc5s(WindowAggregator.add5s(acc5s, event)))

@@ -66,7 +66,7 @@ final case class WindowConfig(
 }
 
 final case class MetricsRegisterConfig(
-  kafkaToFlink: Boolean,
+  kafkaToZio: Boolean,
   queue: Boolean,
   transform: Boolean,
   emit: Boolean,

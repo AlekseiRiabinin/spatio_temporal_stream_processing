@@ -9,7 +9,7 @@ package cityrover.model
   * carry a single "partial record" per window instead of a wide flat row
   * with zeros for the other three windows.
   *
-  * `windowEndTs` is the EVENT-TIME window boundary in MILLISECONDS
+  * `windowEndTs` is the event-time window boundary in milliseconds
   * since epoch (replay-stable; not firing time, not wall clock). The
   * writer job multiplies by 1000 for Cassandra USING TIMESTAMP (µs).
   *
