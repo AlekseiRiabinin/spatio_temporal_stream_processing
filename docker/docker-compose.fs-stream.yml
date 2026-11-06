@@ -234,6 +234,55 @@ services:
       - city-rover-net
     restart: unless-stopped
 
+  # -------------------------------
+  # FS STREAM SPARK CLUSTER (4.3.0)
+  # -------------------------------
+
+  spark-master-fs:
+    image: apache/spark:4.3.0
+    container_name: spark-master-fs
+    hostname: spark-master-fs
+    command: >
+      /opt/spark/bin/spark-class
+      org.apache.spark.deploy.master.Master
+      --host spark-master-fs
+      --port 7077
+      --webui-port 8080
+    ports:
+      - "8090:8080"
+      - "7078:7077"
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+      - SPARK_LOCAL_IP=spark-master-fs
+    networks:
+      - city-rover-net
+    restart: unless-stopped
+
+  spark-worker-fs:
+    image: apache/spark:4.3.0
+    container_name: spark-worker-fs
+    hostname: spark-worker-fs
+    command: >
+      /opt/spark/bin/spark-class
+      org.apache.spark.deploy.worker.Worker
+      spark://spark-master-fs:7077
+      --webui-port 8081
+    ports:
+      - "8091:8081"
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+      - SPARK_WORKER_MEMORY=2g
+      - SPARK_WORKER_CORES=2
+      - SPARK_LOCAL_IP=spark-worker-fs
+    depends_on:
+      - spark-master-fs
+    volumes:
+      - ./spark/jars/spark-sql-kafka-0-10_2.13-4.3.0.jar:/opt/spark/jars/spark-sql-kafka-0-10_2.13-4.3.0.jar:ro
+      - ./spark/jars/kafka-clients-3.8.0.jar:/opt/spark/jars/kafka-clients-3.8.0.jar:ro
+    networks:
+      - city-rover-net
+    restart: unless-stopped
+
   # -------------------------
   # FEATURE STORE PYFLINK JOB
   # -------------------------
