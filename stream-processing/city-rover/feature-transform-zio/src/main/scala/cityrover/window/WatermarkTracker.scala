@@ -35,7 +35,7 @@ final case class WatermarkState(
   lastAdvanceTs: Map[String, Long]
 ):
   def watermarkFor(roverId: String): Option[Long] = watermarks.get(roverId)
-  def lastEventFor(roverId: String): Option[Long]  = lastEventTs.get(roverId)
+  def lastEventFor(roverId: String): Option[Long] = lastEventTs.get(roverId)
 
 object WatermarkState:
   val empty: WatermarkState = WatermarkState(Map.empty, Map.empty, Map.empty)

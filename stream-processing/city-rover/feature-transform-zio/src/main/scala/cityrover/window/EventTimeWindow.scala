@@ -172,10 +172,10 @@ object EventTimeWindow {
     }.getOrElse(Window5mAccumulator.empty)
 
     accs
-      .updated(key5s,  Acc5s(WindowAggregator.add5s(acc5s, event)))
+      .updated(key5s, Acc5s(WindowAggregator.add5s(acc5s, event)))
       .updated(key30s, Acc30s(WindowAggregator.add30s(acc30s, event)))
-      .updated(key1m,  Acc1m(WindowAggregator.add1m(acc1m, event)))
-      .updated(key5m,  Acc5m(WindowAggregator.add5m(acc5m, event)))
+      .updated(key1m, Acc1m(WindowAggregator.add1m(acc1m, event)))
+      .updated(key5m, Acc5m(WindowAggregator.add5m(acc5m, event)))
 
   /** Fire all windows for this rover whose end has been crossed by the
     * watermark. Returns the remaining accumulators + the fired events.

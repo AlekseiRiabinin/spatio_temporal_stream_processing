@@ -95,10 +95,10 @@ object Main extends ZIOAppDefault:
   private def buildMetrics(config: AppConfig): Metrics =
     Metrics(
       kafkaToZio = LatencyMetrics.kafkaToZioMs(config.metrics, "transform"),
-      queue        = LatencyMetrics.queueMs(config.metrics, "transform"),
-      transform    = LatencyMetrics.transformMs(config.metrics, "transform"),
-      emit         = LatencyMetrics.emitMs(config.metrics, "transform"),
-      latency      = LatencyMetrics.latencyMs(config.metrics, "transform")
+      queue      = LatencyMetrics.queueMs(config.metrics, "transform"),
+      transform  = LatencyMetrics.transformMs(config.metrics, "transform"),
+      emit       = LatencyMetrics.emitMs(config.metrics, "transform"),
+      latency    = LatencyMetrics.latencyMs(config.metrics, "transform")
     )
 
   /** The pipeline: consume → window → produce → commit, with metrics.
@@ -117,7 +117,7 @@ object Main extends ZIOAppDefault:
       .mapAccum(WindowState.empty) { (state, pair) =>
         val (stamped, offset) = pair
 
-        // kafka_to_flink_ms: from broker timestamp to the moment we
+        // kafka_to_zio_ms: from broker timestamp to the moment we
         // started processing this record.
         val tTransformStartMs = java.lang.System.currentTimeMillis()
 
@@ -141,7 +141,7 @@ object Main extends ZIOAppDefault:
         // queue_ms = t_transform_start - t_src
         // transform_ms = t_transform_done - t_transform_start
         //
-        // Note: kafka_to_flink_ms is captured later (in mapChunksZIO) so
+        // Note: kafka_to_zio_ms is captured later (in mapChunksZIO) so
         // it can be skipped if t1Ms < 0. Same for emit_ms / latency_ms.
         (
           newState,
@@ -154,23 +154,23 @@ object Main extends ZIOAppDefault:
         val allOffsets = OffsetBatch(pairs.map(_._1))
         val allFired   = pairs.flatMap(_._2)
 
-        // Record per-element metrics (kafka_to_flink, queue, transform)
+        // Record per-element metrics (kafka_to_zio, queue, transform)
         // for every consumed record.
         val elementMetrics: ZIO[Any, Nothing, Unit] =
           ZIO.foreachDiscard(pairs) { case (_, _, stamped, tStart, tDone) =>
-            val k2f =
+            val k2z =
               if stamped.t1Ms >= 0L then
                 metrics.kafkaToZio.update((stamped.tSrcMs - stamped.t1Ms).toDouble)
               else ZIO.unit
-            val q  = metrics.queue.update((tStart - stamped.tSrcMs).toDouble)
-            val t  = metrics.transform.update((tDone - tStart).toDouble)
-            k2f *> q *> t
+            val q = metrics.queue.update((tStart - stamped.tSrcMs).toDouble)
+            val t = metrics.transform.update((tDone - tStart).toDouble)
+            k2z *> q *> t
           }
 
         // Record emit_ms and latency_ms for each fired event, dispatched
         // by subgroup. These use the same Metrics values; the histogram
         // name is shared, but the subgroup label distinguishes windows.
-        // If you want per-window histograms, call LatencyMetrics.* per
+        // If per-window histograms are needed, call LatencyMetrics.* per
         // subgroup instead — see note below.
         val tSinkEnqueueMs = java.lang.System.currentTimeMillis()
         val firedMetrics: ZIO[Any, Nothing, Unit] =
@@ -223,10 +223,10 @@ object Main extends ZIOAppDefault:
         .fork
 
       _ <- pipeline(config, metrics).runDrain
-             .provideSomeLayer(
-               ZLayer.scoped(Consumer.make(consumerSettings)) ++
-               ZLayer.scoped(Producer.make(producerSettings))
-             )
+            .provideSomeLayer(
+              ZLayer.scoped(Consumer.make(consumerSettings)) ++
+              ZLayer.scoped(Producer.make(producerSettings))
+            )
 
       _ <- serverFiber.interrupt
     yield ()).provide(ConfigLoader.live)
