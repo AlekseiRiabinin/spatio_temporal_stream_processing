@@ -249,8 +249,8 @@ services:
       --port 7077
       --webui-port 8080
     ports:
-      - "8090:8080"
-      - "7078:7077"
+      - "8090:8080"   # Web UI
+      - "7078:7077"   # RPC
     environment:
       - SPARK_NO_DAEMONIZE=true
       - SPARK_LOCAL_IP=spark-master-fs
@@ -267,18 +267,21 @@ services:
       org.apache.spark.deploy.worker.Worker
       spark://spark-master-fs:7077
       --webui-port 8081
+      --cores 2
+      --memory 2g
     ports:
-      - "8091:8081"
+      - "8091:8081"   # Worker Web UI
     environment:
       - SPARK_NO_DAEMONIZE=true
-      - SPARK_WORKER_MEMORY=2g
-      - SPARK_WORKER_CORES=2
       - SPARK_LOCAL_IP=spark-worker-fs
     depends_on:
       - spark-master-fs
     volumes:
-      - ./spark/jars/spark-sql-kafka-0-10_2.13-4.3.0.jar:/opt/spark/jars/spark-sql-kafka-0-10_2.13-4.3.0.jar:ro
-      - ./spark/jars/kafka-clients-3.8.0.jar:/opt/spark/jars/kafka-clients-3.8.0.jar:ro
+      # Kafka connector JARs (Scala 2.13, Spark 4.3.0 compatible)
+      - ../spark/jars/spark-sql-kafka-0-10_2.13-4.3.0.jar:/opt/spark/jars/spark-sql-kafka-0-10_2.13-4.3.0.jar:ro
+      - ../spark/jars/kafka-clients-3.8.0.jar:/opt/spark/jars/kafka-clients-3.8.0.jar:ro
+      - ../spark/jars/spark-token-provider-kafka-0-10_2.13-4.3.0.jar:/opt/spark/jars/spark-token-provider-kafka-0-10_2.13-4.3.0.jar:ro
+      - ../spark/jars/commons-pool2-2.12.0.jar:/opt/spark/jars/commons-pool2-2.12.0.jar:ro
     networks:
       - city-rover-net
     restart: unless-stopped
@@ -396,6 +399,95 @@ services:
       - city-rover-net
     restart: "no"
 
+  # -----------------------------------------------------------------
+  # SPARK PROBES — Spark 4.3.0
+  # -----------------------------------------------------------------
+
+  spark_kafka_latency_probe:
+    build:
+      context: ../../feature_store_spark_probe/spark_kafka_latency_probe
+      dockerfile: Dockerfile
+    image: spark-kafka-latency-probe:dev
+    container_name: spark_kafka_latency_probe
+    hostname: spark_kafka_latency_probe
+    depends_on:
+      kafka-1:
+        condition: service_started
+      spark-master-fs:
+        condition: service_started
+    command: >
+      /opt/spark/bin/spark-submit
+      --master spark://spark-master-fs:7077
+      --conf spark.driver.host=spark-probe-driver
+      --conf spark.driver.port=7081
+      --conf spark.driver.bindAddress=0.0.0.0
+      --conf spark.sql.shuffle.partitions=1
+      --class com.featurestore.probe.KafkaLatencyProbe
+      /opt/spark/work-dir/spark-probes.jar
+    environment:
+      KAFKA_BOOTSTRAP: kafka-1:19092
+      KAFKA_TOPIC_FIN: stream_fs.test.intellinx_antifraud_dbo_fin_transactions
+      KAFKA_TOPIC_NOFIN: stream_fs.test.intellinx_antifraud_dbo_nofin_transactions
+      KAFKA_TOPIC_INCOMING: stream_fs.test.intellinx_antifraud_dbo_incoming_payments
+      KAFKA_TOPIC_SINK: stream_fs.test.probe_transformation
+      KAFKA_START_FROM_PROBE: latest
+      TRIGGER_MODE: realtime
+      TRIGGER_INTERVAL: 0 seconds
+      REALTIME_CHECKPOINT_INTERVAL: 5 seconds
+      CHECKPOINT_LOCATION: /tmp/spark-checkpoint-exp1
+    networks:
+      city-rover-net:
+        aliases:
+          - spark-probe-driver
+    restart: "no"
+
+  spark_cassandra_latency_probe:
+    image: apache/spark:4.3.0
+    container_name: spark_cassandra_latency_probe
+    hostname: spark_cassandra_latency_probe
+    depends_on:
+      kafka-1:
+        condition: service_started
+      cassandra:
+        condition: service_healthy
+      spark-master-fs:
+        condition: service_started
+    command: >
+      /opt/spark/bin/spark-submit
+      --master spark://spark-master-fs:7077
+      --conf spark.driver.host=172.18.0.6
+      --conf spark.driver.bindAddress=172.18.0.6
+      --conf spark.driver.port=7081
+      --conf spark.sql.shuffle.partitions=1
+      --class com.featurestore.probe.KafkaLatencyProbe
+      /opt/spark/work-dir/spark-probes.jar
+    environment:
+      KAFKA_BOOTSTRAP: kafka-1:19092
+      KAFKA_TOPIC_PROBE: stream_fs.test.probe_serving_rows
+      KAFKA_START_FROM_PROBE: latest
+      CASSANDRA_CONTACT_POINTS: cassandra
+      CASSANDRA_PORT: "9042"
+      CASSANDRA_LOCAL_DC: datacenter1
+      CASSANDRA_KEYSPACE: test
+      CASSANDRA_TABLE: af_dbo_v1_7
+      TRIGGER_INTERVAL: 100 milliseconds
+      PROBE_RUN_ID: exp2
+    volumes:
+      - ../../spark-probes/target/scala-2.13/spark-probes.jar:/opt/spark/work-dir/spark-probes.jar:ro
+      # DataStax Java driver + its dependencies, since there is no Spark Cassandra connector for 4.3.0
+      - ../spark/jars/java-driver-core-4.17.0.jar:/opt/spark/jars/java-driver-core-4.17.0.jar:ro
+      - ../spark/jars/guava-33.2.1-jre.jar:/opt/spark/jars/guava-33.2.1-jre.jar:ro
+      - ../spark/jars/netty-all-4.1.109.Final.jar:/opt/spark/jars/netty-all-4.1.109.Final.jar:ro
+      - ../spark/jars/metrics-core-4.2.25.jar:/opt/spark/jars/metrics-core-4.2.25.jar:ro
+      - ../spark/jars/typesafe-config-1.4.3.jar:/opt/spark/jars/typesafe-config-1.4.3.jar:ro
+    networks:
+      - city-rover-net
+    restart: "no"
+
+  # -----------------
+  # Feature Generator
+  # -----------------
+
   feature_store_data_generator:
     build:
       context: ../../feature_store_data_generator
@@ -500,17 +592,21 @@ networks:
 
 
 # ./start-system-fs-stream.sh
+# ./start-system-spark-probe.sh
 # ./run-feature-store-playground.sh
 # ./run-cassandra-latency-probe.sh
 # ./run-kafka-latency-probe.sh
 # ./run-feature-store-data-generator.sh
 # ./run-feature-store-pipeline.sh
+# ./run-spark-kafka-latency-probe.sh
 
 # docker compose -f docker/docker-compose.fs-stream.yml build --no-cache feature_store_playground
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate feature_store_playground
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate cassandra_latency_probe
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate kafka_latency_probe
 # docker compose -f docker/docker-compose.fs-stream.yml build --no-cache feature_store_data_generator
+# docker compose -f docker/docker-compose.fs-stream.yml build --no-cache spark_kafka_latency_probe
+# docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate spark_kafka_latency_probe
 
 # docker compose -f docker/docker-compose.fs-stream.yml up -d --force-recreate \
 #   flink-jobmanager-fs flink-taskmanager-fs
@@ -531,7 +627,7 @@ networks:
 #   --data @json-to-protobuf-telemetry.json | jq
 #
 # 3. Check status:
-# curl -s http://localhost:8083/connectors/json-to-protobuf-telemetry/status | jq
+# curl -s http://lo calhost:8083/connectors/json-to-protobuf-telemetry/status | jq
 #
 # 4. Verify Protobuf messages in Kafka:
 # docker exec -i kafka-1 \

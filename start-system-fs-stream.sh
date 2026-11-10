@@ -5,7 +5,7 @@ COMPOSE_FILE="docker/docker-compose.fs-stream.yml"
 NETWORK="city-rover-net"
 
 # ------------------------------------------------------------
-# FS cluster container names & endpoints
+# Flink FS cluster container names & endpoints
 # ------------------------------------------------------------
 FS_JM_CONTAINER="flink-jobmanager-fs"
 FS_TM_CONTAINER="flink-taskmanager-fs"
@@ -14,6 +14,17 @@ FS_JM_REST_INTERNAL="http://flink-jobmanager-fs:8081"
 FS_JM_REST_EXTERNAL="http://localhost:8082"
 FS_TM_METRICS_EXTERNAL="http://localhost:9093/metrics"
 FS_JM_METRICS_EXTERNAL="http://localhost:9092/metrics"
+
+# ------------------------------------------------------------
+# Spark FS cluster container names & endpoints
+# ------------------------------------------------------------
+SPARK_MASTER_CONTAINER="spark-master-fs"
+SPARK_WORKER_CONTAINER="spark-worker-fs"
+SPARK_MASTER_HOST="spark-master-fs"
+SPARK_MASTER_RPC_INTERNAL="spark://spark-master-fs:7077"
+SPARK_MASTER_RPC_EXTERNAL="localhost:7078"
+SPARK_MASTER_UI_EXTERNAL="http://localhost:8090"
+SPARK_WORKER_UI_EXTERNAL="http://localhost:8091"
 
 echo "=== Starting FS-Stream System ==="
 echo "Compose file: $COMPOSE_FILE"
@@ -352,6 +363,75 @@ else
 fi
 
 # ============================================================
+# 9. Spark Master (FS cluster)
+# ============================================================
+echo ""
+echo "9. Starting Spark Master (FS cluster)..."
+docker compose -f "$COMPOSE_FILE" up -d "$SPARK_MASTER_CONTAINER"
+verify_network "$SPARK_MASTER_CONTAINER"
+
+wait_for_container \
+    "$SPARK_MASTER_CONTAINER" \
+    "bash -c 'exec 3<>/dev/tcp/spark-master-fs/7077' && echo ok" \
+    "Spark Master (RPC port 7077)" \
+    30 \
+    2
+
+wait_for_container \
+    "$SPARK_MASTER_CONTAINER" \
+    "bash -c 'exec 3<>/dev/tcp/spark-master-fs/8080' && echo ok" \
+    "Spark Master (Web UI port 8080)" \
+    30 \
+    2
+
+# ============================================================
+# 10. Spark Worker (FS cluster)
+# ============================================================
+echo ""
+echo "10. Starting Spark Worker (FS cluster)..."
+docker compose -f "$COMPOSE_FILE" up -d "$SPARK_WORKER_CONTAINER"
+verify_network "$SPARK_WORKER_CONTAINER"
+
+SPARK_WORKER_READY=0
+for i in $(seq 1 30); do
+    if docker exec "$SPARK_MASTER_CONTAINER" bash -c \
+        "exec 3<>/dev/tcp/spark-master-fs/8080 && printf 'GET /json/ HTTP/1.0\r\n\r\n' >&3 && cat <&3" \
+        2>/dev/null | grep -q '"aliveworkers" *: *[1-9]'; then
+        SPARK_WORKER_READY=1
+        break
+    fi
+    echo "Spark Worker not registered yet... retrying ($i/30)"
+    sleep 2
+done
+
+if [ "$SPARK_WORKER_READY" -ne 1 ]; then
+    echo "ERROR: Spark Worker did not register with the master."
+    echo "--- Last 100 log lines from $SPARK_WORKER_CONTAINER ---"
+    docker logs --tail 100 "$SPARK_WORKER_CONTAINER" || true
+    echo "--- Last 100 log lines from $SPARK_MASTER_CONTAINER ---"
+    docker logs --tail 100 "$SPARK_MASTER_CONTAINER" || true
+    exit 1
+fi
+echo "Spark Worker is registered with the master."
+
+# ============================================================
+# 11. Verify Kafka connector JARs inside the Spark worker
+# ============================================================
+echo ""
+echo "11. Verifying Kafka connector JARs in Spark worker..."
+SPARK_KAFKA_JARS=$(docker exec "$SPARK_WORKER_CONTAINER" sh -c \
+    'ls /opt/spark/jars/ 2>/dev/null | grep -E "spark-sql-kafka|kafka-clients" || true')
+if [ -n "$SPARK_KAFKA_JARS" ]; then
+    echo "Kafka connector JAR(s) found in $SPARK_WORKER_CONTAINER:"
+    echo "$SPARK_KAFKA_JARS" | sed 's/^/  - /'
+else
+    echo "WARNING: No Kafka connector JARs found in /opt/spark/jars/ of $SPARK_WORKER_CONTAINER."
+    echo "Check the volumes section of $SPARK_WORKER_CONTAINER in $COMPOSE_FILE:"
+    echo "  ../spark/jars/spark-sql-kafka-0-10_2.13-4.3.0.jar"
+    echo "  ../spark/jars/kafka-clients-3.8.0.jar"
+fi
+
+# ============================================================
 # Final network verification
 # ============================================================
 echo ""
@@ -364,16 +444,13 @@ docker network inspect "$NETWORK" \
 # ============================================================
 # Final status
 # ============================================================
-echo ""
-echo "============================================================"
-echo "=== FS-Stream System is running ============================"
-echo "============================================================"
-echo ""
 echo "Services:"
 echo "  - kafka-1"
 echo "  - cassandra"
 echo "  - $FS_JM_CONTAINER"
 echo "  - $FS_TM_CONTAINER"
+echo "  - $SPARK_MASTER_CONTAINER"
+echo "  - $SPARK_WORKER_CONTAINER"
 echo ""
 echo "Endpoints:"
 echo "  Kafka:                 localhost:19092"
@@ -381,9 +458,6 @@ echo "  Cassandra CQL:         localhost:9042"
 echo "  Flink FS Dashboard:    $FS_JM_REST_EXTERNAL"
 echo "  Flink FS JM Metrics:   $FS_JM_METRICS_EXTERNAL"
 echo "  Flink FS TM Metrics:   $FS_TM_METRICS_EXTERNAL"
-echo ""
-echo "Docker network:"
-echo "  $NETWORK"
-echo ""
-echo "FS-Stream system startup complete."
-echo ""
+echo "  Spark Master UI:       $SPARK_MASTER_UI_EXTERNAL"
+echo "  Spark Worker UI:       $SPARK_WORKER_UI_EXTERNAL"
+echo "  Spark Master RPC:      $SPARK_MASTER_RPC_EXTERNAL"
