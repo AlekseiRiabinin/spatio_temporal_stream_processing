@@ -1,0 +1,181 @@
+syntax = "proto3";
+
+package cityrover.telemetry;
+
+import "scalapb/scalapb.proto";
+
+option (scalapb.options) = {
+  flat_package: true
+};
+
+message Telemetry {
+  string roverId = 1;
+  int64 ts = 2;
+
+  optional double lat = 3;
+  optional double lon = 4;
+  optional double speed = 5;
+  optional double heading = 6;
+
+  optional string edgeId = 7;
+  optional string routeId = 8;
+}
+
+// ============================================================
+// Window discriminator
+// ============================================================
+enum WindowType {
+  WINDOW_TYPE_UNSPECIFIED = 0;
+  WINDOW_5S  = 1;
+  WINDOW_30S = 2;
+  WINDOW_1M  = 3;
+  WINDOW_5M  = 4;
+}
+
+// ============================================================
+// Enriched event — one partial record per window firing.
+//
+// Invariants:
+//   * Exactly one `features` oneof variant is set per message.
+//   * `windowEndTs` is the EVENT-TIME window boundary in
+//     MILLISECONDS since epoch (replay-stable; not firing time,
+//     not wall clock). The writer multiplies by 1000 for
+//     Cassandra USING TIMESTAMP (microseconds).
+//   * Fields shared by all windows (identity, raw telemetry,
+//     geospatial, route, behavioral, metadata, quality, debug)
+//     live at the top level and are populated by every window
+//     variant — OR, if a field is only computed by one window,
+//     move it into that window's message (see notes below).
+// ============================================================
+message EnrichedTelemetryEvent {
+
+  // ----------------------------------------------------------
+  // Envelope / discriminator
+  // ----------------------------------------------------------
+  WindowType windowType = 1;   // which window produced this record
+  int64 windowEndTs     = 2;   // event-time window end, ms since epoch
+
+  // ----------------------------------------------------------
+  // Identity / keys (every window populates these)
+  // ----------------------------------------------------------
+  string roverId = 10;
+  string edgeId  = 11;
+  string routeId = 12;
+
+  // ----------------------------------------------------------
+  // Raw telemetry snapshot (every window populates these —
+  // this is the "latest event in the window" the features
+  // were derived from)
+  // ----------------------------------------------------------
+  double lat     = 20;
+  double lon     = 21;
+  int64  ts      = 22;   // event-time of the sampled event, ms
+  double speed   = 23;
+  double heading = 24;
+
+  // ----------------------------------------------------------
+  // Per-window feature payload.
+  // Exactly one variant is set per message.
+  // ----------------------------------------------------------
+  oneof features {
+    Window5sFeatures  w5s  = 30;
+    Window30sFeatures w30s = 31;
+    Window1mFeatures  w1m  = 32;
+    Window5mFeatures  w5m  = 33;
+  }
+
+  // ----------------------------------------------------------
+  // Geospatial features (assign to the owning window, or keep
+  // top-level if recomputed per window — see note).
+  // ----------------------------------------------------------
+  int64  gridCellId    = 40;
+  string regionId      = 41;
+  string snappedEdgeId = 42;
+  double snappedLat    = 43;
+  double snappedLon    = 44;
+
+  // ----------------------------------------------------------
+  // Route / navigation features
+  // ----------------------------------------------------------
+  double routeProgress  = 50;
+  double routeDeviation = 51;
+  double expectedSpeed  = 52;
+  double speedRatio     = 53;
+
+  // ----------------------------------------------------------
+  // Behavioral features
+  // ----------------------------------------------------------
+  double drivingStyleScore = 60;
+  double anomalyScore      = 61;
+
+  // ----------------------------------------------------------
+  // ML feature store metadata
+  // ----------------------------------------------------------
+  string featureVersion   = 70;
+  int64  featureTimestamp = 71;   // ms, event-time of feature computation
+  int64  featureLatencyMs = 72;   // processing-latency observability
+
+  // ----------------------------------------------------------
+  // Quality / anomaly detection
+  // ----------------------------------------------------------
+  bool isOutlier        = 80;
+  bool isGpsJump        = 81;
+  bool isSpeedAnomaly   = 82;
+  bool isHeadingAnomaly = 83;
+
+  // ----------------------------------------------------------
+  // Debug / observability
+  // ----------------------------------------------------------
+  string rawEventHash     = 90;
+  string processingNode   = 91;
+  int64  processingTimeMs = 92;
+}
+
+// ============================================================
+// Per-window feature payloads
+// ============================================================
+
+message Window5sFeatures {
+  double speedAvg5s           = 1;
+  double speedMax5s           = 2;
+  double speedMin5s           = 3;
+  double accelerationAvg5s    = 4;
+  double headingChange5s      = 5;
+  double distanceTraveled5s   = 6;
+  int64  updatedAt5s          = 7;   // event-time, ms — mirrors windowEndTs
+}
+
+message Window30sFeatures {
+  double speedAvg30s          = 1;
+  double speedStd30s          = 2;
+  double accelerationAvg30s   = 3;
+  double jerkAvg30s           = 4;
+  double turnRateAvg30s       = 5;
+  int32  stopsCount30s        = 6;
+  double distanceTraveled30s  = 7;
+  int64  updatedAt30s         = 8;
+}
+
+message Window1mFeatures {
+  double speedAvg1m           = 1;
+  double speedStd1m           = 2;
+  double accelerationAvg1m    = 3;
+  double jerkAvg1m            = 4;
+  double turnRateAvg1m        = 5;
+  double idleRatio1m          = 6;
+  double distanceTraveled1m   = 7;
+  double congestionLevel1m    = 8;
+  int64  updatedAt1m          = 9;
+}
+
+message Window5mFeatures {
+  double speedAvg5m           = 1;
+  double speedStd5m           = 2;
+  double accelerationAvg5m    = 3;
+  double jerkAvg5m            = 4;
+  double turnRateAvg5m        = 5;
+  double idleRatio5m          = 6;
+  double distanceTraveled5m   = 7;
+  double congestionLevel5m    = 8;
+  int64  updatedAt5m          = 9;
+}

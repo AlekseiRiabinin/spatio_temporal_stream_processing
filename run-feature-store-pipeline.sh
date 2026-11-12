@@ -29,7 +29,7 @@ CASSANDRA_TABLE="test.af_dbo_v1_7"
 
 # env.execute() names in transform_job.py and writer_job.py — update if renamed.
 TRANSFORM_JOB_NAME="transform-job"
-WRITER_JOB_NAME="cassandra-latency-probe"
+WRITER_JOB_NAME="writer-job"
 
 log()  { printf '\033[1;34m[pipeline]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[pipeline]\033[0m %s\n' "$*" >&2; }

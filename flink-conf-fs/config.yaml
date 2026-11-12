@@ -9,7 +9,7 @@ taskmanager:
 metrics:
   reporter:
     prom:
-      port: 9093
+      port: '9093'
       factory:
         class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
   reporters: prom

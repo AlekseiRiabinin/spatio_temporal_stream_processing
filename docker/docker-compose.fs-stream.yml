@@ -229,7 +229,7 @@ services:
       - ../flink-conf-fs/config.yaml:/opt/flink/conf/config.yaml
       - ../flink-jars-fs/flink-sql-connector-kafka-5.0.0-2.2.jar:/opt/flink/lib/flink-sql-connector-kafka-5.0.0-2.2.jar:ro
       - ../../feature_store_playground/cassandra_latency_probe.py:/opt/flink/usrlib/cassandra_latency_probe.py:ro
-      - ../../feature_store_playground/kafka_latency_probe.py:/opt/flink/usrlib/kafka_latency_probe.py:ros
+      - ../../feature_store_playground/kafka_latency_probe.py:/opt/flink/usrlib/kafka_latency_probe.py:ro
     networks:
       - city-rover-net
     restart: unless-stopped
@@ -529,6 +529,7 @@ services:
         condition: service_started
     environment:
       PYTHONUNBUFFERED: "1"
+      PROMETHEUS_METRICS_PORT: "9099"
       # Kafka input (single topic, written by feature_store_data_generator)
       KAFKA_BOOTSTRAP: kafka-1:19092
       KAFKA_TOPIC_INPUT: stream_fs.test.intellinx_antifraud_dbo
@@ -543,6 +544,7 @@ services:
       PARALLELISM: "1"
     volumes:
       - ../../feature_store_pipeline/transform_job.py:/opt/flink/usrlib/transform_job.py:ro
+      - ../../feature_store_pipeline/metrics_transform.py:/opt/flink/usrlib/metrics_transform.py:ro
     networks:
       - city-rover-net
     restart: "no"
@@ -564,6 +566,7 @@ services:
         condition: service_started
     environment:
       PYTHONUNBUFFERED: "1"
+      PROMETHEUS_METRICS_PORT: "9101"
       # Kafka input (hop topic — written by transform_job)
       KAFKA_BOOTSTRAP: kafka-1:19092
       KAFKA_TOPIC_PROBE: stream_fs.test.probe_serving_rows
@@ -578,6 +581,7 @@ services:
       PARALLELISM: "1"
     volumes:
       - ../../feature_store_pipeline/writer_job.py:/opt/flink/usrlib/writer_job.py:ro
+      - ../../feature_store_pipeline/metrics_writer.py:/opt/flink/usrlib/metrics_writer.py:ro
     networks:
       - city-rover-net
     restart: "no"

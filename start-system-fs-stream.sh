@@ -365,71 +365,71 @@ fi
 # ============================================================
 # 9. Spark Master (FS cluster)
 # ============================================================
-echo ""
-echo "9. Starting Spark Master (FS cluster)..."
-docker compose -f "$COMPOSE_FILE" up -d "$SPARK_MASTER_CONTAINER"
-verify_network "$SPARK_MASTER_CONTAINER"
+# echo ""
+# echo "9. Starting Spark Master (FS cluster)..."
+# docker compose -f "$COMPOSE_FILE" up -d "$SPARK_MASTER_CONTAINER"
+# verify_network "$SPARK_MASTER_CONTAINER"
 
-wait_for_container \
-    "$SPARK_MASTER_CONTAINER" \
-    "bash -c 'exec 3<>/dev/tcp/spark-master-fs/7077' && echo ok" \
-    "Spark Master (RPC port 7077)" \
-    30 \
-    2
+# wait_for_container \
+#     "$SPARK_MASTER_CONTAINER" \
+#     "bash -c 'exec 3<>/dev/tcp/spark-master-fs/7077' && echo ok" \
+#     "Spark Master (RPC port 7077)" \
+#     30 \
+#     2
 
-wait_for_container \
-    "$SPARK_MASTER_CONTAINER" \
-    "bash -c 'exec 3<>/dev/tcp/spark-master-fs/8080' && echo ok" \
-    "Spark Master (Web UI port 8080)" \
-    30 \
-    2
+# wait_for_container \
+#     "$SPARK_MASTER_CONTAINER" \
+#     "bash -c 'exec 3<>/dev/tcp/spark-master-fs/8080' && echo ok" \
+#     "Spark Master (Web UI port 8080)" \
+#     30 \
+#     2
 
 # ============================================================
 # 10. Spark Worker (FS cluster)
 # ============================================================
-echo ""
-echo "10. Starting Spark Worker (FS cluster)..."
-docker compose -f "$COMPOSE_FILE" up -d "$SPARK_WORKER_CONTAINER"
-verify_network "$SPARK_WORKER_CONTAINER"
+# echo ""
+# echo "10. Starting Spark Worker (FS cluster)..."
+# docker compose -f "$COMPOSE_FILE" up -d "$SPARK_WORKER_CONTAINER"
+# verify_network "$SPARK_WORKER_CONTAINER"
 
-SPARK_WORKER_READY=0
-for i in $(seq 1 30); do
-    if docker exec "$SPARK_MASTER_CONTAINER" bash -c \
-        "exec 3<>/dev/tcp/spark-master-fs/8080 && printf 'GET /json/ HTTP/1.0\r\n\r\n' >&3 && cat <&3" \
-        2>/dev/null | grep -q '"aliveworkers" *: *[1-9]'; then
-        SPARK_WORKER_READY=1
-        break
-    fi
-    echo "Spark Worker not registered yet... retrying ($i/30)"
-    sleep 2
-done
+# SPARK_WORKER_READY=0
+# for i in $(seq 1 30); do
+#     if docker exec "$SPARK_MASTER_CONTAINER" bash -c \
+#         "exec 3<>/dev/tcp/spark-master-fs/8080 && printf 'GET /json/ HTTP/1.0\r\n\r\n' >&3 && cat <&3" \
+#         2>/dev/null | grep -q '"aliveworkers" *: *[1-9]'; then
+#         SPARK_WORKER_READY=1
+#         break
+#     fi
+#     echo "Spark Worker not registered yet... retrying ($i/30)"
+#     sleep 2
+# done
 
-if [ "$SPARK_WORKER_READY" -ne 1 ]; then
-    echo "ERROR: Spark Worker did not register with the master."
-    echo "--- Last 100 log lines from $SPARK_WORKER_CONTAINER ---"
-    docker logs --tail 100 "$SPARK_WORKER_CONTAINER" || true
-    echo "--- Last 100 log lines from $SPARK_MASTER_CONTAINER ---"
-    docker logs --tail 100 "$SPARK_MASTER_CONTAINER" || true
-    exit 1
-fi
-echo "Spark Worker is registered with the master."
+# if [ "$SPARK_WORKER_READY" -ne 1 ]; then
+#     echo "ERROR: Spark Worker did not register with the master."
+#     echo "--- Last 100 log lines from $SPARK_WORKER_CONTAINER ---"
+#     docker logs --tail 100 "$SPARK_WORKER_CONTAINER" || true
+#     echo "--- Last 100 log lines from $SPARK_MASTER_CONTAINER ---"
+#     docker logs --tail 100 "$SPARK_MASTER_CONTAINER" || true
+#     exit 1
+# fi
+# echo "Spark Worker is registered with the master."
 
 # ============================================================
 # 11. Verify Kafka connector JARs inside the Spark worker
 # ============================================================
-echo ""
-echo "11. Verifying Kafka connector JARs in Spark worker..."
-SPARK_KAFKA_JARS=$(docker exec "$SPARK_WORKER_CONTAINER" sh -c \
-    'ls /opt/spark/jars/ 2>/dev/null | grep -E "spark-sql-kafka|kafka-clients" || true')
-if [ -n "$SPARK_KAFKA_JARS" ]; then
-    echo "Kafka connector JAR(s) found in $SPARK_WORKER_CONTAINER:"
-    echo "$SPARK_KAFKA_JARS" | sed 's/^/  - /'
-else
-    echo "WARNING: No Kafka connector JARs found in /opt/spark/jars/ of $SPARK_WORKER_CONTAINER."
-    echo "Check the volumes section of $SPARK_WORKER_CONTAINER in $COMPOSE_FILE:"
-    echo "  ../spark/jars/spark-sql-kafka-0-10_2.13-4.3.0.jar"
-    echo "  ../spark/jars/kafka-clients-3.8.0.jar"
-fi
+# echo ""
+# echo "11. Verifying Kafka connector JARs in Spark worker..."
+# SPARK_KAFKA_JARS=$(docker exec "$SPARK_WORKER_CONTAINER" sh -c \
+#     'ls /opt/spark/jars/ 2>/dev/null | grep -E "spark-sql-kafka|kafka-clients" || true')
+# if [ -n "$SPARK_KAFKA_JARS" ]; then
+#     echo "Kafka connector JAR(s) found in $SPARK_WORKER_CONTAINER:"
+#     echo "$SPARK_KAFKA_JARS" | sed 's/^/  - /'
+# else
+#     echo "WARNING: No Kafka connector JARs found in /opt/spark/jars/ of $SPARK_WORKER_CONTAINER."
+#     echo "Check the volumes section of $SPARK_WORKER_CONTAINER in $COMPOSE_FILE:"
+#     echo "  ../spark/jars/spark-sql-kafka-0-10_2.13-4.3.0.jar"
+#     echo "  ../spark/jars/kafka-clients-3.8.0.jar"
+# fi
 
 # ============================================================
 # Final network verification
