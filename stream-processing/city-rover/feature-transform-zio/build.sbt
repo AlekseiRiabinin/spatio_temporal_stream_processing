@@ -46,7 +46,6 @@ lazy val root = (project in file("."))
       "dev.zio" %% "zio-metrics-connectors-prometheus" % "2.5.4",
 
       // HTTP server (for Prometheus /metrics endpoint)
-      // Reference version in official docs is 3.8.1; latest stable is 3.11.6
       "dev.zio" %% "zio-http" % "3.11.6",
 
       // ScalaPB runtime
@@ -74,6 +73,20 @@ lazy val root = (project in file("."))
           ) =>
         MergeStrategy.discard
 
+      case PathList("META-INF", "io.netty.versions.properties") =>
+        MergeStrategy.first
+
+      case PathList("META-INF", "INDEX.LIST") =>
+        MergeStrategy.discard
+
+      case "module-info.class" =>
+        MergeStrategy.discard
+      case PathList("META-INF", "versions", _, "module-info.class") =>
+        MergeStrategy.discard
+
+      case PathList("scala", "annotation", _*) =>
+        MergeStrategy.first
+
       case "reference.conf" =>
         MergeStrategy.concat
 
@@ -84,7 +97,7 @@ lazy val root = (project in file("."))
         MergeStrategy.deduplicate
 
       case x =>
-        MergeStrategy.deduplicate
+        MergeStrategy.first
     },
 
     // ---- Runtime ----

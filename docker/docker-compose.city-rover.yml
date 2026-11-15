@@ -449,9 +449,66 @@ services:
     restart: "no"
 
 
-  # ---
-  # API
-  # ---
+  # ---------------------------------------------------------------
+  # ZIO jobs (plain JVM, not Flink)
+  # ---------------------------------------------------------------
+  feature-transform-zio:
+    build:
+      context: ../stream-processing/city-rover/feature-transform-zio
+      dockerfile: Dockerfile
+    container_name: feature-transform-zio
+    depends_on:
+      kafka-1:
+        condition: service_started
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:19092
+      KAFKA_RAW_TOPIC: rover-telemetry-protobuf
+      KAFKA_ENRICHED_TOPIC: rover-telemetry-enriched
+      KAFKA_GROUP_ID: feature-transform-zio
+      METRICS_HTTP_PORT: 9084
+      METRICS_ENABLED: "true"
+      METRICS_NAMESPACE: cityrover_transform_zio
+      LOG_LEVEL: INFO
+      # JVM tuning for the 5m window's state + Kafka buffers
+      JAVA_OPTS: "-Xmx2G -XX:+UseG1GC"
+    ports:
+      - "9084:9084"          # Prometheus /metrics
+    networks:
+      - city-rover-net
+    restart: unless-stopped
+
+  feature-writer-zio:
+    build:
+      context: ../stream-processing/city-rover/feature-writer-zio
+      dockerfile: Dockerfile
+    container_name: feature-writer-zio
+    depends_on:
+      kafka-1:
+        condition: service_started
+      cassandra:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:19092
+      KAFKA_ENRICHED_TOPIC: rover-telemetry-enriched
+      KAFKA_GROUP_ID: feature-writer-zio
+      KAFKA_CONSUMER_ISOLATION_LEVEL: read_uncommitted
+      CASSANDRA_CONTACT_POINTS: cassandra
+      CASSANDRA_PORT: 9042
+      CASSANDRA_LOCAL_DC: datacenter1
+      CASSANDRA_KEYSPACE: city_rover
+      CASSANDRA_TABLE: rover_features
+      CASSANDRA_CONSISTENCY: LOCAL_ONE
+      METRICS_HTTP_PORT: 9085
+      METRICS_ENABLED: "true"
+      METRICS_NAMESPACE: cityrover_writer_zio
+      LOG_LEVEL: INFO
+      JAVA_OPTS: "-Xmx1G -XX:+UseG1GC"
+    ports:
+      - "9085:9085"          # Prometheus /metrics
+    networks:
+      - city-rover-net
+    restart: unless-stopped
+
 
 volumes:
   minio-data: 
@@ -510,6 +567,9 @@ networks:
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache rover-flink-latency-job
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache feature-transform-job
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache feature-writer-job
+
+# docker compose -f docker/docker-compose.city-rover.yml build --no-cache feature-transform-zio
+# docker compose -f docker/docker-compose.city-rover.yml build --no-cache feature-writer-zio
 
 # docker compose -f docker/docker-compose.city-rover.yml build --no-cache streamio-kafka-producer-test
 # docker compose -f docker/docker-compose.city-rover.yml build --progress=plain streamio-pyflink-job

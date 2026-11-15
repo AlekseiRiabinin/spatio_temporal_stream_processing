@@ -3,6 +3,7 @@ import sbtassembly.MergeStrategy
 
 import scalapb.compiler.Version.scalapbVersion
 
+
 ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / javacOptions ++= Seq("--release", "25")
 
@@ -19,8 +20,6 @@ lazy val root = (project in file("."))
 
     // ---- ScalaPB ----
     // The writer only needs EnrichedTelemetryEvent from telemetry.proto.
-    // Copy the proto from feature-transform-zio (or, better, use a shared
-    // sub-project — see note below).
     Compile / PB.targets := Seq(
       scalapb.gen(
         flatPackage = true,
@@ -69,6 +68,7 @@ lazy val root = (project in file("."))
       case PathList("META-INF", "services", _*) =>
         MergeStrategy.filterDistinctLines
 
+      // Discard signature files invalidated by assembling the JAR.
       case PathList("META-INF", xs @ _*)
           if xs.exists(x =>
             x.endsWith(".SF") ||
@@ -77,6 +77,25 @@ lazy val root = (project in file("."))
             x.endsWith(".EC")
           ) =>
         MergeStrategy.discard
+
+      // Netty jars ship duplicate version metadata; pick one.
+      case PathList("META-INF", "io.netty.versions.properties") =>
+        MergeStrategy.first
+
+      // INDEX.LIST is an optimization hint; safe to discard.
+      case PathList("META-INF", "INDEX.LIST") =>
+        MergeStrategy.discard
+
+      // module-info.class files conflict across multi-release jars.
+      case "module-info.class" =>
+        MergeStrategy.discard
+      case PathList("META-INF", "versions", _, "module-info.class") =>
+        MergeStrategy.discard
+
+      // Scala 3's scala-library and unroll-annotation both ship
+      // scala/annotation/unroll.*
+      case PathList("scala", "annotation", _*) =>
+        MergeStrategy.first
 
       case "reference.conf" =>
         MergeStrategy.concat
@@ -87,8 +106,9 @@ lazy val root = (project in file("."))
       case x if x.endsWith(".proto") =>
         MergeStrategy.deduplicate
 
+      // Catch-all: first wins instead of erroring on differing contents.
       case x =>
-        MergeStrategy.deduplicate
+        MergeStrategy.first
     },
 
     // ---- Runtime ----
