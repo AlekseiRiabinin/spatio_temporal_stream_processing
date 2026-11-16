@@ -77,13 +77,7 @@ object Main extends ZIOAppDefault:
     case _: EnrichedEvent1m  => "window_1m"
     case _: EnrichedEvent5m  => "window_5m"
 
-  /** Metric registrations, built once at pipeline construction.
-    *
-    * `LatencyMetrics`'s `def`s return a `Metric` value per call; calling
-    * them once here (rather than per event) is important because
-    * `Metric.histogram(...)` does a global registration on first use and
-    * allocates a fresh key type each time.
-    */
+  /** Metric registrations, built once at pipeline construction. */
   private final case class Metrics(
     kafkaToZio: Histogram[Double],
     queue: Histogram[Double],
@@ -104,10 +98,21 @@ object Main extends ZIOAppDefault:
   /** The pipeline: consume → window → produce → commit, with metrics.
     *
     * `mapAccum` carries `(StampedEvent, Offset)` from the consumer and
-    * emits `(offset, fired, stamped, tStart, tDone)` so `mapChunksZIO`
-    * has everything it needs to produce, record `emit_ms`/`latency_ms`,
-    * and commit.
+    * emits per-input:
+    *   - the raw offset (for commit)
+    *   - the StampedEvent + transform start/done (for queue/transform
+    *     metrics — one observation per consumed event)
+    *   - a chunk of `FiredWithTiming` (one per fired enriched event,
+    *     each carrying its own timing context for emit/latency metrics)
     */
+  private final case class FiredWithTiming(
+    event: EnrichedEvent,
+    t1Ms: Long,
+    tSrcMs: Long,
+    tTransformStartMs: Long,
+    tTransformDoneMs: Long
+  )
+
   private def pipeline(
     config: AppConfig,
     metrics: Metrics
@@ -117,8 +122,6 @@ object Main extends ZIOAppDefault:
       .mapAccum(WindowState.empty) { (state, pair) =>
         val (stamped, offset) = pair
 
-        // kafka_to_zio_ms: from broker timestamp to the moment we
-        // started processing this record.
         val tTransformStartMs = java.lang.System.currentTimeMillis()
 
         val (newState, fired) =
@@ -132,32 +135,35 @@ object Main extends ZIOAppDefault:
 
         val tTransformDoneMs = java.lang.System.currentTimeMillis()
 
-        // Per-element metrics whose endpoints are now known. These are
-        // recorded inside mapAccum because they need the single-event
-        // timing context; the effectful `.update` calls are deferred to
-        // mapChunksZIO to avoid per-element effect allocation when the
-        // chunk is large.
-        //
-        // queue_ms = t_transform_start - t_src
-        // transform_ms = t_transform_done - t_transform_start
-        //
-        // Note: kafka_to_zio_ms is captured later (in mapChunksZIO) so
-        // it can be skipped if t1Ms < 0. Same for emit_ms / latency_ms.
+        // Attach this pair's timing to every fired event, so emit_ms
+        // and latency_ms use the correct pair's t1/tSrc/tDone, not the
+        // first pair in the chunk.
+        val firedWithTiming: Chunk[FiredWithTiming] =
+          fired.map(ev =>
+            FiredWithTiming(
+              event = ev,
+              t1Ms = stamped.t1Ms,
+              tSrcMs = stamped.tSrcMs,
+              tTransformStartMs = tTransformStartMs,
+              tTransformDoneMs = tTransformDoneMs
+            )
+          )
+
         (
           newState,
-          (offset, fired, stamped, tTransformStartMs, tTransformDoneMs)
+          (offset, stamped, tTransformStartMs, tTransformDoneMs, firedWithTiming)
         )
       }
       .mapChunksZIO { chunk =>
         val pairs = chunk.toSeq
 
         val allOffsets = OffsetBatch(pairs.map(_._1))
-        val allFired   = pairs.flatMap(_._2)
+        val allFired   = pairs.flatMap(_._5)
 
-        // Record per-element metrics (kafka_to_zio, queue, transform)
-        // for every consumed record.
+        // queue_ms / transform_ms / kafka_to_zio_ms: one observation
+        // per consumed event, using the pair's own timing.
         val elementMetrics: ZIO[Any, Nothing, Unit] =
-          ZIO.foreachDiscard(pairs) { case (_, _, stamped, tStart, tDone) =>
+          ZIO.foreachDiscard(pairs) { case (_, stamped, tStart, tDone, _) =>
             val k2z =
               if stamped.t1Ms >= 0L then
                 metrics.kafkaToZio.update((stamped.tSrcMs - stamped.t1Ms).toDouble)
@@ -167,22 +173,25 @@ object Main extends ZIOAppDefault:
             k2z *> q *> t
           }
 
-        // Record emit_ms and latency_ms for each fired event, dispatched
-        // by subgroup. These use the same Metrics values; the histogram
-        // name is shared, but the subgroup label distinguishes windows.
-        // If per-window histograms are needed, call LatencyMetrics.* per
-        // subgroup instead — see note below.
+        // emit_ms / latency_ms: one observation per fired event, using
+        // THAT event's timing context (not pairs.head).
         val tSinkEnqueueMs = java.lang.System.currentTimeMillis()
         val firedMetrics: ZIO[Any, Nothing, Unit] =
-          ZIO.foreachDiscard(allFired) { ev =>
-            val _subgroup = subgroupOf(ev) // reserved for per-subgroup histograms
-            metrics.emit.update((tSinkEnqueueMs - pairs.head._5).toDouble) *>
-            metrics.latency.update((tSinkEnqueueMs - pairs.head._3.t1Ms).toDouble)
+          ZIO.foreachDiscard(allFired) { f =>
+            val _subgroup = subgroupOf(f.event) // reserved for per-subgroup histograms
+            val e = metrics.emit.update((tSinkEnqueueMs - f.tTransformDoneMs).toDouble)
+            val l =
+              if f.t1Ms >= 0L then
+                metrics.latency.update((tSinkEnqueueMs - f.t1Ms).toDouble)
+              else ZIO.unit
+            e *> l
           }
 
+        val firedEvents: Chunk[EnrichedEvent] = Chunk.fromIterable(allFired.map(_.event))
+
         val produceEffect: ZIO[Producer, Throwable, Unit] =
-          if allFired.isEmpty then ZIO.unit
-          else KafkaProducer.produceChunk(config, Chunk.fromIterable(allFired)).unit
+          if firedEvents.isEmpty then ZIO.unit
+          else KafkaProducer.produceChunk(config, firedEvents).unit
 
         elementMetrics *>
         produceEffect *>
@@ -205,17 +214,26 @@ object Main extends ZIOAppDefault:
       config <- ZIO.service[AppConfig]
       _ <- ZIO.logInfo(
         s"Starting feature-transform-zio: " +
-        s"raw=${config.kafka.rawTopic}, enriched=${config.kafka.enrichedTopic}"
+        s"raw=${config.kafka.rawTopic}, enriched=${config.kafka.enrichedTopic}, " +
+        s"metricsPort=${config.metrics.httpPort}"
       )
       metrics = buildMetrics(config)
       consumerSettings = KafkaConsumer.settings(config)
       producerSettings = KafkaProducer.settings(config)
 
-      // HTTP server for /metrics, running concurrently with the pipeline.
+      // HTTP server for /metrics on the configured port (9084).
+      // Server.default binds to 8080; we need ServerConfig.default.port(...)
+      // to bind to config.metrics.httpPort, matching the compose port
+      // mapping and the Prometheus scrape target.
+      serverConfig = ZLayer.succeed(
+        Server.Config.default.port(config.metrics.httpPort)
+      )
+
       serverFiber <- Server
         .serve(metricsRoute)
         .provide(
-          Server.default,
+          serverConfig,
+          Server.live,
           prometheus.publisherLayer,
           prometheus.prometheusLayer,
           ZLayer.succeed(ZioMetricsConfig(5.seconds))

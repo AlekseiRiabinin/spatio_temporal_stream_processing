@@ -547,6 +547,7 @@ networks:
 
 # ./start-system-city-rover.sh
 # ./start-system-city-rover-noviz.sh
+# ./start-system-city-rover-zio.sh
 # ./run-rover-simulator.sh
 # ./run-trajectory-job.sh
 # ./run-map-visualizer.code

@@ -63,7 +63,6 @@ object Main extends ZIOAppDefault:
         // Success/failure side effects via tapError + tap, not tapBoth:
         // tapBoth requires the handler's error type to be a *supertype*
         // of the effect's E (Throwable), which a URIO (Nothing) is not.
-        // tapError and tap both accept Nothing-error handlers.
         val writeEffect: ZIO[Any, Throwable, Unit] =
           sink.write(proto)
             .tapError(_ => metrics.writeErrors.update(1))
@@ -103,7 +102,8 @@ object Main extends ZIOAppDefault:
       _ <- ZIO.logInfo(
         s"Starting feature-writer-zio: " +
         s"enrichedTopic=${config.kafka.enrichedTopic}, " +
-        s"keyspace=${config.cassandra.keyspace}, table=${config.cassandra.table}"
+        s"keyspace=${config.cassandra.keyspace}, table=${config.cassandra.table}, " +
+        s"metricsPort=${config.metrics.httpPort}"
       )
 
       // 1. Bootstrap: create keyspace + table once. Separate short-lived session.
@@ -123,11 +123,14 @@ object Main extends ZIOAppDefault:
       // 2. Build metrics once.
       metrics = buildMetrics(config)
 
-      // 3. HTTP server for /metrics, running concurrently with the pipeline.
+      // 3. HTTP server for /metrics on the configured port (9085).
+      // Server.default binds to 8080; Server.defaultWithPort(...) binds
+      // to the configured port, matching the compose port mapping and
+      // the Prometheus scrape target.
       serverFiber <- Server
         .serve(metricsRoute)
         .provide(
-          Server.default,
+          Server.defaultWithPort(config.metrics.httpPort),
           prometheus.publisherLayer,
           prometheus.prometheusLayer,
           ZLayer.succeed(ZioMetricsConfig(5.seconds))
