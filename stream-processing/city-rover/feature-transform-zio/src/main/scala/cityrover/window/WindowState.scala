@@ -5,10 +5,17 @@ import cityrover.model.TelemetryEvent
 
 /** Incremental accumulator types for the four tumbling event-time windows.
   *
-  * Each window keeps one accumulator per rover (keyed by `roverId` in the
-  * window state map). The accumulators are constant-sized — they do NOT
-  * hold raw events. That's what makes the 5-minute window cheap on
-  * checkpoint/memory compared to a raw-event buffer.
+  * Each *window instance* — a specific `(roverId, windowType, windowEnd)`
+  * triple — has its own accumulator. This is the key difference from the
+  * earlier single-accumulator-per-rover-per-type design: an event for
+  * the 5s window `[100000, 105000)` goes into the accumulator keyed by
+  * `(roverId, W5s, 105000)`, and an event for `[105000, 110000)` goes
+  * into `(roverId, W5s, 110000)`. When the watermark crosses `105000`,
+  * the first accumulator fires and is removed; the second keeps filling.
+  *
+  * The accumulators are constant-sized — they do NOT hold raw events.
+  * That's what makes the 5-minute window cheap on checkpoint/memory
+  * compared to a raw-event buffer.
   *
   * The fields are chosen so `WindowAggregator.add` is a local update and
   * `WindowAggregator.result` is a pure function of the accumulator. The

@@ -544,14 +544,18 @@ networks:
     name: city-rover-net
 
 
-
+####################################
+# ./start-pipeline-city-rover-zio.sh
+####################################
 # ./start-system-city-rover.sh
+# ./stop-system-city-rover.sh
 # ./start-system-city-rover-noviz.sh
 # ./start-system-city-rover-zio.sh
 # ./run-rover-simulator.sh
 # ./run-trajectory-job.sh
 # ./run-map-visualizer.code
 # ./run-lakehouse-job.sh
+# ./run-feature-pipeline-zio.sh
 
 # ./run-latency-job.sh
 # ./run-feature-transform-job.sh

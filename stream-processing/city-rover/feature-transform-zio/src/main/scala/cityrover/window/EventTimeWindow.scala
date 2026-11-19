@@ -28,10 +28,16 @@ import cityrover.util.WindowConfig
   * `roverId` on the Kafka side, each `EventTimeWindow` instance only sees
   * events for the rovers on its partition, but the state map handles any
   * number of rovers so nothing breaks if partitioning changes.
+  *
+  * Accumulator keying: `(roverId, WindowTypeTag, windowEnd)`.
+  * One accumulator per *window instance*, not per rover per window type.
+  * This is what lets the 5s window `[100000, 105000)` fire independently
+  * of `[105000, 110000)` — events for the second window don't pollute
+  * the first.
   */
 
 final case class WindowState(
-  accumulators: Map[(String, WindowTypeTag), WindowAccumulator],
+  accumulators: Map[(String, WindowTypeTag, Long), WindowAccumulator],
   watermarks: WatermarkState
 )
 
@@ -99,12 +105,12 @@ object EventTimeWindow {
         nowWallClockMs
       )
 
-    // ---- 2. Add the event to all four accumulators ----
-    val accsAfter = addToAllAccumulators(state.accumulators, roverId, event)
+    // ---- 2. Add the event to the four window accumulators it belongs to ----
+    val accsAfter = addToAllAccumulators(state.accumulators, roverId, event, config)
 
-    // ---- 3. Fire windows whose end is crossed by the watermark ----
+    // ---- 3. Fire every window whose end the watermark has crossed ----
     val (remaining, fired) =
-      fireReadyWindows(accsAfter, wmAfter, roverId, config, envelopeFor)
+      fireReadyWindows(accsAfter, wmAfter, roverId, envelopeFor)
 
     (WindowState(remaining, wmAfter), Chunk.fromIterable(fired))
 
@@ -134,7 +140,7 @@ object EventTimeWindow {
 
       if wmAfter != current.watermarks then
         val (remaining, ready) =
-          fireReadyWindows(current.accumulators, wmAfter, roverId, config, envelopeFor)
+          fireReadyWindows(current.accumulators, wmAfter, roverId, envelopeFor)
         current = WindowState(remaining, wmAfter)
         fired ++= ready
     }
@@ -145,47 +151,47 @@ object EventTimeWindow {
   // Internals
   // ============================================================
 
+  /** Add the event to the correct accumulator for each of the four
+    * windows. The key includes the window's end boundary, so an event
+    * at `ts=105000` goes into `(roverId, W5s, 110000)`, not the same
+    * accumulator as an event at `ts=100000` (which goes into
+    * `(roverId, W5s, 105000)`).
+    */
   private def addToAllAccumulators(
-    accs: Map[(String, WindowTypeTag), WindowAccumulator],
+    accs: Map[(String, WindowTypeTag, Long), WindowAccumulator],
     roverId: String,
-    event: TelemetryEvent
-  ): Map[(String, WindowTypeTag), WindowAccumulator] =
-    val key5s  = (roverId, WindowTypeTag.W5s)
-    val key30s = (roverId, WindowTypeTag.W30s)
-    val key1m  = (roverId, WindowTypeTag.W1m)
-    val key5m  = (roverId, WindowTypeTag.W5m)
+    event: TelemetryEvent,
+    config: WindowConfig
+  ): Map[(String, WindowTypeTag, Long), WindowAccumulator] =
+    val wEnd5s  = WindowTypeTag.W5s.windowEndFor(event.ts, config)
+    val wEnd30s = WindowTypeTag.W30s.windowEndFor(event.ts, config)
+    val wEnd1m  = WindowTypeTag.W1m.windowEndFor(event.ts, config)
+    val wEnd5m  = WindowTypeTag.W5m.windowEndFor(event.ts, config)
 
-    val acc5s = accs.get(key5s).collect {
-       case Acc5s(a) => a 
-    }.getOrElse(Window5sAccumulator.empty)
-    
-    val acc30s = accs.get(key30s).collect { 
-      case Acc30s(a) => a 
-    }.getOrElse(Window30sAccumulator.empty)
-    
-    val acc1m = accs.get(key1m).collect {
-      case Acc1m(a) => a 
-    }.getOrElse(Window1mAccumulator.empty)
-    
-    val acc5m = accs.get(key5m).collect {
-      case Acc5m(a) => a 
-    }.getOrElse(Window5mAccumulator.empty)
+    val key5s  = (roverId, WindowTypeTag.W5s,  wEnd5s)
+    val key30s = (roverId, WindowTypeTag.W30s, wEnd30s)
+    val key1m  = (roverId, WindowTypeTag.W1m,  wEnd1m)
+    val key5m  = (roverId, WindowTypeTag.W5m,  wEnd5m)
+
+    val acc5s  = accs.get(key5s).collect  { case Acc5s(a)  => a }.getOrElse(Window5sAccumulator.empty)
+    val acc30s = accs.get(key30s).collect { case Acc30s(a) => a }.getOrElse(Window30sAccumulator.empty)
+    val acc1m  = accs.get(key1m).collect  { case Acc1m(a)  => a }.getOrElse(Window1mAccumulator.empty)
+    val acc5m  = accs.get(key5m).collect  { case Acc5m(a)  => a }.getOrElse(Window5mAccumulator.empty)
 
     accs
-      .updated(key5s, Acc5s(WindowAggregator.add5s(acc5s, event)))
+      .updated(key5s,  Acc5s(WindowAggregator.add5s(acc5s, event)))
       .updated(key30s, Acc30s(WindowAggregator.add30s(acc30s, event)))
-      .updated(key1m, Acc1m(WindowAggregator.add1m(acc1m, event)))
-      .updated(key5m, Acc5m(WindowAggregator.add5m(acc5m, event)))
+      .updated(key1m,  Acc1m(WindowAggregator.add1m(acc1m, event)))
+      .updated(key5m,  Acc5m(WindowAggregator.add5m(acc5m, event)))
 
-  /** Fire all windows for this rover whose end has been crossed by the
-    * watermark. Returns the remaining accumulators + the fired events.
+  /** Fire every window for this rover whose end the watermark has
+    * crossed. Returns the remaining accumulators + the fired events.
     *
-    * The `windowEndTs` is derived from the accumulator's `lastEvent.ts`
-    * (the event-time of the latest event in the window), aligned to the
-    * window's size. Using `lastEvent.ts` rather than `lastSeenTs` is
-    * equivalent — `add*` sets both from the same event — but
-    * `lastEvent.ts` is what the envelope builder also uses, so they stay
-    * in lockstep.
+    * The window end comes from the accumulator key, not from
+    * `windowEndFor(lastEvent.ts)`: the key *is* the window end. So a
+    * window `[100000, 105000)` fires when the watermark reaches
+    * `105000`, regardless of where `lastEvent.ts` falls (it's always
+    * within `[100000, 105000)` by construction).
     *
     * The `envelopeFor` callback receives the true "last event in the
     * window", so the `FeatureEnvelope` snapshot fields (`lat`, `lon`,
@@ -193,62 +199,59 @@ object EventTimeWindow {
     * not from the event that happened to advance the watermark.
     */
   private def fireReadyWindows(
-    accs: Map[(String, WindowTypeTag), WindowAccumulator],
+    accs: Map[(String, WindowTypeTag, Long), WindowAccumulator],
     wm: WatermarkState,
     roverId: String,
-    config: WindowConfig,
     envelopeFor: (TelemetryEvent, Long) => FeatureEnvelope
-  ): (Map[(String, WindowTypeTag), WindowAccumulator], Vector[EnrichedEvent]) =
+  ): (Map[(String, WindowTypeTag, Long), WindowAccumulator], Vector[EnrichedEvent]) =
     var remaining = accs
     val fired = Vector.newBuilder[EnrichedEvent]
 
-    def tryFire(tag: WindowTypeTag): Unit =
-      val key = (roverId, tag)
-      remaining.get(key) match
-        case Some(acc) =>
-          acc.lastEvent match
-            case Some(lastEv) =>
-              val windowEnd = tag.windowEndFor(lastEv.ts, config)
-              if WatermarkTracker.shouldFire(wm, roverId, windowEnd) then
-                val envelope = envelopeFor(lastEv, windowEnd)
-                val firedEvent: EnrichedEvent = tag match
-                  case WindowTypeTag.W5s =>
-                    val a = acc.asInstanceOf[Acc5s].state
-                    EnrichedEvent5s(
-                      envelope = envelope,
-                      features = WindowAggregator.result5s(a, windowEnd)
-                    )
-                  case WindowTypeTag.W30s =>
-                    val a = acc.asInstanceOf[Acc30s].state
-                    EnrichedEvent30s(
-                      envelope = envelope,
-                      features = WindowAggregator.result30s(a, windowEnd)
-                    )
-                  case WindowTypeTag.W1m =>
-                    val a = acc.asInstanceOf[Acc1m].state
-                    EnrichedEvent1m(
-                      envelope = envelope,
-                      features = WindowAggregator.result1m(a, windowEnd)
-                    )
-                  case WindowTypeTag.W5m =>
-                    val a = acc.asInstanceOf[Acc5m].state
-                    EnrichedEvent5m(
-                      envelope = envelope,
-                      features = WindowAggregator.result5m(a, windowEnd)
-                    )
-                fired += firedEvent
-                remaining = remaining - key
-            case None =>
-              // Accumulator exists but no event was ever added — shouldn't
-              // happen (accumulator is created in addToAllAccumulators on
-              // the first add*), but defensive: skip rather than crash.
-              ()
-        case None => ()
+    // Find every accumulator entry for this rover whose window end the
+    // watermark has crossed. This includes the window the current event
+    // belongs to (if the event itself advanced the watermark past its
+    // own end — possible with a large out-of-orderness allowance) and
+    // every earlier window whose end has already been crossed.
+    val ready: List[((String, WindowTypeTag, Long), WindowAccumulator)] =
+      accs.iterator
+        .filter { case ((rid, _, wEnd), _) =>
+          rid == roverId && WatermarkTracker.shouldFire(wm, roverId, wEnd)
+        }
+        .toList
 
-    tryFire(WindowTypeTag.W5s)
-    tryFire(WindowTypeTag.W30s)
-    tryFire(WindowTypeTag.W1m)
-    tryFire(WindowTypeTag.W5m)
+    ready.foreach { case (key @ (_, tag, wEnd), acc) =>
+      acc.lastEvent match
+        case Some(lastEv) =>
+          val envelope = envelopeFor(lastEv, wEnd)
+          val firedEvent: EnrichedEvent = tag match
+            case WindowTypeTag.W5s =>
+              EnrichedEvent5s(
+                envelope = envelope,
+                features = WindowAggregator.result5s(acc.asInstanceOf[Acc5s].state, wEnd)
+              )
+            case WindowTypeTag.W30s =>
+              EnrichedEvent30s(
+                envelope = envelope,
+                features = WindowAggregator.result30s(acc.asInstanceOf[Acc30s].state, wEnd)
+              )
+            case WindowTypeTag.W1m =>
+              EnrichedEvent1m(
+                envelope = envelope,
+                features = WindowAggregator.result1m(acc.asInstanceOf[Acc1m].state, wEnd)
+              )
+            case WindowTypeTag.W5m =>
+              EnrichedEvent5m(
+                envelope = envelope,
+                features = WindowAggregator.result5m(acc.asInstanceOf[Acc5m].state, wEnd)
+              )
+          fired += firedEvent
+          remaining = remaining - key
+        case None =>
+          // Accumulator exists but no event was ever added — shouldn't
+          // happen (accumulator is created in addToAllAccumulators on
+          // the first add*), but defensive: skip rather than crash.
+          ()
+    }
 
     (remaining, fired.result())
 }
