@@ -213,3 +213,6 @@ wcwidth==0.6.0
 webcolors==25.10.0
 webencodings==0.5.1
 websocket-client==1.9.0
+wfdb==4.3.1
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0

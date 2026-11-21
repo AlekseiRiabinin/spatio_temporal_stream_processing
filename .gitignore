@@ -22,6 +22,12 @@ graph-engine/src/main/scala/cityrover/graph/data/
 parser/figures/
 *.csv
 
+# Raw physiology datasets (download separately, see parser/README)
+data/athletes/wrist-ppg-during-exercise-1.0.0/
+
+# Parsed CSV output (regenerable via parser/parse_wrist_ppg.py)
+data/athletes/parsed/
+
 # ============================================================
 # PYTHON
 # ============================================================
